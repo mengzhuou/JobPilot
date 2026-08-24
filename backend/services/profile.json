@@ -1,0 +1,141 @@
+{
+  "candidate": {
+    "name": "Mengzhu Ou",
+    "email": "a1106983163@gmail.com",
+    "phone": "7067418456",
+    "location": {
+      "city": "Bentonville",
+      "state": "AR",
+      "country": "United States"
+    },
+    "links": {
+      "linkedin": "https://www.linkedin.com/in/mengzhuou/",
+      "github": "https://github.com/MengzhuOu"
+    }
+  },
+
+  "work_authorization": {
+    "us_citizen_or_permanent_resident": true,
+    "authorized_to_work_without_sponsorship": true
+  },
+
+  "experience": {
+    "total_professional_software_engineering_years": 2,
+
+    "management": {
+      "has_direct_management_experience": true,
+      "direct_reports": 6,
+      "years": 2,
+      "were_direct_reports": true
+    },
+
+    "leadership": {
+      "has_tech_lead_experience": true,
+      "has_project_lead_experience": true
+    }
+  },
+
+  "career": {
+    "current_company": "Walmart",
+    "current_title": "Software Engineer II"
+  },
+
+  "skills": {
+    "frontend": [
+      "React",
+      "TypeScript",
+      "JavaScript",
+      "Redux"
+    ],
+
+    "backend": [
+      "Java",
+      "Spring Boot",
+      "Node.js",
+      "Express",
+      "Python"
+    ],
+
+    "databases": [
+      "MySQL",
+      "MongoDB",
+      "Firebase Firestore"
+    ],
+
+    "testing": [
+      "Jest"
+    ],
+
+    "devops": [
+      "Kubernetes",
+      "GitHub Actions",
+      "SonarQube"
+    ],
+
+    "other": [
+      "SQL"
+    ]
+  },
+
+  "projects_and_background": {
+    "lmc_film": {
+      "role": "Full-Stack Tech Lead Software Developer",
+      "team_size": 10,
+      "technologies": [
+        "MERN",
+        "React",
+        "Redux",
+        "Node.js",
+        "Express",
+        "MongoDB"
+      ]
+    },
+
+    "internships": [
+      {
+        "company": "Travelers",
+        "program": "TLDP",
+        "role": "Intern"
+      },
+      {
+        "company": "MessageGears",
+        "role": "Software Development Engineer Intern"
+      }
+    ],
+
+    "research": {
+      "program": "NSF REU"
+    }
+  },
+
+  "application_answers": {
+    "givebutter": {
+      "how_heard_about_company": "LinkedIn"
+    }
+  },
+
+  "eeoc": {
+    "gender": {
+      "answer": "Female",
+      "form_option": "Female"
+    },
+
+    "race": {
+      "answer": "Asian",
+      "form_option": "Asian (Not Hispanic or Latino)"
+    },
+
+    "veteran_status": {
+      "answer": "Not a protected veteran",
+      "form_option": "I am not a protected veteran"
+    }
+  },
+
+  "autofill_policy": {
+    "never_invent_experience": true,
+    "never_infer_personal_information": true,
+    "never_answer_uncertain_questions_automatically": true,
+    "require_user_review_for_conflicting_facts": true,
+    "eeoc_fields_are_user_provided": true
+  }
+}

@@ -1,0 +1,3 @@
+20260823	23:30:57	b0fa7130-8680-4fc3-9662-dff2d99a8285	TypeError: startApplicationAgent is not a function	POST	/api/applications/start	undefined
+20260823	23:33:54	69cb5d94-9afb-49c4-8afc-e0a13c4894ed	ReferenceError: CSS is not defined	POST	/api/applications/start	undefined
+20260823	23:34:40	11f2cdaa-fe56-4c6d-89f7-03ddaa3a3f8d	ReferenceError: CSS is not defined	POST	/api/applications/start	undefined
