@@ -1,0 +1,33 @@
+// applicationController.js
+
+const asyncHandler = require("express-async-handler");
+const {
+    startApplicationAgent
+} = require("../services/applicationAgent");
+const jwt = require("jsonwebtoken");
+
+const startApplication = asyncHandler(async (req, res, next) => {
+    try {
+        const { jobUrl } = req.body;
+
+        if (!jobUrl) {
+            return res.status(400).json({
+                message: "Job URL is required"
+            });
+        }
+
+        await startApplicationAgent(jobUrl);
+
+        res.status(200).json({
+            message: "Application agent started"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+
+module.exports = {
+    startApplication
+};
