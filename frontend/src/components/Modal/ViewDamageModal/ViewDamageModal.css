@@ -1,0 +1,51 @@
+.report-info {
+    font-family: 'Lato';
+    font-style: normal;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 19px;
+    display: flex;
+    margin-bottom: 10px;
+}
+
+.view-damage-modal-content {
+    background: white;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    min-width: 600px;
+    max-width: 700px;
+    overflow-y: auto;
+    max-height: 600px;
+    position: relative;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; 
+    max-height: 500px;
+}
+
+
+.view-damage-modal-content::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, and Opera */
+}
+
+
+.label {
+    color: #3361AE;
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.info {
+    color: #3361AE;
+}
+
+.res-history-damage-description {
+    display: flex;
+    flex-direction: column; /* This will stack the elements vertically */
+    margin-bottom: 10px; /* Optional: Adds space between each report item */
+}
+
+.res-history-damage-description .info {
+    white-space: pre-wrap; /* Ensures the description text wraps properly */
+    word-wrap: break-word; /* Breaks long words when necessary */
+    margin: 10px 20px;
+}

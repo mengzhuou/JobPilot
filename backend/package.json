@@ -1,0 +1,31 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "LMC Film Project",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server",
+    "dev": "nodemon server"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "all": "^0.0.0",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.6",
+    "date-fns": "^3.6.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.22.2",
+    "express-async-handler": "^1.2.0",
+    "express-rate-limit": "^7.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.8.0",
+    "mongoose": "^8.5.3",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.16",
+    "nodemon": "^3.1.4",
+    "playwright": "^1.62.1",
+    "uuid": "^10.0.0"
+  }
+}

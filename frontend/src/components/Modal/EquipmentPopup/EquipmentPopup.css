@@ -1,0 +1,94 @@
+.edit-item-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.edit-item-modal-content {
+    background: white;
+    padding: 20px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 5px;
+    width: 500px;
+}
+
+.edit-item-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    font-size: 30px;
+    cursor: pointer;
+    color: #3361AE;
+}
+
+.edit-item-modal-form {
+    display: flex;
+    flex-direction: column;
+}
+
+.edit-item-modal-info {
+    margin-bottom: 10px;
+}
+
+.edit-item-modal-label {
+    display: block;
+    font-size: 16px;
+    color: #3361AE;
+    margin-bottom: 5px;
+}
+
+.edit-item-modal-select,
+.edit-item-modal-input {
+    width: 100%;
+    padding: 8px;
+    border-radius: 5px;
+    border: 1px solid #3361AE;
+    font-size: 14px;
+    background-color: #E7EFF2;
+}
+
+.edit-item-modal-select {
+    width: 98%;
+}
+
+.edit-item-modal-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+
+.edit-item-cancel-button,
+.edit-item-submit-button {
+    padding: 10px 20px;
+    font-size: 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid #3361AE;
+    background-color: transparent;
+    color: #3361AE;
+    transition: background-color 0.3s;
+}
+
+.edit-item-submit-button:hover {
+    background-color: #3361AE;
+    color: white;
+}
+
+.edit-item-modal-error-message {
+    color: red;
+    font-size: 14px;
+    margin-top: 5px;
+}

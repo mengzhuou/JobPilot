@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600&display=swap');
+.student-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #3361AE;
+    position: relative;
+    margin-top: 8%;
+    margin-bottom: 4%;
+    left: 10%;
+}
+
+.search-bar-edit-container {
+    display: flex;
+    position: relative;
+    margin: 0 0 10px 0;
+    width: 80vw;
+    justify-content: space-between;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.trash-icon {
+    background: none;
+    border: none;
+    padding: 0;
+    margin-left: 30px;
+    cursor: pointer;
+    color: #3361AE;
+}
+
+.student-searchbar {
+    display: inline-flex;
+    align-items: center;
+}
+
+.student-edit {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    margin-right: 0%;
+    margin-left: auto;
+}
+
+.no-class-code {
+    margin-left: 6px;
+}
+
+@media (max-width: 800px) {
+
+    .student-title {
+        margin-top: 10%;
+    }
+
+    .student-searchbar {
+        margin-right: 0%;
+    }
+}
