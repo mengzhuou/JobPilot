@@ -21,3 +21,16 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# application logs
+errLog.log
+*.log
+
+# Playwright
+/Users/mengzhuou/Documents/GitHub/JobPilot/backend/services/playwright-profile
+backend/services/playwright-profile
+/playwright-profile/
+/playwright-report/
+/test-results/
+/blob-report/
+/playwright/.cache/

@@ -72,7 +72,7 @@ const TopNavBar = () => {
     return (
         <div className="navBar">
             <div className="navBar-left">
-                <div className="navTitle">LMCFilms</div>
+                <div className="navTitle">JobPilot</div>
             </div>
             <div className="navBar-right">
                 <div

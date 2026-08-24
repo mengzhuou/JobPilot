@@ -137,5 +137,28 @@
     "never_answer_uncertain_questions_automatically": true,
     "require_user_review_for_conflicting_facts": true,
     "eeoc_fields_are_user_provided": true
-  }
+  },
+
+  "Q_and_A": {
+    "self_introduction": {
+      "questions": [
+        "Self-introduction",
+        "Tell us about yourself.",
+        "Please introduce yourself.",
+        "Introduce yourself.",
+        "Briefly introduce yourself.",
+        "Tell us a little about yourself."
+      ],
+      "answer": "I’m a Software Engineer II at Walmart, where I work on React and TypeScript applications and backend services supporting financial workflows. I enjoy building reliable, user-focused software and solving problems across the frontend and backend. I’ve also had opportunities to lead technical projects and work with teams to deliver end-to-end features. I’m always interested in learning new technologies and taking on challenges where I can make a meaningful impact."
+    },
+    "react_experience": {
+        "questions": [
+            "Describe your experience with React.",
+            "What is your experience with React?",
+            "Tell us about your React experience.",
+            "Describe your experience building applications with React."
+        ],
+        "answer": "I have 6 years of experience building and maintaining web applications with React TypeScript and React.js, including developing reusable UI components via state management tools, integrating APIs, and writing tests with Jest. While working at Walmart, I’ve worked on React-based applications for financial workflows, where I’ve also been involved in debugging production issues and improving the reliability of the React application. I’m comfortable working across the frontend stack and collaborating with backend engineers to build and maintain end-to-end features. I’m confident that my React experience is highly transferable to React Native, and I’m comfortable learning the new skills needed to build mobile applications."
+    }
+}
 }
