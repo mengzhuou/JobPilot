@@ -39,7 +39,16 @@ const stopApplication = async () => {
     }
 };
 
+const getApplicationStatus = async () => {
+    const res = await axios.get(
+        `${BACKEND_URL}/api/applications/status`
+    );
+
+    return res.data;
+};
+
 export {
     openAndFillApplication,
     stopApplication,
+    getApplicationStatus,
 };

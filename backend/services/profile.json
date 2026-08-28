@@ -1,11 +1,13 @@
 {
   "candidate": {
     "name": "Mengzhu Ou",
+    "first_name": "Mengzhu",
+    "last_name": "Ou",
     "email": "a1106983163@gmail.com",
     "phone": "7067418456",
     "location": {
-      "city": "Bentonville",
-      "state": "AR",
+      "city": "Dallas",
+      "state": "Texas",
       "country": "United States"
     },
     "links": {
@@ -17,6 +19,24 @@
   "work_authorization": {
     "us_citizen_or_permanent_resident": true,
     "authorized_to_work_without_sponsorship": true
+  },
+
+  "education": {
+    "highest_level": "Bachelor of Science",
+    "field_of_study": "Computer Science",
+    "highest_level_form_options": [
+      "Bachelor of Science",
+      "Bachelor's Degree (BA/BS /etc)",
+      "Bachelor's Degree"
+    ],
+    "currently_pursuing_further_education": false
+  },
+
+  "job_preferences": {
+    "applying_for_internship_or_coop": false,
+    "applying_for_full_time": true,
+    "earliest_start_date": "2026-11-01",
+    "office_days_per_week_form_option": "2-4 days in a week"
   },
 
   "experience": {
@@ -36,8 +56,31 @@
   },
 
   "career": {
-    "current_company": "Walmart",
-    "current_title": "Software Engineer II"
+    "current_company": "Walmart Global Tech",
+    "current_title": "Software Engineer III",
+    "work_history": [
+      {
+        "job_title": "Software Engineer III",
+        "company": "Walmart Global Tech",
+        "from": "2026-08-08",
+        "to": null,
+        "current": true
+      },
+      {
+        "job_title": "Software Engineer II",
+        "company": "Walmart Global Tech",
+        "from": "2025-02-10",
+        "to": "2026-08-07",
+        "current": false
+      },
+      {
+        "job_title": "Software Engineer Intern",
+        "company": "Walmart Global Tech",
+        "from": "2024-06-03",
+        "to": "2024-08-15",
+        "current": false
+      }
+    ]
   },
 
   "skills": {
@@ -117,17 +160,37 @@
   "eeoc": {
     "gender": {
       "answer": "Female",
-      "form_option": "Female"
+      "form_options": [
+        "Female",
+        "Woman"
+      ]
     },
 
     "race": {
       "answer": "Asian",
-      "form_option": "Asian (Not Hispanic or Latino)"
+      "form_options": [
+        "Asian (Not Hispanic or Latino)",
+        "Asian (United States of America)",
+        "Asian"
+      ]
     },
 
     "veteran_status": {
       "answer": "Not a protected veteran",
-      "form_option": "I am not a protected veteran"
+      "form_options": [
+        "I am not a protected veteran",
+        "Not a protected veteran",
+        "I am not a veteran",
+        "Not a veteran"
+      ]
+    },
+
+    "disability_status": {
+      "answer": "No",
+      "has_disability": false,
+      "form_options": [
+        "No"
+      ]
     }
   },
 

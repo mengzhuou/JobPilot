@@ -1,9 +1,21 @@
 const { chromium } = require("playwright");
 const profile = require("./profile.json");
 const path = require("path");
+const {
+    normalizeText,
+    getAvailableFormOption,
+    getBooleanFormAnswer
+} = require("./applicationAgentUtils");
+const {
+    inspectInteractiveElements,
+    printApplicationFields
+} = require("./applicationAgentDebug");
 
 let context = null;
 let page = null;
+let pageMonitor = null;
+let monitorBusy = false;
+let lastFormSignature = null;
 
 const resumePath = path.resolve(
     __dirname,
@@ -14,73 +26,6 @@ const userDataDir = path.resolve(
     __dirname,
     "./playwright-profile"
 );
-
-
-// ==================================================
-// HELPERS
-// ==================================================
-
-const normalizeText = (text) => {
-    if (text === null || text === undefined) {
-        return "";
-    }
-
-    return String(text)
-        .toLowerCase()
-        .replace(/[^\w\s]/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-};
-
-
-// ==================================================
-// BOOLEAN → FORM OPTION
-// ==================================================
-
-const getBooleanFormAnswer = (
-    value,
-    options = []
-) => {
-
-    if (typeof value !== "boolean") {
-        return value;
-    }
-
-    const normalizedOptions =
-        options.map(normalizeText);
-
-    if (value === true) {
-
-        const yesIndex =
-            normalizedOptions.findIndex(
-                option =>
-                    option === "yes" ||
-                    option.startsWith("yes ") ||
-                    option.includes("yes i")
-            );
-
-        if (yesIndex !== -1) {
-            return options[yesIndex];
-        }
-    }
-
-    if (value === false) {
-
-        const noIndex =
-            normalizedOptions.findIndex(
-                option =>
-                    option === "no" ||
-                    option.startsWith("no ") ||
-                    option.includes("no i")
-            );
-
-        if (noIndex !== -1) {
-            return options[noIndex];
-        }
-    }
-
-    return value;
-};
 
 
 // ==================================================
@@ -110,12 +55,33 @@ const getProfileValue = (field) => {
     // --------------------------------------------------
 
     if (
+        question.includes("first name") ||
+        question.includes("given name")
+    ) {
+
+        return {
+            value: profile.candidate.first_name,
+            source: "candidate.first_name"
+        };
+    }
+
+    if (
+        question.includes("last name") ||
+        question.includes("family name") ||
+        question.includes("surname")
+    ) {
+
+        return {
+            value: profile.candidate.last_name,
+            source: "candidate.last_name"
+        };
+    }
+
+    if (
         name === "_systemfield_name" ||
         id === "_systemfield_name" ||
         question === "name" ||
-        question.includes("full name") ||
-        question.includes("first name") ||
-        question.includes("last name")
+        question.includes("full name")
     ) {
 
         return {
@@ -165,9 +131,33 @@ const getProfileValue = (field) => {
     // --------------------------------------------------
 
     if (
+        question === "city" ||
+        question === "current city" ||
+        question === "city of residence"
+    ) {
+
+        return {
+            value: profile.candidate.location.city,
+            source: "candidate.location.city"
+        };
+    }
+
+    if (
+        question === "state" ||
+        question === "state province" ||
+        question === "state or province" ||
+        question === "province"
+    ) {
+
+        return {
+            value: profile.candidate.location.state,
+            source: "candidate.location.state"
+        };
+    }
+
+    if (
         question === "location" ||
-        question === "current location" ||
-        question.includes("current city")
+        question === "current location"
     ) {
 
         return {
@@ -240,23 +230,257 @@ const getProfileValue = (field) => {
 
 
     // --------------------------------------------------
+    // WORK AUTHORIZATION / SPONSORSHIP
+    // --------------------------------------------------
+
+    if (
+        question.includes("legally authorized to work") ||
+        question.includes("legal authorization to work")
+    ) {
+
+        return {
+            value:
+                profile.work_authorization
+                    ?.authorized_to_work_without_sponsorship,
+            source:
+                "work_authorization.authorized_to_work_without_sponsorship"
+        };
+    }
+
+    if (
+        question.includes("require sponsorship") ||
+        question.includes("employment visa sponsorship")
+    ) {
+
+        return {
+            value:
+                !profile.work_authorization
+                    ?.authorized_to_work_without_sponsorship,
+            source:
+                "work_authorization.authorized_to_work_without_sponsorship (inverted)"
+        };
+    }
+
+
+    // --------------------------------------------------
+    // EXPERIENCE / EDUCATION / ROLE PREFERENCES
+    // --------------------------------------------------
+
+    const workHistory =
+        profile.career
+            ?.work_history || [];
+
+
+    if (
+        question === "job title" &&
+        Number.isInteger(field.workExperienceIndex)
+    ) {
+
+        return {
+            value:
+                workHistory[field.workExperienceIndex]
+                    ?.job_title,
+            source:
+                `career.work_history[${field.workExperienceIndex}].job_title`
+        };
+    }
+
+    if (
+        question === "company" &&
+        Number.isInteger(field.workExperienceIndex)
+    ) {
+
+        return {
+            value:
+                workHistory[field.workExperienceIndex]
+                    ?.company,
+            source:
+                `career.work_history[${field.workExperienceIndex}].company`
+        };
+    }
+
+    if (
+        question === "from" &&
+        Number.isInteger(field.workExperienceIndex)
+    ) {
+
+        return {
+            value:
+                workHistory[field.workExperienceIndex]
+                    ?.from,
+            source:
+                `career.work_history[${field.workExperienceIndex}].from`
+        };
+    }
+
+    if (
+        question === "to" &&
+        Number.isInteger(field.completedWorkExperienceIndex)
+    ) {
+
+        const completedWork =
+            workHistory.filter(
+                experience => !experience.current
+            );
+
+
+        return {
+            value:
+                completedWork[field.completedWorkExperienceIndex]
+                    ?.to,
+            source:
+                `career.work_history completed[${field.completedWorkExperienceIndex}].to`
+        };
+    }
+
+    if (
+        question.includes("currently work here") ||
+        question.includes("current job") ||
+        question.includes("current employer")
+    ) {
+
+        return {
+            value:
+                workHistory[field.workExperienceIndex]
+                    ?.current,
+            source:
+                `career.work_history[${field.workExperienceIndex}].current`
+        };
+    }
+
+    if (
+        question.includes("years of relevant work experience") ||
+        question.includes("years of relevant experience")
+    ) {
+
+        const years =
+            profile.experience
+                ?.total_professional_software_engineering_years;
+
+
+        return {
+            value:
+                years >= 4
+                    ? "4+ years"
+                    : years >= 2
+                        ? "2-3 years"
+                        : "0-1 year",
+            source:
+                "experience.total_professional_software_engineering_years"
+        };
+    }
+
+    if (
+        question.includes("highest level of education") ||
+        question.includes("highest degree obtained") ||
+        question.includes("highest degree completed")
+    ) {
+
+        return {
+            value:
+                getAvailableFormOption(
+                    field,
+                    profile.education
+                        ?.highest_level_form_options
+                ),
+            source:
+                "education.highest_level_form_options"
+        };
+    }
+
+    if (
+        question.includes("currently pursuing further education")
+    ) {
+
+        return {
+            value:
+                profile.education
+                    ?.currently_pursuing_further_education,
+            source:
+                "education.currently_pursuing_further_education"
+        };
+    }
+
+    if (
+        question.includes("applying for an internship") ||
+        question.includes("applying for internship") ||
+        question.includes("internship coop")
+    ) {
+
+        return {
+            value:
+                profile.job_preferences
+                    ?.applying_for_internship_or_coop,
+            source:
+                "job_preferences.applying_for_internship_or_coop"
+        };
+    }
+
+    if (
+        question.includes("earliest date you could start") ||
+        question.includes("earliest start date")
+    ) {
+
+        return {
+            value:
+                profile.job_preferences
+                    ?.earliest_start_date,
+            source:
+                "job_preferences.earliest_start_date"
+        };
+    }
+
+    if (
+        question.includes("applying for a fulltime role") ||
+        question.includes("applying for fulltime")
+    ) {
+
+        return {
+            value:
+                profile.job_preferences
+                    ?.applying_for_full_time,
+            source:
+                "job_preferences.applying_for_full_time"
+        };
+    }
+
+    if (
+        question.includes("available to go to the office") ||
+        question.includes("days per week in the office")
+    ) {
+
+        return {
+            value:
+                profile.job_preferences
+                    ?.office_days_per_week_form_option,
+            source:
+                "job_preferences.office_days_per_week_form_option"
+        };
+    }
+
+
+    // --------------------------------------------------
     // GENDER
     // --------------------------------------------------
 
     if (
         name.includes("gender") ||
         id.includes("gender") ||
-        question === "gender"
+        question === "gender" ||
+        question.includes("select your gender")
     ) {
 
         return {
             value:
-                profile.eeoc
-                    ?.gender
-                    ?.form_option,
+                getAvailableFormOption(
+                    field,
+                    profile.eeoc
+                        ?.gender
+                        ?.form_options
+                ),
 
             source:
-                "eeoc.gender.form_option"
+                "eeoc.gender.form_options"
         };
     }
 
@@ -268,17 +492,22 @@ const getProfileValue = (field) => {
     if (
         name.includes("race") ||
         id.includes("race") ||
-        question === "race"
+        question === "race" ||
+        question.includes("raceethnicity") ||
+        question.includes("race ethnicity")
     ) {
 
         return {
             value:
-                profile.eeoc
-                    ?.race
-                    ?.form_option,
+                getAvailableFormOption(
+                    field,
+                    profile.eeoc
+                        ?.race
+                        ?.form_options
+                ),
 
             source:
-                "eeoc.race.form_option"
+                "eeoc.race.form_options"
         };
     }
 
@@ -295,12 +524,40 @@ const getProfileValue = (field) => {
 
         return {
             value:
-                profile.eeoc
-                    ?.veteran_status
-                    ?.form_option,
+                getAvailableFormOption(
+                    field,
+                    profile.eeoc
+                        ?.veteran_status
+                        ?.form_options
+                ),
 
             source:
-                "eeoc.veteran_status.form_option"
+                "eeoc.veteran_status.form_options"
+        };
+    }
+
+
+    // --------------------------------------------------
+    // DISABILITY
+    // --------------------------------------------------
+
+    if (
+        field.type === "radio" &&
+        (
+            name.includes("disability") ||
+            id.includes("disability") ||
+            question.includes("disability") ||
+            question.includes("disabled individual")
+        )
+    ) {
+
+        return {
+            value:
+                profile.eeoc
+                    ?.disability_status
+                    ?.has_disability,
+            source:
+                "eeoc.disability_status.has_disability"
         };
     }
 
@@ -310,64 +567,6 @@ const getProfileValue = (field) => {
     // --------------------------------------------------
 
     return null;
-};
-
-
-// ==================================================
-// DEBUG INTERACTIVE ELEMENTS
-// ==================================================
-
-const inspectInteractiveElements = async (page) => {
-
-    console.log(
-        "\n========== INTERACTIVE ELEMENTS =========="
-    );
-
-    const interactive =
-        await page.locator(
-            `
-            button,
-            [role="button"],
-            [aria-expanded],
-            [tabindex="0"]
-            `
-        ).evaluateAll(elements =>
-            elements.map((el, index) => ({
-                index,
-
-                tag:
-                    el.tagName,
-
-                role:
-                    el.getAttribute("role"),
-
-                text:
-                    el.innerText?.trim(),
-
-                ariaExpanded:
-                    el.getAttribute("aria-expanded"),
-
-                ariaControls:
-                    el.getAttribute("aria-controls"),
-
-                class:
-                    typeof el.className === "string"
-                        ? el.className
-                        : ""
-            }))
-        );
-
-    console.log(
-        JSON.stringify(
-            interactive,
-            null,
-            2
-        )
-    );
-
-    console.log(
-        "=========================================="
-    );
 };
 
 
@@ -1073,6 +1272,12 @@ const extractApplicationFields = async (page) => {
 
                                 question,
 
+                                value:
+                                    element.value,
+
+                                checked:
+                                    Boolean(element.checked),
+
                                 options,
 
                                 systemField
@@ -1111,85 +1316,6 @@ const extractApplicationFields = async (page) => {
 
             return true;
         }
-    );
-};
-
-
-// ==================================================
-// PRINT FIELDS
-// ==================================================
-
-const printApplicationFields = (
-    fields
-) => {
-
-    console.log(
-        "\n========== NORMALIZED FORM FIELDS =========="
-    );
-
-
-    fields.forEach(
-        field => {
-
-            console.log(
-                `\nField #${field.index}`
-            );
-
-            console.log(
-                "  Type:        ",
-                field.type
-            );
-
-            console.log(
-                "  Name:        ",
-                field.name
-            );
-
-            console.log(
-                "  ID:          ",
-                field.id
-            );
-
-            console.log(
-                "  Question:    ",
-                field.question
-            );
-
-            console.log(
-                "  Label:       ",
-                field.label
-            );
-
-            console.log(
-                "  Placeholder: ",
-                field.placeholder
-            );
-
-            console.log(
-                "  Required:    ",
-                field.required
-            );
-
-            console.log(
-                "  System:      ",
-                field.systemField
-            );
-
-            if (
-                field.options.length
-            ) {
-
-                console.log(
-                    "  Options:     ",
-                    field.options
-                );
-            }
-        }
-    );
-
-
-    console.log(
-        "\n============================================="
     );
 };
 
@@ -1337,6 +1463,11 @@ const fillTextField = async (
 
     try {
 
+        const formValue =
+            field.type === "month"
+                ? String(value).slice(0, 7)
+                : String(value);
+
         await locator
             .first()
             .scrollIntoViewIfNeeded();
@@ -1345,7 +1476,7 @@ const fillTextField = async (
         await locator
             .first()
             .fill(
-                String(value)
+                formValue
             );
 
 
@@ -1361,6 +1492,213 @@ const fillTextField = async (
 
         console.log(
             "FILL ERROR:",
+            error.message
+        );
+
+
+        return false;
+    }
+};
+
+
+// ==================================================
+// FILL DATE / MONTH FIELD
+// ==================================================
+
+const fillDateField = async (
+    page,
+    field,
+    value
+) => {
+
+    const locator =
+        getFieldLocator(
+            page,
+            field
+        );
+
+
+    if (!locator) {
+        return false;
+    }
+
+
+    const match =
+        String(value).match(
+            /^(\d{4})-(\d{2})(?:-(\d{2}))?$/
+        );
+
+
+    if (!match) {
+        return fillTextField(
+            page,
+            field,
+            value
+        );
+    }
+
+
+    const [, year, month, day = "01"] = match;
+    const monthNames = [
+        "Jan", "Feb", "Mar", "Apr",
+        "May", "Jun", "Jul", "Aug",
+        "Sep", "Oct", "Nov", "Dec"
+    ];
+    const monthName =
+        monthNames[Number(month) - 1];
+
+
+    try {
+
+        if (field.type === "date") {
+
+            await locator.first().fill(
+                `${year}-${month}-${day}`
+            );
+
+            console.log(
+                "FILLED DATE:",
+                `${year}-${month}-${day}`
+            );
+
+            return true;
+        }
+
+
+        if (field.type === "month") {
+
+            await locator.first().fill(
+                `${year}-${month}`
+            );
+
+            console.log(
+                "FILLED MONTH:",
+                `${year}-${month}`
+            );
+
+            return true;
+        }
+
+
+        // Custom month/year picker: open it, choose a year
+        // from the visible select, then click the month.
+        await page.keyboard.press("Escape")
+            .catch(() => {});
+        await locator.first().scrollIntoViewIfNeeded();
+        await locator.first().click();
+        await page.waitForTimeout(200);
+
+
+        const selects =
+            page.locator("select");
+        const selectCount =
+            await selects.count();
+        let yearSelected = false;
+
+
+        for (let i = selectCount - 1; i >= 0; i--) {
+
+            const select = selects.nth(i);
+
+
+            if (
+                !(await select.isVisible().catch(() => false))
+            ) {
+                continue;
+            }
+
+
+            const options =
+                await select.locator("option")
+                    .allTextContents();
+
+
+            if (
+                options.some(
+                    option => option.trim() === year
+                )
+            ) {
+
+                await select.selectOption({
+                    label: year
+                });
+                yearSelected = true;
+                break;
+            }
+        }
+
+
+        const monthCandidates =
+            page.getByText(
+                monthName,
+                { exact: true }
+            );
+        const monthCount =
+            await monthCandidates.count();
+        let monthSelected = false;
+
+
+        for (let i = monthCount - 1; i >= 0; i--) {
+
+            const candidate =
+                monthCandidates.nth(i);
+
+
+            if (
+                await candidate.isVisible()
+                    .catch(() => false)
+            ) {
+
+                await candidate.click({
+                    force: true
+                });
+                monthSelected = true;
+                break;
+            }
+        }
+
+
+        await page.keyboard.press("Escape")
+            .catch(() => {});
+
+
+        if (
+            yearSelected &&
+            monthSelected
+        ) {
+
+            console.log(
+                "SELECTED MONTH:",
+                `${monthName} ${year}`
+            );
+
+            return true;
+        }
+
+
+        // Text-backed month controls commonly accept MM/YYYY.
+        await locator.first().fill(
+            `${month}/${year}`
+        );
+        await locator.first().press("Tab");
+
+
+        console.log(
+            "FILLED MONTH TEXT:",
+            `${month}/${year}`
+        );
+
+
+        return true;
+
+    } catch (error) {
+
+        await page.keyboard.press("Escape")
+            .catch(() => {});
+
+
+        console.log(
+            "DATE FILL ERROR:",
             error.message
         );
 
@@ -1407,8 +1745,15 @@ const fillSelect = async (
         );
 
 
+        const answer =
+            getBooleanFormAnswer(
+                value,
+                options
+            );
+
+
         const normalizedValue =
-            normalizeText(value);
+            normalizeText(answer);
 
 
         const matchingOption =
@@ -1487,7 +1832,8 @@ const fillRadio = async (
                     candidate.type === "radio" &&
                     candidate.name === field.name &&
                     normalizeText(
-                        candidate.label
+                        candidate.label ||
+                        candidate.question
                     ) === normalizedAnswer
                 );
             }
@@ -1495,6 +1841,39 @@ const fillRadio = async (
 
 
     if (!matchingField) {
+
+        const labelledOptions =
+            page.getByLabel(
+                String(answer),
+                { exact: true }
+            );
+        const labelledCount =
+            await labelledOptions.count();
+
+
+        for (let i = 0; i < labelledCount; i++) {
+
+            const option =
+                labelledOptions.nth(i);
+
+
+            if (
+                await option.isVisible()
+                    .catch(() => false)
+            ) {
+
+                await option.check({
+                    force: true
+                });
+
+                console.log(
+                    "CHECKED RADIO BY LABEL:",
+                    answer
+                );
+
+                return true;
+            }
+        }
 
         console.log(
             "RADIO OPTION NOT FOUND:",
@@ -1695,6 +2074,57 @@ const fillApplicationFields = async (
         new Set();
 
 
+    // Repeated work-history fields often have identical
+    // labels. Assign each occurrence to its corresponding
+    // profile record before looking up answers.
+    const workFieldIndexes = {
+        "job title": 0,
+        company: 0,
+        from: 0,
+        to: 0,
+        current: 0
+    };
+
+
+    fields.forEach(field => {
+
+        const question =
+            normalizeText(
+                field.question ||
+                field.label ||
+                ""
+            );
+
+
+        if (
+            question === "job title" ||
+            question === "company" ||
+            question === "from"
+        ) {
+
+            field.workExperienceIndex =
+                workFieldIndexes[question]++;
+        }
+
+
+        if (question === "to") {
+            field.completedWorkExperienceIndex =
+                workFieldIndexes.to++;
+        }
+
+
+        if (
+            question.includes("currently work here") ||
+            question.includes("current job") ||
+            question.includes("current employer")
+        ) {
+
+            field.workExperienceIndex =
+                workFieldIndexes.current++;
+        }
+    });
+
+
     for (
         const field of fields
     ) {
@@ -1746,6 +2176,93 @@ const fillApplicationFields = async (
         }
 
 
+        // Preserve values already supplied by the user,
+        // resume parsing, or an earlier autofill pass.
+        const currentValue =
+            String(field.value || "").trim();
+
+
+        const hasValidDateValue =
+            field.type === "date"
+                ? /^\d{4}-\d{2}-\d{2}$/.test(currentValue)
+                : field.type === "month"
+                    ? /^\d{4}-\d{2}$/.test(currentValue)
+                    : currentValue !== "";
+
+
+        const hasTextValue =
+            (
+                field.type === "text" ||
+                field.type === "email" ||
+                field.type === "tel" ||
+                field.type === "date" ||
+                field.type === "month" ||
+                field.type === "textarea"
+            ) &&
+            hasValidDateValue;
+
+
+        const hasSelectValue =
+            field.type === "select" &&
+            String(field.value || "").trim() !== "" &&
+            ![
+                "please select",
+                "select",
+                "choose"
+            ].includes(
+                normalizeText(field.value)
+            );
+
+
+        const groupHasSelection =
+            (
+                field.type === "radio" ||
+                field.type === "checkbox"
+            ) &&
+            fields.some(
+                candidate =>
+                    candidate.type === field.type &&
+                    candidate.name === field.name &&
+                    candidate.checked
+            );
+
+
+        const falseCheckboxIsAnswered =
+            field.type === "checkbox" &&
+            profileValue.value === false;
+
+
+        const isProfileWorkHistoryField =
+            Number.isInteger(
+                field.workExperienceIndex
+            ) ||
+            Number.isInteger(
+                field.completedWorkExperienceIndex
+            );
+
+
+        if (
+            !isProfileWorkHistoryField &&
+            (
+                hasTextValue ||
+                hasSelectValue ||
+                groupHasSelection ||
+                falseCheckboxIsAnswered
+            )
+        ) {
+
+            console.log(
+                `KEEP EXISTING #${field.index}: ${field.question}`
+            );
+
+            if (groupKey) {
+                processedGroups.add(groupKey);
+            }
+
+            continue;
+        }
+
+
         console.log(
             `\nMATCH #${field.index}`
         );
@@ -1777,11 +2294,33 @@ const fillApplicationFields = async (
             field.type === "text" ||
             field.type === "email" ||
             field.type === "tel" ||
+            field.type === "date" ||
+            field.type === "month" ||
             field.type === "textarea"
         ) {
 
-            success =
-                await fillTextField(
+            const normalizedQuestion =
+                normalizeText(
+                    field.question ||
+                    field.label ||
+                    ""
+                );
+
+
+            const usesDatePicker =
+                field.type === "date" ||
+                field.type === "month" ||
+                normalizedQuestion === "from" ||
+                normalizedQuestion === "to";
+
+
+            success = usesDatePicker
+                ? await fillDateField(
+                    page,
+                    field,
+                    profileValue.value
+                )
+                : await fillTextField(
                     page,
                     field,
                     profileValue.value
@@ -1881,6 +2420,137 @@ const fillApplicationFields = async (
 
 
 // ==================================================
+// MULTI-PAGE APPLICATION MONITOR
+// ==================================================
+
+const getFormSignature = async page => {
+
+    return page.locator(
+        "input, textarea, select"
+    ).evaluateAll(elements => {
+
+        const fields = elements.map(element => {
+
+            const label =
+                element.labels && element.labels.length
+                    ? element.labels[0].innerText
+                    : element.getAttribute("aria-label") || "";
+
+
+            const options =
+                element.tagName === "SELECT"
+                    ? Array.from(element.options)
+                        .map(option => option.textContent.trim())
+                        .join("|")
+                    : "";
+
+
+            return [
+                element.tagName,
+                element.getAttribute("type") || "",
+                element.getAttribute("name") || "",
+                element.id || "",
+                label.replace(/\s+/g, " ").trim(),
+                options
+            ].join("|");
+        });
+
+
+        return `${location.href}::${fields.join("::")}`;
+    });
+};
+
+
+const startMultiPageMonitor = async (
+    page,
+    initialSignature = null
+) => {
+
+    if (pageMonitor) {
+        clearInterval(pageMonitor);
+    }
+
+
+    lastFormSignature =
+        initialSignature ||
+        await getFormSignature(page)
+            .catch(() => null);
+
+
+    pageMonitor = setInterval(
+        async () => {
+
+            if (
+                monitorBusy ||
+                page.isClosed()
+            ) {
+                return;
+            }
+
+
+            monitorBusy = true;
+
+
+            try {
+
+                const signature =
+                    await getFormSignature(page);
+
+
+                if (
+                    !signature ||
+                    signature === lastFormSignature
+                ) {
+                    return;
+                }
+
+
+                // Record first so changes caused by this fill pass
+                // can trigger one more pass for conditional fields.
+                lastFormSignature = signature;
+
+
+                console.log(
+                    "\n========== NEW APPLICATION STEP DETECTED =========="
+                );
+
+
+                await page.waitForTimeout(750);
+
+
+                const fields =
+                    await extractApplicationFields(page);
+
+
+                await fillApplicationFields(
+                    page,
+                    fields
+                );
+
+            } catch (error) {
+
+                if (!page.isClosed()) {
+                    console.log(
+                        "Application step monitor error:",
+                        error.message
+                    );
+                }
+
+            } finally {
+                monitorBusy = false;
+            }
+        },
+        1200
+    );
+
+
+    console.log(
+        "Multi-page monitoring is active. Navigate with Next and new fields will be filled automatically."
+    );
+};
+
+
+// ==================================================
 // MAIN
 // ==================================================
 
@@ -1913,6 +2583,26 @@ const startApplicationAgent = async (
 
     page =
         await context.newPage();
+
+
+    page.once("close", () => {
+
+        if (pageMonitor) {
+            clearInterval(pageMonitor);
+            pageMonitor = null;
+        }
+
+
+        monitorBusy = false;
+        lastFormSignature = null;
+        page = null;
+    });
+
+
+    context.once("close", () => {
+        context = null;
+        page = null;
+    });
 
 
     // ==================================================
@@ -2162,17 +2852,13 @@ const startApplicationAgent = async (
 
 
     // ==================================================
-    // 14. RE-EXPAND ACCORDIONS
+    // 14. RE-EXTRACT FIELDS
     // ==================================================
 
-    await expandAllAccordions(
-        page
-    );
-
-
-    // ==================================================
-    // 15. RE-EXTRACT FIELDS
-    // ==================================================
+    // Do not expand accordions again here. Resume uploads
+    // commonly trigger the career site to autofill fields,
+    // and another expansion pass needlessly clicks through
+    // sections that have already been discovered.
 
     const finalFields =
         await extractApplicationFields(
@@ -2191,8 +2877,13 @@ const startApplicationAgent = async (
 
 
     // ==================================================
-    // 16. AUTOFILL
+    // 15. AUTOFILL
     // ==================================================
+
+    const signatureBeforeAutofill =
+        await getFormSignature(page)
+            .catch(() => null);
+
 
     await fillApplicationFields(
         page,
@@ -2200,8 +2891,16 @@ const startApplicationAgent = async (
     );
 
 
+    // Watch for Next/Continue navigation and conditional
+    // fields that appear after answers are selected.
+    await startMultiPageMonitor(
+        page,
+        signatureBeforeAutofill
+    );
+
+
     // ==================================================
-    // 17. KEEP BROWSER OPEN
+    // 16. KEEP BROWSER OPEN
     // ==================================================
 
     console.log(
@@ -2223,11 +2922,31 @@ const startApplicationAgent = async (
 };
 
 const stopApplicationAgent = async () => {
-    if (browser) {
-        await browser.close();
-        browser = null;
+
+    if (pageMonitor) {
+        clearInterval(pageMonitor);
+        pageMonitor = null;
+    }
+
+
+    monitorBusy = false;
+    lastFormSignature = null;
+
+
+    if (context) {
+        await context.close();
+        context = null;
         page = null;
     }
+};
+
+
+const isApplicationAgentRunning = () => {
+    return Boolean(
+        context &&
+        page &&
+        !page.isClosed()
+    );
 };
 
 // ==================================================
@@ -2236,5 +2955,6 @@ const stopApplicationAgent = async () => {
 
 module.exports = {
     startApplicationAgent,
-    stopApplicationAgent
+    stopApplicationAgent,
+    isApplicationAgentRunning
 };

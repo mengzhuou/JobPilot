@@ -1,0 +1,5 @@
+# Playwright persistent browser profile (contains generated and sensitive data)
+/backend/services/playwright-profile/
+
+# macOS metadata
+.DS_Store

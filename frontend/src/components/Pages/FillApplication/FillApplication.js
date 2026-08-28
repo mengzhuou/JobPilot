@@ -1,38 +1,41 @@
 import React, { useEffect, useState } from "react";
 import "./FillApplication.css";
 import Button from "../../Button/Button";
-import { openAndFillApplication } from "../../../connector.js";
+import {
+    openAndFillApplication,
+    stopApplication as stopApplicationAgent,
+    getApplicationStatus,
+} from "../../../connector.js";
 
 const FillApplication = () => {
     const [jobUrl, setJobUrl] = useState("");
     const [logs, setLogs] = useState([]);
     const [status, setStatus] = useState("idle");
 
-    // Connect to Playwright log stream
+    // Keep the UI synchronized when the Playwright page is
+    // closed directly instead of through the Stop button.
     useEffect(() => {
-        const eventSource = new EventSource("/api/playwright/logs");
-
-        eventSource.onmessage = (event) => {
+        const syncStatus = async () => {
             try {
-                const log = JSON.parse(event.data);
+                const result = await getApplicationStatus();
 
-                setLogs((prev) => [...prev, log]);
-
-                if (log.status) {
-                    setStatus(log.status);
-                }
+                setStatus((current) =>
+                    current === "idle" && !result.running
+                        ? current
+                        : result.status
+                );
             } catch (error) {
-                console.error("Failed to parse Playwright log:", error);
+                console.error(
+                    "Failed to fetch application status:",
+                    error
+                );
             }
         };
 
-        eventSource.onerror = () => {
-            console.log("Playwright log connection closed");
-            eventSource.close();
-        };
+        const statusTimer = setInterval(syncStatus, 1000);
 
         return () => {
-            eventSource.close();
+            clearInterval(statusTimer);
         };
     }, []);
 
@@ -71,11 +74,7 @@ const FillApplication = () => {
 
     const stopApplication = async () => {
         try {
-            const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-
-            await fetch(`${BACKEND_URL}/api/playwright/stop`, {
-                method: "POST",
-            });
+            await stopApplicationAgent();
 
             setStatus("stopped");
         } catch (error) {

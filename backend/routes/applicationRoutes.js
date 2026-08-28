@@ -13,5 +13,7 @@ router.post("/start", limiter, applicationController.startApplication);
 
 router.post("/stop", applicationController.stopApplication);
 
+router.get("/status", applicationController.getApplicationStatus);
+
 
 module.exports = router;
