@@ -1,23 +1,28 @@
 import React, { useEffect, useState } from "react";
 import "./FillApplication.css";
 import Button from "../../Button/Button";
+import { openAndFillApplication } from "../../../connector.js";
 
 const FillApplication = () => {
     const [jobUrl, setJobUrl] = useState("");
     const [logs, setLogs] = useState([]);
     const [status, setStatus] = useState("idle");
 
+    // Connect to Playwright log stream
     useEffect(() => {
-        // Connect to Playwright log stream
         const eventSource = new EventSource("/api/playwright/logs");
 
         eventSource.onmessage = (event) => {
-            const log = JSON.parse(event.data);
+            try {
+                const log = JSON.parse(event.data);
 
-            setLogs((prev) => [...prev, log]);
-            
-            if (log.status) {
-                setStatus(log.status);
+                setLogs((prev) => [...prev, log]);
+
+                if (log.status) {
+                    setStatus(log.status);
+                }
+            } catch (error) {
+                console.error("Failed to parse Playwright log:", error);
             }
         };
 
@@ -40,29 +45,24 @@ const FillApplication = () => {
         setStatus("starting");
 
         try {
-            const response = await fetch("/api/playwright/start", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    jobUrl,
-                }),
-            });
+            // Use connector.js instead of directly calling fetch()
+            const response = await openAndFillApplication(jobUrl);
 
-            if (!response.ok) {
-                throw new Error("Failed to start Playwright");
-            }
+            console.log("Application started:", response);
 
             setStatus("running");
         } catch (error) {
-            console.error(error);
+            console.error("Failed to start application:", error);
+
             setStatus("error");
 
             setLogs((prev) => [
                 ...prev,
                 {
-                    message: error.message,
+                    message:
+                        error.response?.data?.message ||
+                        error.message ||
+                        "Failed to start Playwright",
                     type: "error",
                 },
             ]);
@@ -71,13 +71,27 @@ const FillApplication = () => {
 
     const stopApplication = async () => {
         try {
-            await fetch("/api/playwright/stop", {
+            const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+            await fetch(`${BACKEND_URL}/api/playwright/stop`, {
                 method: "POST",
             });
 
             setStatus("stopped");
         } catch (error) {
-            console.error(error);
+            console.error("Failed to stop Playwright:", error);
+
+            setStatus("error");
+
+            setLogs((prev) => [
+                ...prev,
+                {
+                    message:
+                        error.message ||
+                        "Failed to stop Playwright",
+                    type: "error",
+                },
+            ]);
         }
     };
 
@@ -86,7 +100,9 @@ const FillApplication = () => {
             <div className="fill-application">
                 <h1>JobPilot</h1>
 
-                <p>Enter a job application URL to start autofilling.</p>
+                <p>
+                    Enter a job application URL to start autofilling.
+                </p>
 
                 <div className="job-url-section">
                     <input
@@ -127,7 +143,9 @@ const FillApplication = () => {
                             logs.map((log, index) => (
                                 <div
                                     key={index}
-                                    className={`log ${log.type || "info"}`}
+                                    className={`log ${
+                                        log.type || "info"
+                                    }`}
                                 >
                                     <span className="log-time">
                                         {log.time || ""}

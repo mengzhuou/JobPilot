@@ -2,7 +2,8 @@
 
 const asyncHandler = require("express-async-handler");
 const {
-    startApplicationAgent
+    startApplicationAgent,
+    stopApplicationAgent
 } = require("../services/applicationAgent");
 const jwt = require("jsonwebtoken");
 
@@ -27,7 +28,21 @@ const startApplication = asyncHandler(async (req, res, next) => {
     }
 });
 
+const stopApplication = asyncHandler(async (req, res, next) => {
+    try {
+        await stopApplicationAgent();
+
+        res.status(200).json({
+            message: "Application agent stopped"
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
 
 module.exports = {
-    startApplication
+    startApplication,
+    stopApplication
 };

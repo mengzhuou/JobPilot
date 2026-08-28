@@ -2,6 +2,9 @@ const { chromium } = require("playwright");
 const profile = require("./profile.json");
 const path = require("path");
 
+let context = null;
+let page = null;
+
 const resumePath = path.resolve(
     __dirname,
     "./Mengzhu Ou_Resume.pdf"
@@ -1898,8 +1901,7 @@ const startApplicationAgent = async (
     // ==================================================
     // 1. BROWSER
     // ==================================================
-
-    const context =
+    context =
         await chromium.launchPersistentContext(
             userDataDir,
             {
@@ -1909,7 +1911,7 @@ const startApplicationAgent = async (
         );
 
 
-    const page =
+    page =
         await context.newPage();
 
 
@@ -2220,11 +2222,19 @@ const startApplicationAgent = async (
     return normalizedApplication;
 };
 
+const stopApplicationAgent = async () => {
+    if (browser) {
+        await browser.close();
+        browser = null;
+        page = null;
+    }
+};
 
 // ==================================================
 // EXPORT
 // ==================================================
 
 module.exports = {
-    startApplicationAgent
+    startApplicationAgent,
+    stopApplicationAgent
 };
