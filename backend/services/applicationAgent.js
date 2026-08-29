@@ -51,6 +51,49 @@ const getProfileValue = (field) => {
 
 
     // --------------------------------------------------
+    // CANDIDATE ACCOUNT
+    // --------------------------------------------------
+
+    if (
+        field.type === "password" &&
+        (
+            question.includes("password") ||
+            name.includes("password") ||
+            id.includes("password")
+        )
+    ) {
+
+        return {
+            value:
+                process.env.APPLICATION_PASSWORD,
+            source:
+                "environment.APPLICATION_PASSWORD",
+            sensitive: true
+        };
+    }
+
+
+    if (
+        question === "login" ||
+        question === "username" ||
+        question === "user name" ||
+        name === "login" ||
+        name.includes("username") ||
+        id === "login" ||
+        id.includes("username")
+    ) {
+
+        return {
+            value:
+                process.env.APPLICATION_USERNAME,
+            source:
+                "environment.APPLICATION_USERNAME",
+            sensitive: true
+        };
+    }
+
+
+    // --------------------------------------------------
     // NAME
     // --------------------------------------------------
 
@@ -131,6 +174,19 @@ const getProfileValue = (field) => {
     // --------------------------------------------------
 
     if (
+        question === "address" ||
+        question === "street address" ||
+        question === "address line 1" ||
+        question === "address 1"
+    ) {
+
+        return {
+            value: profile.candidate.location.address_line_1,
+            source: "candidate.location.address_line_1"
+        };
+    }
+
+    if (
         question === "city" ||
         question === "current city" ||
         question === "city of residence"
@@ -198,13 +254,40 @@ const getProfileValue = (field) => {
     ) {
 
         return {
+            value: "Job Board",
+
+            source: "application_answers.referral_category"
+        };
+    }
+
+
+    if (
+        question.includes("please specify further")
+    ) {
+
+        return {
             value:
                 profile.application_answers
-                    ?.tiktok
                     ?.how_heard_about_company,
-
             source:
-                "application_answers.tiktok.how_heard_about_company"
+                "application_answers.how_heard_about_company"
+        };
+    }
+
+
+    // --------------------------------------------------
+    // SCHOOL
+    // --------------------------------------------------
+
+    if (
+        question === "school" ||
+        question === "school or university" ||
+        question === "university"
+    ) {
+
+        return {
+            value: profile.education?.school,
+            source: "education.school"
         };
     }
 
@@ -385,6 +468,17 @@ const getProfileValue = (field) => {
                 ),
             source:
                 "education.highest_level_form_options"
+        };
+    }
+
+
+    if (
+        question === "degree"
+    ) {
+
+        return {
+            value: "Bachelor’s Degree",
+            source: "education.highest_level"
         };
     }
 
@@ -630,6 +724,105 @@ const waitForApplicationUI = async (page) => {
     console.log(
         "================================================"
     );
+};
+
+
+// ==================================================
+// APPLICATION FRAME
+// ==================================================
+
+const getVisibleApplicationControlCount = async scope => {
+
+    return scope.locator(
+        "input, textarea, select"
+    ).evaluateAll(elements =>
+        elements.filter(element => {
+            const type = (element.type || "").toLowerCase();
+
+            return (
+                element.getClientRects().length > 0 &&
+                !element.disabled &&
+                ![
+                    "hidden",
+                    "button",
+                    "submit",
+                    "reset",
+                    "search"
+                ].includes(type)
+            );
+        }).length
+    );
+};
+
+
+const findApplicationScope = async (
+    page,
+    timeout = 15000,
+    logDiagnostics = true
+) => {
+
+    const deadline = Date.now() + timeout;
+    let bestScope = page;
+    let bestCount = 0;
+    let diagnostics = [];
+
+    do {
+        diagnostics = [];
+        bestScope = page;
+        bestCount = 0;
+
+        for (const [index, frame] of page.frames().entries()) {
+            try {
+                const count =
+                    await getVisibleApplicationControlCount(frame);
+
+                diagnostics.push({
+                    index,
+                    main: frame === page.mainFrame(),
+                    name: frame.name() || null,
+                    url: frame.url(),
+                    visibleApplicationControls: count
+                });
+
+                if (count > bestCount) {
+                    bestScope = frame;
+                    bestCount = count;
+                }
+            } catch (error) {
+                diagnostics.push({
+                    index,
+                    main: frame === page.mainFrame(),
+                    name: frame.name() || null,
+                    url: frame.url(),
+                    visibleApplicationControls: 0,
+                    error: error.message
+                });
+            }
+        }
+
+        if (bestCount > 0 || Date.now() >= deadline) {
+            break;
+        }
+
+        await page.waitForTimeout(500);
+    } while (!page.isClosed());
+
+    if (logDiagnostics) {
+        console.log(
+            "\n========== APPLICATION FRAME SELECTION =========="
+        );
+        console.log(JSON.stringify(diagnostics, null, 2));
+        console.log(
+            bestScope === page
+                ? `Using main page (${bestCount} visible application controls).`
+                : `Using iframe: ${bestScope.url()} (${bestCount} visible application controls).`
+        );
+        console.log(
+            "================================================="
+        );
+    }
+
+    return bestScope;
 };
 
 
@@ -1278,6 +1471,14 @@ const extractApplicationFields = async (page) => {
                                 checked:
                                     Boolean(element.checked),
 
+                                visible:
+                                    Boolean(
+                                        element.getClientRects().length
+                                    ),
+
+                                disabled:
+                                    Boolean(element.disabled),
+
                                 options,
 
                                 systemField
@@ -1295,6 +1496,27 @@ const extractApplicationFields = async (page) => {
 
     return fields.filter(
         field => {
+
+            if (
+                field.disabled ||
+                [
+                    "hidden",
+                    "button",
+                    "submit",
+                    "reset"
+                ].includes(field.type)
+            ) {
+                return false;
+            }
+
+
+            if (
+                !field.visible &&
+                field.type !== "file" &&
+                field.type !== "select"
+            ) {
+                return false;
+            }
 
             if (
                 field.name ===
@@ -1473,16 +1695,30 @@ const fillTextField = async (
             .scrollIntoViewIfNeeded();
 
 
-        await locator
-            .first()
-            .fill(
-                formValue
+        if (field.type === "password") {
+            await locator.first().click();
+            await locator.first().fill("");
+            await locator.first().pressSequentially(
+                formValue,
+                {
+                    delay: 25
+                }
             );
+            await locator.first().press("Tab");
+        } else {
+            await locator
+                .first()
+                .fill(
+                    formValue
+                );
+        }
 
 
         console.log(
             "FILLED:",
-            value
+            field.type === "password"
+                ? "[REDACTED]"
+                : value
         );
 
 
@@ -1712,6 +1948,341 @@ const fillDateField = async (
 // FILL SELECT
 // ==================================================
 
+const fillAutocompleteSelect = async (
+    page,
+    locator,
+    field,
+    value
+) => {
+
+    const triggerCandidates = [];
+
+
+    if (field.id) {
+        triggerCandidates.push(
+            page.locator(
+                `[id="${field.id}_icimsDropdown"]`
+            ),
+            page.locator(
+                `[id="${field.id}_chosen"]`
+            ),
+            page.locator(
+                `[id="select2-${field.id}-container"]`
+            )
+        );
+    }
+
+
+    triggerCandidates.push(
+        locator.first().locator(
+            "xpath=following-sibling::*[1]"
+        ),
+        locator.first().locator(
+            "xpath=parent::*"
+        ).locator(
+            '.chosen-container, .select2-container, [role="combobox"]'
+        )
+    );
+
+
+    let opened = false;
+
+
+    const canonicalizeOptionText = text =>
+        normalizeText(text)
+            .replace(/[\u2018\u2019\u02bc]/g, "'");
+
+
+    const selectVisibleCanonicalOption = async () => {
+        const expected = canonicalizeOptionText(value);
+        const options = page.locator(
+            `
+            [role="option"],
+            .chosen-results li,
+            .select2-results__option,
+            .ui-menu-item,
+            [class*="option"]
+            `
+        );
+        const count = await options.count();
+
+
+        for (let i = 0; i < count; i++) {
+            const option = options.nth(i);
+
+
+            if (
+                !(await option.isVisible()
+                    .catch(() => false))
+            ) {
+                continue;
+            }
+
+
+            const text =
+                await option.innerText()
+                    .catch(() => "");
+
+
+            if (
+                canonicalizeOptionText(text) !== expected
+            ) {
+                continue;
+            }
+
+
+            await option.click({
+                force: true
+            });
+            await page.waitForTimeout(100);
+
+
+            const selectedValue =
+                await locator.first().evaluate(
+                    element => String(element.value || "").trim()
+                ).catch(() => "");
+
+
+            if (selectedValue) {
+                console.log(
+                    "CUSTOM CANONICAL OPTION SELECTED:",
+                    text.trim()
+                );
+
+                return true;
+            }
+        }
+
+
+        return false;
+    };
+
+
+    for (const candidate of triggerCandidates) {
+        if (
+            await candidate.first().isVisible()
+                .catch(() => false)
+        ) {
+            await candidate.first().scrollIntoViewIfNeeded();
+            await candidate.first().click({
+                force: true
+            });
+            opened = true;
+
+
+            console.log(
+                "CUSTOM DROPDOWN CLICKED:",
+                field.question
+            );
+
+            break;
+        }
+    }
+
+
+    if (!opened) {
+        return false;
+    }
+
+
+    await page.waitForTimeout(150);
+
+
+    // Non-searchable enhanced controls (such as iCIMS Degree)
+    // expose their choices only after the field has been clicked.
+    if (
+        await selectVisibleCanonicalOption()
+    ) {
+        return true;
+    }
+
+
+    const searchInputs =
+        page.locator(
+            `
+            .chosen-search input,
+            .select2-search input,
+            [role="listbox"] input,
+            input[type="search"],
+            input[placeholder*="Type to Search" i]
+            `
+        );
+
+
+    const searchCount =
+        await searchInputs.count();
+    let searchInput = null;
+
+
+    for (let i = searchCount - 1; i >= 0; i--) {
+        const candidate = searchInputs.nth(i);
+
+        if (
+            await candidate.isVisible()
+                .catch(() => false)
+        ) {
+            searchInput = candidate;
+            break;
+        }
+    }
+
+
+    if (!searchInput) {
+        console.log(
+            "AUTOCOMPLETE SEARCH INPUT NOT FOUND"
+        );
+        return false;
+    }
+
+
+    await searchInput.click({
+        force: true
+    });
+    await searchInput.fill("");
+    await searchInput.pressSequentially(
+        String(value),
+        {
+            delay: 35
+        }
+    );
+
+
+    console.log(
+        "AUTOCOMPLETE TYPED:",
+        value
+    );
+
+
+    const exactTextOptions =
+        page.getByText(
+            String(value),
+            { exact: true }
+        );
+
+
+    const autocompleteIsAddress =
+        normalizeText(field.question) === "address" ||
+        normalizeText(field.question).includes("street address");
+
+
+    const deadline =
+        Date.now() +
+        (autocompleteIsAddress ? 800 : 5000);
+
+
+    const selectionCommitted = async () => {
+        await page.waitForTimeout(100);
+
+        const selectedValue =
+            await locator.first().evaluate(
+                element => String(element.value || "").trim()
+            ).catch(() => "");
+
+        return selectedValue !== "";
+    };
+
+
+    while (Date.now() < deadline) {
+        const exactCount =
+            await exactTextOptions.count();
+
+
+        for (let i = 0; i < exactCount; i++) {
+            const option = exactTextOptions.nth(i);
+
+
+            if (
+                await option.isVisible()
+                    .catch(() => false)
+            ) {
+                await option.click({
+                    force: true
+                });
+
+                if (await selectionCommitted()) {
+                    console.log(
+                        "AUTOCOMPLETE SELECTED:",
+                        value
+                    );
+
+                    return true;
+                }
+
+                console.log(
+                    "AUTOCOMPLETE CLICK DID NOT COMMIT SELECTION"
+                );
+            }
+        }
+
+
+        await page.waitForTimeout(150);
+    }
+
+
+    const optionCandidates =
+        page.locator(
+            `
+            [role="option"],
+            .chosen-results li,
+            .select2-results__option
+            `
+        );
+
+
+    const optionCount =
+        await optionCandidates.count();
+
+
+    for (let i = 0; i < optionCount; i++) {
+        const option = optionCandidates.nth(i);
+
+
+        if (
+            !(await option.isVisible()
+                .catch(() => false))
+        ) {
+            continue;
+        }
+
+
+        const text =
+            await option.innerText()
+                .catch(() => "");
+
+
+        const normalizedText = normalizeText(text);
+        const normalizedValue = normalizeText(value);
+        if (
+            normalizedText === normalizedValue ||
+            (
+                autocompleteIsAddress &&
+                normalizedText.includes(normalizedValue)
+            )
+        ) {
+            await option.click({
+                force: true
+            });
+
+            if (await selectionCommitted()) {
+                console.log(
+                    "AUTOCOMPLETE SELECTED:",
+                    text.trim()
+                );
+
+                return true;
+            }
+        }
+    }
+
+
+    await searchInput.press("Escape")
+        .catch(() => {});
+
+
+    return false;
+};
+
+
 const fillSelect = async (
     page,
     field,
@@ -1767,10 +2338,15 @@ const fillSelect = async (
         if (!matchingOption) {
 
             console.log(
-                `No exact select option for "${value}"`
+                `No loaded native option for "${value}"; trying autocomplete.`
             );
 
-            return false;
+            return fillAutocompleteSelect(
+                page,
+                locator,
+                field,
+                value
+            );
         }
 
 
@@ -1778,6 +2354,8 @@ const fillSelect = async (
             .first()
             .selectOption({
                 label: matchingOption
+            }, {
+                force: true
             });
 
 
@@ -2193,6 +2771,7 @@ const fillApplicationFields = async (
         const hasTextValue =
             (
                 field.type === "text" ||
+                field.type === "password" ||
                 field.type === "email" ||
                 field.type === "tel" ||
                 field.type === "date" ||
@@ -2208,10 +2787,13 @@ const fillApplicationFields = async (
             ![
                 "please select",
                 "select",
-                "choose"
+                "choose",
+                "make a selection"
             ].includes(
                 normalizeText(field.value)
-            );
+            ) &&
+            !normalizeText(field.value)
+                .includes("make a selection");
 
 
         const groupHasSelection =
@@ -2241,8 +2823,16 @@ const fillApplicationFields = async (
             );
 
 
+        const shouldOverrideExisting =
+            normalizeText(field.question)
+                .includes("how did you hear about") ||
+            normalizeText(field.question)
+                .includes("how did you first hear");
+
+
         if (
             !isProfileWorkHistoryField &&
+            !shouldOverrideExisting &&
             (
                 hasTextValue ||
                 hasSelectValue ||
@@ -2274,7 +2864,9 @@ const fillApplicationFields = async (
 
         console.log(
             "Value:",
-            profileValue.value
+            profileValue.sensitive
+                ? "[REDACTED]"
+                : profileValue.value
         );
 
         console.log(
@@ -2292,6 +2884,7 @@ const fillApplicationFields = async (
 
         if (
             field.type === "text" ||
+            field.type === "password" ||
             field.type === "email" ||
             field.type === "tel" ||
             field.type === "date" ||
@@ -2463,8 +3056,88 @@ const getFormSignature = async page => {
 
 const startMultiPageMonitor = async (
     page,
+    initialScope,
     initialSignature = null
 ) => {
+
+    let submitClicked = false;
+
+
+    const installSubmitListener = () => {
+
+        if (window.__jobPilotSubmitListenerInstalled) {
+            return;
+        }
+
+
+        window.__jobPilotSubmitListenerInstalled = true;
+
+
+        document.addEventListener(
+            "click",
+            event => {
+
+                const control =
+                    event.target.closest(
+                        'button, input[type="submit"], [role="button"]'
+                    );
+
+
+                if (!control) {
+                    return;
+                }
+
+
+                const label =
+                    (
+                        control.innerText ||
+                        control.value ||
+                        control.getAttribute("aria-label") ||
+                        ""
+                    )
+                        .replace(/\s+/g, " ")
+                        .trim()
+                        .toLowerCase();
+
+
+                if (
+                    label === "submit" ||
+                    label.includes("submit application")
+                ) {
+                    window.__jobPilotNotifySubmitClick();
+                }
+            },
+            true
+        );
+    };
+
+
+    await page.exposeFunction(
+        "__jobPilotNotifySubmitClick",
+        () => {
+            submitClicked = true;
+            console.log(
+                "Submit clicked; waiting for application confirmation."
+            );
+        }
+    );
+
+
+    await page.addInitScript(
+        installSubmitListener
+    );
+
+
+    await page.evaluate(
+        installSubmitListener
+    );
+
+
+    if (initialScope !== page) {
+        await initialScope.evaluate(
+            installSubmitListener
+        ).catch(() => {});
+    }
 
     if (pageMonitor) {
         clearInterval(pageMonitor);
@@ -2473,7 +3146,7 @@ const startMultiPageMonitor = async (
 
     lastFormSignature =
         initialSignature ||
-        await getFormSignature(page)
+        await getFormSignature(initialScope)
             .catch(() => null);
 
 
@@ -2493,8 +3166,70 @@ const startMultiPageMonitor = async (
 
             try {
 
+                const applicationScope =
+                    await findApplicationScope(
+                        page,
+                        0,
+                        false
+                    );
+
+                if (submitClicked) {
+
+                    let submissionConfirmed = false;
+
+
+                    for (const frame of page.frames()) {
+                        const confirmed =
+                            await frame.evaluate(() => {
+
+                                const text =
+                                    document.body
+                                        ?.innerText
+                                        ?.toLowerCase() || "";
+
+
+                                const successText = [
+                                    "successfully applied",
+                                    "application submitted",
+                                    "application has been submitted",
+                                    "thank you for applying",
+                                    "thanks for applying"
+                                ].some(
+                                    phrase => text.includes(phrase)
+                                );
+
+
+                                const successUrl =
+                                    /success|confirmation|thank[-_]?you/i
+                                        .test(location.href);
+
+
+                                return successText || successUrl;
+                            }).catch(() => false);
+
+
+                        if (confirmed) {
+                            submissionConfirmed = true;
+                            break;
+                        }
+                    }
+
+
+                    if (submissionConfirmed) {
+
+                        console.log(
+                            "Application submission confirmed. Closing the tab."
+                        );
+
+
+                        await page.waitForTimeout(1000);
+                        await page.close();
+                        return;
+                    }
+                }
+
                 const signature =
-                    await getFormSignature(page);
+                    await getFormSignature(applicationScope);
 
 
                 if (
@@ -2519,11 +3254,13 @@ const startMultiPageMonitor = async (
 
 
                 const fields =
-                    await extractApplicationFields(page);
+                    await extractApplicationFields(
+                        applicationScope
+                    );
 
 
                 await fillApplicationFields(
-                    page,
+                    applicationScope,
                     fields
                 );
 
@@ -2554,6 +3291,41 @@ const startMultiPageMonitor = async (
 // MAIN
 // ==================================================
 
+const closeApplicationSession = async (
+    targetContext = context
+) => {
+
+    if (pageMonitor) {
+        clearInterval(pageMonitor);
+        pageMonitor = null;
+    }
+
+
+    monitorBusy = false;
+    lastFormSignature = null;
+
+
+    if (!targetContext) {
+        page = null;
+        return;
+    }
+
+
+    if (context === targetContext) {
+        context = null;
+        page = null;
+    }
+
+
+    await targetContext.close()
+        .catch(error => {
+            console.log(
+                "Browser context cleanup:",
+                error.message
+            );
+        });
+};
+
 const startApplicationAgent = async (
     jobUrl
 ) => {
@@ -2571,7 +3343,12 @@ const startApplicationAgent = async (
     // ==================================================
     // 1. BROWSER
     // ==================================================
-    context =
+    // A closed tab can leave its persistent context alive.
+    // Always release it before reusing the same profile.
+    await closeApplicationSession();
+
+
+    const launchedContext =
         await chromium.launchPersistentContext(
             userDataDir,
             {
@@ -2581,27 +3358,42 @@ const startApplicationAgent = async (
         );
 
 
-    page =
-        await context.newPage();
+    context = launchedContext;
 
 
-    page.once("close", () => {
+    // Persistent contexts already open an initial page.
+    // Reuse it instead of leaving a hidden blank tab alive.
+    const existingPages =
+        launchedContext.pages();
 
-        if (pageMonitor) {
-            clearInterval(pageMonitor);
-            pageMonitor = null;
+
+    const launchedPage =
+        existingPages[0] ||
+        await launchedContext.newPage();
+
+
+    page = launchedPage;
+
+
+    launchedPage.once("close", () => {
+
+        if (page !== launchedPage) {
+            return;
         }
 
 
-        monitorBusy = false;
-        lastFormSignature = null;
-        page = null;
+        void closeApplicationSession(
+            launchedContext
+        );
     });
 
 
-    context.once("close", () => {
-        context = null;
-        page = null;
+    launchedContext.once("close", () => {
+
+        if (context === launchedContext) {
+            context = null;
+            page = null;
+        }
     });
 
 
@@ -2679,12 +3471,18 @@ const startApplicationAgent = async (
     );
 
 
+    const applicationScope =
+        await findApplicationScope(
+            page
+        );
+
+
     // ==================================================
     // 5. DEBUG UI
     // ==================================================
 
     await inspectInteractiveElements(
-        page
+        applicationScope
     );
 
 
@@ -2693,7 +3491,7 @@ const startApplicationAgent = async (
     // ==================================================
 
     await expandAllAccordions(
-        page
+        applicationScope
     );
 
 
@@ -2711,7 +3509,7 @@ const startApplicationAgent = async (
     // ==================================================
 
     await inspectInteractiveElements(
-        page
+        applicationScope
     );
 
 
@@ -2720,25 +3518,25 @@ const startApplicationAgent = async (
     // ==================================================
 
     const inputCount =
-        await page
+        await applicationScope
             .locator("input")
             .count();
 
 
     const textareaCount =
-        await page
+        await applicationScope
             .locator("textarea")
             .count();
 
 
     const selectCount =
-        await page
+        await applicationScope
             .locator("select")
             .count();
 
 
     const buttonCount =
-        await page
+        await applicationScope
             .locator("button")
             .count();
 
@@ -2783,7 +3581,7 @@ const startApplicationAgent = async (
 
     const applicationFields =
         await extractApplicationFields(
-            page
+            applicationScope
         );
 
 
@@ -2840,7 +3638,7 @@ const startApplicationAgent = async (
     // ==================================================
 
     await uploadResume(
-        page
+        applicationScope
     );
 
 
@@ -2862,7 +3660,7 @@ const startApplicationAgent = async (
 
     const finalFields =
         await extractApplicationFields(
-            page
+            applicationScope
         );
 
 
@@ -2881,12 +3679,12 @@ const startApplicationAgent = async (
     // ==================================================
 
     const signatureBeforeAutofill =
-        await getFormSignature(page)
+        await getFormSignature(applicationScope)
             .catch(() => null);
 
 
     await fillApplicationFields(
-        page,
+        applicationScope,
         finalFields
     );
 
@@ -2895,6 +3693,7 @@ const startApplicationAgent = async (
     // fields that appear after answers are selected.
     await startMultiPageMonitor(
         page,
+        applicationScope,
         signatureBeforeAutofill
     );
 
@@ -2922,22 +3721,7 @@ const startApplicationAgent = async (
 };
 
 const stopApplicationAgent = async () => {
-
-    if (pageMonitor) {
-        clearInterval(pageMonitor);
-        pageMonitor = null;
-    }
-
-
-    monitorBusy = false;
-    lastFormSignature = null;
-
-
-    if (context) {
-        await context.close();
-        context = null;
-        page = null;
-    }
+    await closeApplicationSession();
 };
 
 

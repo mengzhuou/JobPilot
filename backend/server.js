@@ -1,6 +1,24 @@
 // server.js
 
-require("dotenv").config();
+const path = require("path");
+const dotenv = require("dotenv");
+
+dotenv.config({
+    path: path.resolve(
+        __dirname,
+        ".env"
+    )
+});
+
+
+if (
+    !process.env.APPLICATION_USERNAME ||
+    !process.env.APPLICATION_PASSWORD
+) {
+    console.warn(
+        "Candidate login credentials are not configured in backend/.env."
+    );
+}
 
 const express = require("express");
 const cors = require("cors");

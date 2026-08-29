@@ -6,7 +6,8 @@
     "email": "a1106983163@gmail.com",
     "phone": "7067418456",
     "location": {
-      "city": "Dallas",
+      "address_line_1": "10732 craven st",
+      "city": "McKinney",
       "state": "Texas",
       "country": "United States"
     },
@@ -22,6 +23,7 @@
   },
 
   "education": {
+    "school": "Georgia Institute of Technology",
     "highest_level": "Bachelor of Science",
     "field_of_study": "Computer Science",
     "highest_level_form_options": [
@@ -152,6 +154,7 @@
   },
 
   "application_answers": {
+    "how_heard_about_company": "LinkedIn",
     "givebutter": {
       "how_heard_about_company": "LinkedIn"
     }

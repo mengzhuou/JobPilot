@@ -3,3 +3,7 @@
 
 # macOS metadata
 .DS_Store
+
+# Local environment files may contain credentials
+/backend/.env
+/frontend/.env

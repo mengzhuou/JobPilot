@@ -11,6 +11,8 @@ const FillApplication = () => {
     const [jobUrl, setJobUrl] = useState("");
     const [logs, setLogs] = useState([]);
     const [status, setStatus] = useState("idle");
+    const isStarting = status === "starting";
+    const isRunning = status === "running";
 
     // Keep the UI synchronized when the Playwright page is
     // closed directly instead of through the Stop button.
@@ -109,10 +111,14 @@ const FillApplication = () => {
                         placeholder="https://company.com/careers/job..."
                         value={jobUrl}
                         onChange={(e) => setJobUrl(e.target.value)}
-                        disabled={status === "running"}
+                        disabled={isStarting || isRunning}
                     />
 
-                    {status !== "running" ? (
+                    {isStarting ? (
+                        <Button disabled>
+                            Starting...
+                        </Button>
+                    ) : !isRunning ? (
                         <Button onClick={startApplication}>
                             Start Autofill
                         </Button>
