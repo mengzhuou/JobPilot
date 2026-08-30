@@ -51,6 +51,8 @@ const getActiveJobPostings = async ({
     query = "software engineer",
     location = "",
     refresh = false,
+    page = 1,
+    limit = 30,
 } = {}) => {
     const res = await axios.get(
         `${BACKEND_URL}/api/job-postings`,
@@ -59,6 +61,8 @@ const getActiveJobPostings = async ({
                 query,
                 location,
                 refresh,
+                page,
+                limit,
             },
         }
     );

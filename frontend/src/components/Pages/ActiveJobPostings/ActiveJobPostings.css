@@ -234,6 +234,36 @@
     font-weight: 700;
 }
 
+.load-more-jobs {
+    display: flex;
+    max-width: 1180px;
+    margin: 28px auto 0;
+    justify-content: center;
+}
+
+.load-more-jobs button {
+    min-width: 190px;
+    padding: 13px 22px;
+    border: 1px solid #c7d4e7;
+    border-radius: 11px;
+    background: #fff;
+    color: #3361ae;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    box-shadow: 0 6px 18px rgba(31, 48, 78, 0.07);
+}
+
+.load-more-jobs button:hover:not(:disabled) {
+    border-color: #3361ae;
+    background: #edf3ff;
+}
+
+.load-more-jobs button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
 @media (max-width: 960px) {
     .job-card-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

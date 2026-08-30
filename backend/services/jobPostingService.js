@@ -185,9 +185,47 @@ const loadCompanyJobs = async (source) => {
         .filter(isSoftwareEngineeringJob);
 };
 
+const settleWithConcurrency = async (
+    items,
+    worker,
+    concurrency = 8
+) => {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    const runWorker = async () => {
+        while (nextIndex < items.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+
+            try {
+                results[index] = {
+                    status: "fulfilled",
+                    value: await worker(items[index]),
+                };
+            } catch (error) {
+                results[index] = {
+                    status: "rejected",
+                    reason: error,
+                };
+            }
+        }
+    };
+
+    await Promise.all(
+        Array.from(
+            { length: Math.min(concurrency, items.length) },
+            runWorker
+        )
+    );
+
+    return results;
+};
+
 const refreshJobs = async () => {
-    const results = await Promise.allSettled(
-        companyCareerSources.map(loadCompanyJobs)
+    const results = await settleWithConcurrency(
+        companyCareerSources,
+        loadCompanyJobs
     );
     const jobs = [];
     const sources = results.map((result, index) => {
@@ -235,6 +273,8 @@ const getActiveJobPostings = async ({
     query = "software engineer",
     location = "",
     refresh = false,
+    page = 1,
+    limit = 30,
 } = {}) => {
     const isCacheFresh = Date.now() - cache.fetchedAt < CACHE_TTL_MS;
     const current = !refresh && isCacheFresh
@@ -248,7 +288,7 @@ const getActiveJobPostings = async ({
         query.trim().toLowerCase() === "software engineer";
     const normalizedLocation = location.trim().toLowerCase();
 
-    const jobs = current.jobs.filter((job) => {
+    const filteredJobs = current.jobs.filter((job) => {
         const searchableText = [
             job.title,
             job.company,
@@ -266,10 +306,29 @@ const getActiveJobPostings = async ({
 
         return matchesQuery && matchesLocation;
     });
+    const normalizedPage = Math.max(
+        1,
+        Number.parseInt(page, 10) || 1
+    );
+    const normalizedLimit = Math.min(
+        100,
+        Math.max(1, Number.parseInt(limit, 10) || 30)
+    );
+    const total = filteredJobs.length;
+    const totalPages = Math.ceil(total / normalizedLimit);
+    const startIndex = (normalizedPage - 1) * normalizedLimit;
+    const jobs = filteredJobs.slice(
+        startIndex,
+        startIndex + normalizedLimit
+    );
 
     return {
         jobs,
-        total: jobs.length,
+        page: normalizedPage,
+        limit: normalizedLimit,
+        total,
+        totalPages,
+        hasMore: startIndex + jobs.length < total,
         fetchedAt: new Date(current.fetchedAt).toISOString(),
         sources: current.sources,
         companiesChecked: current.sources.length,

@@ -8,6 +8,8 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
         query: req.query.query,
         location: req.query.location,
         refresh: req.query.refresh === "true",
+        page: req.query.page,
+        limit: req.query.limit,
     });
 
     res.json(results);

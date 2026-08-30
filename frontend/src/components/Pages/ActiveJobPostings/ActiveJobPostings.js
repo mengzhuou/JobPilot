@@ -25,10 +25,22 @@ const ActiveJobPostings = () => {
     const [companiesAvailable, setCompaniesAvailable] = useState(0);
     const [fetchedAt, setFetchedAt] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
+    const [hasMore, setHasMore] = useState(false);
     const [error, setError] = useState("");
 
-    const loadJobs = useCallback(async (forceRefresh = false) => {
-        setIsLoading(true);
+    const loadJobs = useCallback(async ({
+        forceRefresh = false,
+        targetPage = 1,
+        append = false,
+    } = {}) => {
+        if (append) {
+            setIsLoadingMore(true);
+        } else {
+            setIsLoading(true);
+        }
         setError("");
 
         try {
@@ -36,13 +48,33 @@ const ActiveJobPostings = () => {
                 query,
                 location,
                 refresh: forceRefresh,
+                page: targetPage,
+                limit: 30,
             });
 
-            setJobs(result.jobs || []);
+            setJobs((currentJobs) => {
+                if (!append) {
+                    return result.jobs || [];
+                }
+
+                const combinedJobs = [
+                    ...currentJobs,
+                    ...(result.jobs || []),
+                ];
+
+                return Array.from(
+                    new Map(
+                        combinedJobs.map((job) => [job.id, job])
+                    ).values()
+                );
+            });
             setSources(result.sources || []);
             setCompaniesChecked(result.companiesChecked || 0);
             setCompaniesAvailable(result.companiesAvailable || 0);
             setFetchedAt(result.fetchedAt || null);
+            setPage(result.page || targetPage);
+            setTotal(result.total || 0);
+            setHasMore(Boolean(result.hasMore));
         } catch (requestError) {
             setError(
                 requestError.response?.data?.message ||
@@ -50,7 +82,11 @@ const ActiveJobPostings = () => {
                 "Unable to load active job postings."
             );
         } finally {
-            setIsLoading(false);
+            if (append) {
+                setIsLoadingMore(false);
+            } else {
+                setIsLoading(false);
+            }
         }
     }, [location, query]);
 
@@ -90,8 +126,8 @@ const ActiveJobPostings = () => {
                 <button
                     className="refresh-jobs-button"
                     type="button"
-                    onClick={() => loadJobs(true)}
-                    disabled={isLoading}
+                    onClick={() => loadJobs({ forceRefresh: true })}
+                    disabled={isLoading || isLoadingMore}
                 >
                     {isLoading ? "Refreshing..." : "Refresh sources"}
                 </button>
@@ -116,15 +152,21 @@ const ActiveJobPostings = () => {
                     />
                 </label>
 
-                <button type="submit" disabled={isLoading}>
+                <button
+                    type="submit"
+                    disabled={isLoading || isLoadingMore}
+                >
                     Search jobs
                 </button>
             </form>
 
             <div className="job-results-summary">
                 <span>
-                    <strong>{jobs.length}</strong>{" "}
-                    {jobs.length === 1 ? "posting" : "postings"}
+                    <strong>{total}</strong>{" "}
+                    {total === 1 ? "posting" : "postings"}
+                    {total > jobs.length && (
+                        <> · showing {jobs.length}</>
+                    )}
                 </span>
                 <span>
                     Company sites:{" "}
@@ -153,41 +195,60 @@ const ActiveJobPostings = () => {
                     remove the location filter.
                 </div>
             ) : (
-                <section className="job-card-grid">
-                    {jobs.map((job) => (
-                        <article className="job-card" key={job.id}>
-                            <div className="job-card-source">
-                                {job.source}
-                            </div>
-                            <h2>{job.title}</h2>
-                            <p className="job-card-company">{job.company}</p>
-                            <div className="job-card-meta">
-                                <span>{job.location}</span>
-                                <span>{formatPostedDate(job.postedAt)}</span>
-                            </div>
-                            <div className="job-card-tags">
-                                {(job.tags || []).slice(0, 4).map((tag) => (
-                                    <span key={tag}>{tag}</span>
-                                ))}
-                            </div>
-                            <div className="job-card-actions">
-                                <a
-                                    href={job.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                >
-                                    View job
-                                </a>
-                                <button
-                                    type="button"
-                                    onClick={() => startAutofill(job.url)}
-                                >
-                                    Autofill
-                                </button>
-                            </div>
-                        </article>
-                    ))}
-                </section>
+                <>
+                    <section className="job-card-grid">
+                        {jobs.map((job) => (
+                            <article className="job-card" key={job.id}>
+                                <div className="job-card-source">
+                                    {job.source}
+                                </div>
+                                <h2>{job.title}</h2>
+                                <p className="job-card-company">{job.company}</p>
+                                <div className="job-card-meta">
+                                    <span>{job.location}</span>
+                                    <span>{formatPostedDate(job.postedAt)}</span>
+                                </div>
+                                <div className="job-card-tags">
+                                    {(job.tags || []).slice(0, 4).map((tag) => (
+                                        <span key={tag}>{tag}</span>
+                                    ))}
+                                </div>
+                                <div className="job-card-actions">
+                                    <a
+                                        href={job.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        View job
+                                    </a>
+                                    <button
+                                        type="button"
+                                        onClick={() => startAutofill(job.url)}
+                                    >
+                                        Autofill
+                                    </button>
+                                </div>
+                            </article>
+                        ))}
+                    </section>
+
+                    {hasMore && (
+                        <div className="load-more-jobs">
+                            <button
+                                type="button"
+                                onClick={() => loadJobs({
+                                    targetPage: page + 1,
+                                    append: true,
+                                })}
+                                disabled={isLoadingMore}
+                            >
+                                {isLoadingMore
+                                    ? "Loading more..."
+                                    : "Load 30 more jobs"}
+                            </button>
+                        </div>
+                    )}
+                </>
             )}
         </main>
     );
