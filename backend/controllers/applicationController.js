@@ -6,7 +6,6 @@ const {
     stopApplicationAgent,
     isApplicationAgentRunning
 } = require("../services/applicationAgent");
-const jwt = require("jsonwebtoken");
 
 const startApplication = asyncHandler(async (req, res, next) => {
     try {

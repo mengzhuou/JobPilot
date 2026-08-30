@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Navigate, Routes, Route, useLocation } from "r
 import TopNavBar from "./components/Functions/TopNavBar/TopNavBar";
 import FillApplication from "./components/Pages/FillApplication/FillApplication";
 import ActiveJobPostings from "./components/Pages/ActiveJobPostings/ActiveJobPostings";
+import JobAppliedHistory from "./components/Pages/JobAppliedHistory/JobAppliedHistory";
 import Login from "./components/Pages/Login/Login";
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
@@ -56,6 +57,10 @@ const AppRoutes = () => {
                 <Route
                     path="/active-job-postings"
                     element={<ProtectedRoute element={<ActiveJobPostings />} />}
+                />
+                <Route
+                    path="/job-applied-history"
+                    element={<ProtectedRoute element={<JobAppliedHistory />} />}
                 />
                 <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>

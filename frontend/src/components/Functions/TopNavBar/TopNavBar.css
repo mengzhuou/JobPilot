@@ -21,6 +21,9 @@
     font-style: normal;
     font-weight: 700;
     line-height: normal;
+    color: #fff;
+    text-decoration: none;
+    cursor: pointer;
 }
 
 .dropdown-container {
@@ -103,10 +106,17 @@
     text-align: left;
     cursor: pointer;
     border-bottom: 1px solid #CCC;
+    text-decoration: none;
 }
 
 .nav-link:hover {
     background-color: #3361AE;
     color: #FFFFFF;
+    font-weight: bold;
+}
+
+.nav-link.active {
+    background-color: #dce8f7;
+    color: #244f92;
     font-weight: bold;
 }

@@ -32,6 +32,7 @@ const cors = require("cors");
 const applicationRoutes = require("./routes/applicationRoutes");
 const jobPostingRoutes = require("./routes/jobPostingRoutes");
 const authRoutes = require("./routes/authRoutes");
+const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const { verifyDatabaseConnection } = require("./config/postgres");
 const cookieParser = require("cookie-parser");
@@ -59,6 +60,7 @@ app.use(cookieParser());
 // ====================
 
 app.use("/api/auth", authRoutes);
+app.use("/api/job-applications", jobApplicationRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/job-postings", jobPostingRoutes);
 

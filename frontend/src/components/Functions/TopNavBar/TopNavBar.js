@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import './TopNavBar.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -46,10 +46,6 @@ const TopNavBar = () => {
         setIsSidebarOpen(false);
     };
 
-    const goToActiveJobPostings = () => {
-        navigate("/active-job-postings");
-        setIsSidebarOpen(false);
-    };
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (
@@ -75,7 +71,9 @@ const TopNavBar = () => {
     return (
         <div className="navBar">
             <div className="navBar-left">
-                <div className="navTitle">JobPilot</div>
+                <NavLink className="navTitle" to="/active-job-postings">
+                    JobPilot
+                </NavLink>
             </div>
             <div className="navBar-right">
                 <div
@@ -93,12 +91,20 @@ const TopNavBar = () => {
                     </div>
 
                     <div className="nav-links">
-                        <div
-                            className="nav-link"
-                            onClick={goToActiveJobPostings}
+                        <NavLink
+                            className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                            to="/active-job-postings"
+                            onClick={() => setIsSidebarOpen(false)}
                         >
                             Active Job Postings
-                        </div>
+                        </NavLink>
+                        <NavLink
+                            className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                            to="/job-applied-history"
+                            onClick={() => setIsSidebarOpen(false)}
+                        >
+                            Job Applied History
+                        </NavLink>
                         {(studentData.role === 'Admin' || studentData.role === 'SA' || studentData.role === 'Professor') && (
                             <div className="nav-link" onClick={goToAdminSite}>Admin Site</div>
                         )}

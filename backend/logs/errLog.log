@@ -1,3 +1,7 @@
 20260823	23:30:57	b0fa7130-8680-4fc3-9662-dff2d99a8285	TypeError: startApplicationAgent is not a function	POST	/api/applications/start	undefined
 20260823	23:33:54	69cb5d94-9afb-49c4-8afc-e0a13c4894ed	ReferenceError: CSS is not defined	POST	/api/applications/start	undefined
 20260823	23:34:40	11f2cdaa-fe56-4c6d-89f7-03ddaa3a3f8d	ReferenceError: CSS is not defined	POST	/api/applications/start	undefined
+20260830	12:56:29	fea40715-164a-4e4c-9c64-ad251a0aef18	error: inconsistent types deduced for parameter $1	PATCH	/api/job-applications/8e3deda7-7646-4f57-ab1b-19e2dd604535	http://localhost:3000
+20260830	12:56:32	04168e53-2162-4d25-9b2e-c19022807fd2	error: inconsistent types deduced for parameter $1	PATCH	/api/job-applications/8e3deda7-7646-4f57-ab1b-19e2dd604535	http://localhost:3000
+20260830	12:58:07	82444a74-b536-43e1-a971-9625a1602afb	error: inconsistent types deduced for parameter $1	PATCH	/api/job-applications/ebeab292-26fa-478e-9add-1121f1dce35f	http://localhost:3000
+20260830	12:58:09	43f6d8fa-7baa-47c8-b25a-82aaf72b42e8	error: inconsistent types deduced for parameter $1	PATCH	/api/job-applications/ebeab292-26fa-478e-9add-1121f1dce35f	http://localhost:3000

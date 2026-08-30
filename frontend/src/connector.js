@@ -1,14 +1,16 @@
 import axios from "axios";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const api = axios.create({
+    baseURL: BACKEND_URL,
+    withCredentials: true,
+});
 
-const openAndFillApplication = async (jobUrl) => {
+const openAndFillApplication = async (application) => {
     try {
-        const res = await axios.post(
-            `${BACKEND_URL}/api/applications/start`,
-            {
-                jobUrl,
-            },
+        const res = await api.post(
+            "/api/applications/start",
+            application,
             {
                 headers: {
                     "Content-Type": "application/json",
@@ -28,9 +30,7 @@ const openAndFillApplication = async (jobUrl) => {
 
 const stopApplication = async () => {
     try {
-        const res = await axios.post(
-            `${BACKEND_URL}/api/applications/stop`
-        );
+        const res = await api.post("/api/applications/stop");
 
         return res.data;
     } catch (error) {
@@ -40,9 +40,7 @@ const stopApplication = async () => {
 };
 
 const getApplicationStatus = async () => {
-    const res = await axios.get(
-        `${BACKEND_URL}/api/applications/status`
-    );
+    const res = await api.get("/api/applications/status");
 
     return res.data;
 };
@@ -54,8 +52,8 @@ const getActiveJobPostings = async ({
     page = 1,
     limit = 30,
 } = {}) => {
-    const res = await axios.get(
-        `${BACKEND_URL}/api/job-postings`,
+    const res = await api.get(
+        "/api/job-postings",
         {
             params: {
                 query,
@@ -70,9 +68,40 @@ const getActiveJobPostings = async ({
     return res.data;
 };
 
+const getJobApplicationHistory = async ({
+    status = "",
+    search = "",
+    page = 1,
+    limit = 12,
+} = {}) => {
+    const res = await api.get("/api/job-applications", {
+        params: { status, search, page, limit },
+    });
+    return res.data;
+};
+
+const getJobApplicationSummary = async () => {
+    const res = await api.get("/api/job-applications/summary");
+    return res.data.summary;
+};
+
+const updateJobApplication = async (id, changes) => {
+    const res = await api.patch(`/api/job-applications/${id}`, changes);
+    return res.data.application;
+};
+
+const confirmJobApplication = async application => {
+    const res = await api.post("/api/job-applications/confirm", application);
+    return res.data.application;
+};
+
 export {
     openAndFillApplication,
     stopApplication,
     getApplicationStatus,
     getActiveJobPostings,
+    getJobApplicationHistory,
+    getJobApplicationSummary,
+    updateJobApplication,
+    confirmJobApplication,
 };

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
 import { getActiveJobPostings } from "../../../connector";
 import "./ActiveJobPostings.css";
 
@@ -17,6 +17,7 @@ const formatPostedDate = (date) => {
 
 const ActiveJobPostings = () => {
     const navigate = useNavigate();
+    const routeLocation = useRouteLocation();
     const [query, setQuery] = useState("software engineer");
     const [location, setLocation] = useState("");
     const [jobs, setJobs] = useState([]);
@@ -30,6 +31,7 @@ const ActiveJobPostings = () => {
     const [total, setTotal] = useState(0);
     const [hasMore, setHasMore] = useState(false);
     const [error, setError] = useState("");
+    const [displayFilter, setDisplayFilter] = useState("all");
 
     const loadJobs = useCallback(async ({
         forceRefresh = false,
@@ -96,15 +98,29 @@ const ActiveJobPostings = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const visibleJobs = jobs.filter(job => {
+        if (displayFilter === "applied") return job.currentUserApplied;
+        if (displayFilter === "not_applied") return !job.currentUserApplied;
+        return true;
+    });
+
     const handleSearch = (event) => {
         event.preventDefault();
         loadJobs();
     };
 
-    const startAutofill = (jobUrl) => {
-        navigate("/", {
+    const startAutofill = (job) => {
+        navigate("/autofill", {
             state: {
-                jobUrl,
+                jobUrl: job.url,
+                jobTitle: job.title,
+                company: job.company,
+                location: job.location,
+                source: job.source,
+                externalJobId: job.id,
+                employmentType: job.employmentType,
+                workplaceType: job.workplaceType,
+                jobPostedAt: job.postedAt,
             },
         });
     };
@@ -160,6 +176,24 @@ const ActiveJobPostings = () => {
                 </button>
             </form>
 
+            {routeLocation.state?.confirmedJobUrl && (
+                <div className="application-saved-banner" role="status">
+                    Application saved. This job is now marked as applied.
+                </div>
+            )}
+
+            <div className="job-display-filters" aria-label="Filter jobs by application state">
+                {[
+                    ["all", "All jobs"],
+                    ["not_applied", "Not yet applied"],
+                    ["applied", "Applied"],
+                ].map(([value, label]) => (
+                    <button key={value} type="button" className={displayFilter === value ? "active" : ""} onClick={() => setDisplayFilter(value)}>
+                        {label}
+                    </button>
+                ))}
+            </div>
+
             <div className="job-results-summary">
                 <span>
                     <strong>{total}</strong>{" "}
@@ -189,18 +223,18 @@ const ActiveJobPostings = () => {
 
             {isLoading ? (
                 <div className="job-results-state">Loading active jobs...</div>
-            ) : jobs.length === 0 ? (
+            ) : visibleJobs.length === 0 ? (
                 <div className="job-results-state">
-                    No matching postings were found. Try a broader role or
-                    remove the location filter.
+                    No jobs match this display filter.
                 </div>
             ) : (
                 <>
                     <section className="job-card-grid">
-                        {jobs.map((job) => (
-                            <article className="job-card" key={job.id}>
-                                <div className="job-card-source">
-                                    {job.source}
+                        {visibleJobs.map((job) => (
+                            <article className={`job-card${job.currentUserApplied ? " job-card-applied" : ""}`} key={job.id}>
+                                <div className="job-card-labels">
+                                    <div className="job-card-source">{job.source}</div>
+                                    {job.currentUserApplied && <span className="applied-mark">✓ Applied</span>}
                                 </div>
                                 <h2>{job.title}</h2>
                                 <p className="job-card-company">{job.company}</p>
@@ -213,6 +247,11 @@ const ActiveJobPostings = () => {
                                         <span key={tag}>{tag}</span>
                                     ))}
                                 </div>
+                                {job.applicantCount > 0 && (
+                                    <p className="jobpilot-applicant-count">
+                                        {job.applicantCount} JobPilot {job.applicantCount === 1 ? "user has" : "users have"} marked this job applied
+                                    </p>
+                                )}
                                 <div className="job-card-actions">
                                     <a
                                         href={job.url}
@@ -223,9 +262,10 @@ const ActiveJobPostings = () => {
                                     </a>
                                     <button
                                         type="button"
-                                        onClick={() => startAutofill(job.url)}
+                                        onClick={() => startAutofill(job)}
+                                        disabled={job.currentUserApplied}
                                     >
-                                        Autofill
+                                        {job.currentUserApplied ? "Applied" : "Autofill"}
                                     </button>
                                 </div>
                             </article>

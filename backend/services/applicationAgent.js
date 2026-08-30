@@ -3057,7 +3057,8 @@ const getFormSignature = async page => {
 const startMultiPageMonitor = async (
     page,
     initialScope,
-    initialSignature = null
+    initialSignature = null,
+    onSubmissionConfirmed = null
 ) => {
 
     let submitClicked = false;
@@ -3221,6 +3222,15 @@ const startMultiPageMonitor = async (
                             "Application submission confirmed. Closing the tab."
                         );
 
+                        if (onSubmissionConfirmed) {
+                            await onSubmissionConfirmed().catch(error => {
+                                console.log(
+                                    "Could not save application history:",
+                                    error.message
+                                );
+                            });
+                        }
+
 
                         await page.waitForTimeout(1000);
                         await page.close();
@@ -3327,7 +3337,8 @@ const closeApplicationSession = async (
 };
 
 const startApplicationAgent = async (
-    jobUrl
+    jobUrl,
+    options = {}
 ) => {
 
     console.log(
@@ -3694,7 +3705,8 @@ const startApplicationAgent = async (
     await startMultiPageMonitor(
         page,
         applicationScope,
-        signatureBeforeAutofill
+        signatureBeforeAutofill,
+        options.onSubmissionConfirmed
     );
 
 

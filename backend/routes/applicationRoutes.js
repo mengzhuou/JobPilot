@@ -7,7 +7,9 @@ const router = express.Router();
 const applicationController = require("../controllers/applicationController");
 
 const limiter = require('../middleware/rateLimiter');
+const requireAuth = require('../middleware/requireAuth');
 
+router.use(requireAuth);
 
 router.post("/start", limiter, applicationController.startApplication);
 
