@@ -1,22 +1,34 @@
 const asyncHandler = require("express-async-handler");
 const {
     getActiveJobPostings,
-    invalidateJobCache,
+    enqueueSourceJobDiscovery,
+    getSourceDiscoveryTask,
 } = require("../services/jobPostingService");
 const { addCustomCareerSource, listCustomCareerSources } = require("../repositories/customCareerSourceRepository");
 const { getPreferenceSignals } = require("../repositories/jobPreferenceRepository");
 const companyCareerSources = require("../services/companyCareerSources");
 const {
+    getAppliedJobKeys,
     getJobApplicationSignals,
 } = require("../repositories/jobApplicationRepository");
 
 const listActiveJobPostings = asyncHandler(async (req, res) => {
+    const appliedJobKeys = await getAppliedJobKeys(req.auth.userId);
     const results = await getActiveJobPostings({
         query: req.query.query,
         location: req.query.location,
         refresh: req.query.refresh === "true",
         page: req.query.page,
         limit: req.query.limit,
+        company: req.query.company,
+        excludeCompany: req.query.excludeCompany,
+        remoteOnly: req.query.remoteOnly === "true",
+        keywords: req.query.keywords,
+        specialization: req.query.specialization,
+        eligibility: req.query.eligibility,
+        employmentType: req.query.employmentType,
+        applicationState: req.query.applicationState,
+        appliedJobKeys,
     });
 
     const signals = await getJobApplicationSignals(
@@ -41,8 +53,14 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
 
 const createCareerSource = asyncHandler(async (req, res) => {
     const source = await addCustomCareerSource(req.auth.userId, req.body.input);
-    invalidateJobCache();
-    res.status(201).json({ source });
+    const discovery = enqueueSourceJobDiscovery(source);
+    res.status(202).json({ source, discovery });
+});
+
+const getCareerSourceDiscovery = asyncHandler(async (req, res) => {
+    const discovery = getSourceDiscoveryTask(req.params.id);
+    if (!discovery) return res.status(404).json({ message: "This source-discovery task has expired or does not exist." });
+    res.json({ discovery });
 });
 
 const listCareerSources = asyncHandler(async (req, res) => {
@@ -56,5 +74,6 @@ const listCareerSources = asyncHandler(async (req, res) => {
 module.exports = {
     listActiveJobPostings,
     createCareerSource,
+    getCareerSourceDiscovery,
     listCareerSources,
 };

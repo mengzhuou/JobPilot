@@ -3,6 +3,12 @@ import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
 import { getActiveJobPostings, setJobPreference } from "../../../connector";
 import "./ActiveJobPostings.css";
 
+const FILTER_STORAGE_KEY = "jobpilot.activeJobAdvancedFilters.v1";
+const getSavedFilters = () => {
+    try { return JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY)) || {}; }
+    catch { return {}; }
+};
+
 const formatPostedDate = (date) => {
     if (!date) {
         return "Date unavailable";
@@ -16,6 +22,7 @@ const formatPostedDate = (date) => {
 };
 
 const ActiveJobPostings = () => {
+    const savedFilters = React.useMemo(getSavedFilters, []);
     const navigate = useNavigate();
     const routeLocation = useRouteLocation();
     const [query, setQuery] = useState("software engineer");
@@ -32,6 +39,16 @@ const ActiveJobPostings = () => {
     const [hasMore, setHasMore] = useState(false);
     const [error, setError] = useState("");
     const [displayFilter, setDisplayFilter] = useState("all");
+    const [showAdvanced, setShowAdvanced] = useState(Boolean(savedFilters.showAdvanced));
+    const [company, setCompany] = useState(savedFilters.company || "");
+    const [excludeCompany, setExcludeCompany] = useState(savedFilters.excludeCompany || "");
+    const [keywords, setKeywords] = useState(savedFilters.keywords || "");
+    const [remoteOnly, setRemoteOnly] = useState(Boolean(savedFilters.remoteOnly));
+    const [specialization, setSpecialization] = useState(savedFilters.specialization || "all");
+    const [eligibility, setEligibility] = useState(savedFilters.eligibility || "all");
+    const [employmentType, setEmploymentType] = useState(savedFilters.employmentType || "all");
+    const activeAdvancedFilters = [company, excludeCompany, keywords, remoteOnly, specialization !== "all", eligibility !== "all", employmentType !== "all"]
+        .filter(Boolean).length;
 
     const loadJobs = useCallback(async ({
         forceRefresh = false,
@@ -52,6 +69,14 @@ const ActiveJobPostings = () => {
                 refresh: forceRefresh,
                 page: targetPage,
                 limit: 30,
+                company,
+                excludeCompany,
+                keywords,
+                remoteOnly,
+                specialization,
+                eligibility,
+                employmentType,
+                applicationState: displayFilter,
             });
 
             setJobs((currentJobs) => {
@@ -90,18 +115,31 @@ const ActiveJobPostings = () => {
                 setIsLoading(false);
             }
         }
-    }, [location, query]);
+    }, [company, displayFilter, eligibility, employmentType, excludeCompany, keywords, location, query, remoteOnly, specialization]);
 
     useEffect(() => {
-        loadJobs();
-        // Load once on entry; searches are submitted explicitly.
+        loadJobs({ targetPage: 1 });
+        // Searches are submitted explicitly; application-state tabs reload server totals.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [displayFilter]);
+
+    useEffect(() => {
+        localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+            showAdvanced, company, excludeCompany, keywords, remoteOnly,
+            specialization, eligibility, employmentType,
+        }));
+    }, [showAdvanced, company, excludeCompany, keywords, remoteOnly, specialization, eligibility, employmentType]);
+
+    useEffect(() => {
+        if (!routeLocation.state?.confirmedJobUrl) return undefined;
+        const timer = window.setTimeout(() => {
+            navigate(routeLocation.pathname, { replace: true, state: null });
+        }, 3000);
+        return () => window.clearTimeout(timer);
+    }, [navigate, routeLocation.pathname, routeLocation.state]);
 
     const visibleJobs = jobs.filter(job => {
         if (job.currentUserBlocked) return false;
-        if (displayFilter === "applied") return job.currentUserApplied;
-        if (displayFilter === "not_applied") return !job.currentUserApplied;
         return true;
     });
 
@@ -122,6 +160,8 @@ const ActiveJobPostings = () => {
                 employmentType: job.employmentType,
                 workplaceType: job.workplaceType,
                 jobPostedAt: job.postedAt,
+                summary: job.summary,
+                requirements: job.requirements,
             },
         });
     };
@@ -189,6 +229,44 @@ const ActiveJobPostings = () => {
                     Search jobs
                 </button>
             </form>
+
+            <section className="advanced-filter-shell" aria-label="Advanced job filters">
+                <div className="advanced-filter-heading">
+                    <div><span>Refine results</span><strong>Advanced filters</strong></div>
+                    <button className="advanced-filter-toggle" type="button" onClick={() => setShowAdvanced(value => !value)}>{showAdvanced ? "Hide filters" : "Show filters"}{activeAdvancedFilters > 0 && <b>{activeAdvancedFilters}</b>}</button>
+                </div>
+                {showAdvanced && <div className="advanced-filter-panel">
+                    <label>Company<input value={company} onChange={event => setCompany(event.target.value)} placeholder="e.g. Google or Stripe" /></label>
+                    <label>Exclude companies<input value={excludeCompany} onChange={event => setExcludeCompany(event.target.value)} placeholder="e.g. Amazon, Meta" /></label>
+                    <label>Required skills / keywords<input value={keywords} onChange={event => setKeywords(event.target.value)} placeholder="e.g. React, Java, Kubernetes" /></label>
+                    <label>Engineering focus
+                        <select value={specialization} onChange={event => setSpecialization(event.target.value)}>
+                            <option value="all">All</option>
+                            <option value="embedded">Embedded / firmware</option>
+                            <option value="web">Web development</option>
+                            <option value="mobile">iOS / Android / mobile</option>
+                        </select>
+                    </label>
+                    <label>Job type
+                        <select value={employmentType} onChange={event => setEmploymentType(event.target.value)}>
+                            <option value="all">All job types</option>
+                            <option value="full_time">Full-time</option>
+                            <option value="coop">Co-op</option>
+                            <option value="intern">Intern</option>
+                        </select>
+                    </label>
+                    <label>Work authorization / clearance
+                        <select value={eligibility} onChange={event => setEligibility(event.target.value)}>
+                            <option value="all">All eligibility requirements</option>
+                            <option value="permanent_resident_eligible">Hide citizenship or clearance-restricted jobs</option>
+                            <option value="citizen_or_clearance_required">Only citizenship or clearance-restricted jobs</option>
+                        </select>
+                    </label>
+                    <label className="remote-filter"><input type="checkbox" checked={remoteOnly} onChange={event => setRemoteOnly(event.target.checked)} /> Remote jobs only</label>
+                    <p className="eligibility-filter-note">Eligibility matching uses explicit citizenship and active-clearance language in the employer&apos;s posting.</p>
+                    <div className="advanced-filter-actions"><button className="clear-filters" type="button" onClick={() => { setCompany(""); setExcludeCompany(""); setKeywords(""); setRemoteOnly(false); setSpecialization("all"); setEligibility("all"); setEmploymentType("all"); localStorage.removeItem(FILTER_STORAGE_KEY); }}>Clear</button><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
+                </div>}
+            </section>
 
             {routeLocation.state?.confirmedJobUrl && (
                 <div className="application-saved-banner" role="status">

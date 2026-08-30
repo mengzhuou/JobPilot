@@ -98,6 +98,17 @@ const listApplications = async (userId, filters) => {
         )`);
     }
 
+    const dateConditions = {
+        today: "applied_at >= date_trunc('day', NOW())",
+        week: "applied_at >= NOW() - INTERVAL '7 days'",
+        month: "applied_at >= NOW() - INTERVAL '1 month'",
+        three_months: "applied_at >= NOW() - INTERVAL '3 months'",
+        year: "applied_at >= NOW() - INTERVAL '1 year'",
+    };
+    if (dateConditions[filters.dateRange]) {
+        conditions.push(dateConditions[filters.dateRange]);
+    }
+
     const where = conditions.join(" AND ");
     const countResult = await pool.query(
         `SELECT COUNT(*)::INTEGER AS total
@@ -217,12 +228,26 @@ const getJobApplicationSignals = async (userId, jobs) => {
     return signals;
 };
 
+const getAppliedJobKeys = async userId => {
+    const result = await pool.query(
+        `SELECT job_url, external_job_id
+         FROM jobpilot.job_applications
+         WHERE user_id = $1::UUID`,
+        [userId]
+    );
+    return new Set(result.rows.flatMap(row => [
+        row.job_url && `url:${row.job_url}`,
+        row.external_job_id && `id:${row.external_job_id}`,
+    ]).filter(Boolean));
+};
+
 module.exports = {
     ALLOWED_STATUSES,
     createOrRefreshApplication,
     createManualApplication,
     deleteApplication,
     getJobApplicationSignals,
+    getAppliedJobKeys,
     getApplicationSummary,
     listApplications,
     updateApplication,

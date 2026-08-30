@@ -36,6 +36,7 @@ const JobAppliedHistory = () => {
     const [applications, setApplications] = useState([]);
     const [summary, setSummary] = useState(EMPTY_SUMMARY);
     const [status, setStatus] = useState("");
+    const [dateRange, setDateRange] = useState("all");
     const [searchInput, setSearchInput] = useState("");
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
@@ -52,7 +53,7 @@ const JobAppliedHistory = () => {
 
         try {
             const [history, totals] = await Promise.all([
-                getJobApplicationHistory({ status, search, page, limit: 12 }),
+                getJobApplicationHistory({ status, search, page, limit: 12, dateRange }),
                 getJobApplicationSummary(),
             ]);
 
@@ -78,7 +79,7 @@ const JobAppliedHistory = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [page, search, status]);
+    }, [dateRange, page, search, status]);
 
     useEffect(() => {
         loadHistory();
@@ -207,6 +208,14 @@ const JobAppliedHistory = () => {
                     {STATUS_OPTIONS.map(option => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
+                </select>
+                <select value={dateRange} onChange={event => { setDateRange(event.target.value); setPage(1); }} aria-label="Filter by application date">
+                    <option value="all">Any application date</option>
+                    <option value="today">Applied today</option>
+                    <option value="week">Within 1 week</option>
+                    <option value="month">Within 1 month</option>
+                    <option value="three_months">Within 3 months</option>
+                    <option value="year">Within 1 year</option>
                 </select>
             </section>
 

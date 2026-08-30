@@ -27,6 +27,28 @@ const userDataDir = path.resolve(
     "./playwright-profile"
 );
 
+const QUESTION_STOP_WORDS = new Set(["a", "an", "and", "are", "do", "have", "how", "is", "of", "or", "the", "to", "us", "what", "where", "you", "your"]);
+const questionTokens = value => new Set(normalizeText(value).split(" ").filter(token => token.length > 2 && !QUESTION_STOP_WORDS.has(token)));
+const questionSimilarity = (left, right) => {
+    const leftTokens = questionTokens(left);
+    const rightTokens = questionTokens(right);
+    if (!leftTokens.size || !rightTokens.size) return 0;
+    const overlap = [...leftTokens].filter(token => rightTokens.has(token)).length;
+    return overlap / Math.max(leftTokens.size, rightTokens.size);
+};
+const getCuratedQuestionAnswer = question => {
+    let bestMatch = null;
+    Object.entries(profile.Q_and_A || {}).forEach(([key, item]) => {
+        (item.questions || []).forEach(candidate => {
+            const normalizedCandidate = normalizeText(candidate);
+            const exact = question === normalizedCandidate || question.includes(normalizedCandidate) || normalizedCandidate.includes(question);
+            const score = exact ? 1 : questionSimilarity(question, normalizedCandidate);
+            if (!bestMatch || score > bestMatch.score) bestMatch = { key, answer: item.answer, score };
+        });
+    });
+    return bestMatch && bestMatch.score >= 0.72 ? bestMatch : null;
+};
+
 
 // ==================================================
 // PROFILE VALUE
@@ -225,6 +247,10 @@ const getProfileValue = (field) => {
         };
     }
 
+    if (question === "country" || question === "country region") {
+        return { value: profile.candidate.location.country, source: "candidate.location.country" };
+    }
+
 
     // --------------------------------------------------
     // LINKEDIN
@@ -254,7 +280,7 @@ const getProfileValue = (field) => {
     ) {
 
         return {
-            value: "Job Board",
+            value: profile.application_answers?.referral_category || "Careers site",
 
             source: "application_answers.referral_category"
         };
@@ -482,6 +508,20 @@ const getProfileValue = (field) => {
         };
     }
 
+    if (question.includes("gpa undergraduate") || question.includes("undergraduate gpa")) {
+        return { value: profile.education?.undergraduate_gpa, source: "education.undergraduate_gpa" };
+    }
+    if (question.includes("gpa graduate") || question.includes("graduate gpa")) {
+        return { value: profile.education?.graduate_gpa, source: "education.graduate_gpa" };
+    }
+    if (question.includes("gpa doctorate") || question.includes("doctorate gpa")) {
+        return { value: profile.education?.doctorate_gpa, source: "education.doctorate_gpa" };
+    }
+    if (question.includes("sat score")) return { value: profile.education?.sat_score, source: "education.sat_score" };
+    if (question.includes("act score")) return { value: profile.education?.act_score, source: "education.act_score" };
+    if (question.includes("gre score")) return { value: profile.education?.gre_score, source: "education.gre_score" };
+    if (question.includes("active security clearance")) return { value: profile.application_answers?.active_security_clearance, source: "application_answers.active_security_clearance" };
+
     if (
         question.includes("currently pursuing further education")
     ) {
@@ -655,6 +695,11 @@ const getProfileValue = (field) => {
         };
     }
 
+
+    const curatedAnswer = getCuratedQuestionAnswer(question);
+    if (curatedAnswer) {
+        return { value: curatedAnswer.answer, source: `Q_and_A.${curatedAnswer.key}` };
+    }
 
     // --------------------------------------------------
     // NO MATCH
@@ -1460,6 +1505,12 @@ const extractApplicationFields = async (page) => {
                                         "aria-label"
                                     ),
 
+                                role:
+                                    element.getAttribute("role"),
+
+                                ariaAutocomplete:
+                                    element.getAttribute("aria-autocomplete"),
+
                                 label:
                                     getLabelFor(id),
 
@@ -1693,6 +1744,32 @@ const fillTextField = async (
         await locator
             .first()
             .scrollIntoViewIfNeeded();
+
+        if (field.role === "combobox" || field.ariaAutocomplete === "list") {
+            await locator.first().click({ force: true });
+            await locator.first().fill("");
+            await locator.first().pressSequentially(formValue, { delay: 35 });
+            await page.waitForTimeout(250);
+
+            const expected = normalizeText(formValue);
+            const options = page.locator('[role="option"]');
+            const optionCount = await options.count();
+            for (let index = 0; index < optionCount; index++) {
+                const option = options.nth(index);
+                if (!(await option.isVisible().catch(() => false))) continue;
+                const optionText = await option.innerText().catch(() => "");
+                const normalizedOption = normalizeText(optionText);
+                if (normalizedOption === expected || normalizedOption.includes(expected)) {
+                    await option.click({ force: true });
+                    console.log("COMBOBOX SELECTED:", optionText.trim());
+                    return true;
+                }
+            }
+            await locator.first().press("ArrowDown").catch(() => {});
+            await locator.first().press("Enter").catch(() => {});
+            console.log("COMBOBOX SELECTED BY KEYBOARD:", formValue);
+            return true;
+        }
 
 
         if (field.type === "password") {
@@ -3446,6 +3523,15 @@ const startApplicationAgent = async (
         page.url()
     );
 
+    const greenhouseAutofill = page.getByRole("button", {
+        name: /autofill my application/i
+    });
+    if (await greenhouseAutofill.first().isVisible().catch(() => false)) {
+        console.log("Greenhouse autofill is available; opening it first.");
+        await greenhouseAutofill.first().click({ force: true });
+        await page.waitForTimeout(1500);
+    }
+
 
     // ==================================================
     // 3. LOGIN
@@ -3512,9 +3598,9 @@ const startApplicationAgent = async (
     // 6. EXPAND ACCORDIONS
     // ==================================================
 
-    await expandAllAccordions(
-        applicationScope
-    );
+    // await expandAllAccordions(
+    //     applicationScope
+    // );
 
 
     // ==================================================

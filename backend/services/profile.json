@@ -31,7 +31,14 @@
       "Bachelor's Degree (BA/BS /etc)",
       "Bachelor's Degree"
     ],
-    "currently_pursuing_further_education": false
+    "currently_pursuing_further_education": false,
+    "undergraduate_gpa": "3.9 out of 4.0",
+    "graduate_gpa": "Not applicable/Do not recall",
+    "doctorate_gpa": "Not applicable/Do not recall",
+    "sat_score": "1180 out of 1600",
+    "act_score": "23 out of 36",
+    "gre_score": "Did not take/Do not recall",
+    "attended_graduate_school": false
   },
 
   "job_preferences": {
@@ -154,7 +161,9 @@
   },
 
   "application_answers": {
-    "how_heard_about_company": "LinkedIn",
+    "how_heard_about_company": "Careers site",
+    "referral_category": "Careers site",
+    "active_security_clearance": "Never held a clearance",
     "givebutter": {
       "how_heard_about_company": "LinkedIn"
     }
@@ -225,6 +234,30 @@
             "Describe your experience building applications with React."
         ],
         "answer": "I have 6 years of experience building and maintaining web applications with React TypeScript and React.js, including developing reusable UI components via state management tools, integrating APIs, and writing tests with Jest. While working at Walmart, I’ve worked on React-based applications for financial workflows, where I’ve also been involved in debugging production issues and improving the reliability of the React application. I’m comfortable working across the frontend stack and collaborating with backend engineers to build and maintain end-to-end features. I’m confident that my React experience is highly transferable to React Native, and I’m comfortable learning the new skills needed to build mobile applications."
+    },
+    "most_recent_employer": {
+      "questions": ["Where have you most recently worked?", "What was your most recent employer?"],
+      "answer": "Walmart"
+    },
+    "office_commute_or_relocation": {
+      "questions": ["In office attendance is an essential function for this role and necessary to enable effective teamwork and collaboration. Do you currently reside within commuting distance or are you open to relocation to the local Snowflake office(s) designated in this post?", "Do you currently reside within commuting distance or are you open to relocation to the local office?", "Are you within commuting distance or open to relocation?"],
+      "answer": "Yes"
+    },
+    "favorite_project": {
+      "questions": ["What is your favorite thing you've built or had a chance to work on?", "Tell us about your favorite project."],
+      "answer": "My favorite project is definitely JobPilot, an automated job application system I built to take the grind out of the job hunt. The app automatically scans the internet for openings that match my specific profile and uses a Playwright-driven autofiller to submit applications seamlessly. In fact, there is a fun meta-twist: JobPilot actually applied for this role for me :)"
+    },
+    "exceptional_developer_tool": {
+      "questions": ["What is a piece of software or a developer tool you think is exceptionally well made, and why?"],
+      "answer": "I am a huge fan of Redis because it does one thing—blazing-fast, in-memory data storage—and does it exceptionally well. Rather than trying to be a do-it-all database, it focuses on performance and elegant simplicity, while supporting useful structures such as hashes, lists, and sets with sub-millisecond latency. Its documentation is straightforward, the API feels intuitive, and it remains reliable under traffic spikes that would strain a traditional database. It solves a painful problem so cleanly that I genuinely look forward to integrating it into a stack."
+    },
+    "recent_technical_learning": {
+      "questions": ["Tell us about something technical you knew nothing about six months ago that you can now hold your own on. How did you get there?"],
+      "answer": "Six months ago, PostgreSQL felt like an endless labyrinth of unfamiliar syntax and cryptic execution plans. Today, handling complex relational schemas, writing efficient window functions, and tuning slow queries feels natural. I got there through hands-on work: resolving deadlocks, analyzing query performance, and using JSONB columns for semi-structured data. Repeatedly diagnosing real problems turned an intimidating area of database administration into a practical daily toolkit."
+    },
+    "llm_coding_workflow": {
+      "questions": ["How do LLMs show up in how you write code today? Where do they make you better, and where do you not trust them yet?"],
+      "answer": "Code models show up daily as smart autocomplete and boilerplate generators that speed up routine programming tasks. They help with repetitive syntax, initial unit-test drafts, and quick explanations of unfamiliar APIs or libraries. I do not yet trust them with complex system architecture, subtle concurrency bugs, or deep security vulnerabilities, where plausible-looking output can hide broken logic. I treat every output as a draft and carefully review and test it before it reaches production."
     }
 }
 }

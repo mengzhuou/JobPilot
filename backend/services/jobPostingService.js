@@ -1,10 +1,11 @@
 const companyCareerSources = require("./companyCareerSources");
 const cheerio = require("cheerio");
+const { randomUUID } = require("crypto");
 const { listCustomCareerSources } = require("../repositories/customCareerSourceRepository");
 const { getCachedJson, setCachedJson, deleteCachedValue } = require("../config/redis");
 
 const SOFTWARE_JOB_PATTERN =
-    /\b(software|frontend|front-end|backend|back-end|full[ -]?stack|web|mobile|ios|android|java|react|node(?:\.js)?|python|devops|cloud|platform|application|site reliability|data engineer)\b/i;
+    /\b(software|frontend|front-end|backend|back-end|full[ -]?stack|web|mobile|ios|android|java|react|node(?:\.js)?|python|devops|cloud|platform|application|site reliability|data engineer|hardware|firmware|embedded|electrical|semiconductor|network|cybersecurity|cyber security|security|architect(?:ure)?)\b/i;
 const ENGINEERING_PATTERN =
     /\b(engineer|engineering|developer|development|programmer|architect)\b/i;
 const US_STATE_PATTERN =
@@ -14,11 +15,37 @@ const US_LOCATION_PATTERN =
 
 const CACHE_TTL_SECONDS = Number(process.env.JOB_CACHE_TTL_SECONDS) || 10 * 60;
 const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
-const REDIS_CACHE_KEY = "jobpilot:active-jobs:v1";
+const REDIS_CACHE_KEY = "jobpilot:active-jobs:v2";
 let cache = {
     jobs: [],
     fetchedAt: 0,
     sources: [],
+};
+let refreshInFlight = null;
+const sourceDiscoveryTasks = new Map();
+
+const SPECIALIZATION_PATTERNS = {
+    embedded: /\b(embedded|firmware|rtos|microcontroller|circuit)\b/i,
+    web: /\b(web development|web engineer|front-?end|react|angular|vue|javascript|typescript)\b/i,
+    mobile: /\b(mobile|ios|android|iphone|swift|kotlin)\b/i,
+};
+
+const EMPLOYMENT_TYPE_PATTERNS = {
+    full_time: /\b(full[ -]?time|permanent)\b/i,
+    coop: /\b(co[ -]?op|cooperative education)\b/i,
+    intern: /\b(intern|internship)\b/i,
+};
+const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const hasExactKeyword = (text, keyword) => new RegExp(
+    `(^|[^a-z0-9])${escapeRegExp(keyword)}(?=$|[^a-z0-9])`, "i"
+).test(text);
+
+const CITIZENSHIP_OR_CLEARANCE_RESTRICTION = /\b(?:u\.?s\.?\s*citizen(?:ship)?\s*(?:is\s*)?(?:required|only)|citizens?\s+only|must\s+be\s+(?:a\s+)?u\.?s\.?\s*citizen|active\s+(?:security\s+)?clearance|security\s+clearance\s+(?:is\s+)?required|top[- ]secret|ts\/?sci)\b/i;
+
+const cacheJobs = async nextCache => {
+    cache = nextCache;
+    await setCachedJson(REDIS_CACHE_KEY, cache, CACHE_TTL_SECONDS);
+    return cache;
 };
 
 const invalidateJobCache = () => {
@@ -79,8 +106,27 @@ const isSoftwareEngineeringJob = (job) => {
     );
 };
 
+const getJobSearchText = job => [
+    job.title,
+    job.company,
+    job.location,
+    ...(job.tags || []),
+    job.summary,
+    ...(job.requirements || []),
+].filter(Boolean).join(" ");
+
+const extractJobDetails = html => {
+    if (!html) return { summary: "", requirements: [] };
+    const $ = cheerio.load(String(html));
+    const requirements = $("li").map((_, item) => $(item).text().replace(/\s+/g, " ").trim()).get()
+        .filter(text => text.length >= 20 && text.length <= 260).slice(0, 8);
+    const summary = $.root().text().replace(/\s+/g, " ").trim().slice(0, 420);
+    return { summary, requirements };
+};
+
 const normalizeAshbyJobs = (payload, source) => {
     return (payload.jobs || []).map((job) => {
+        const details = extractJobDetails(job.descriptionHtml || job.description || job.jobDescription);
         const locationParts = [
             job.location,
             job.address?.postalAddress?.addressCountry,
@@ -103,6 +149,7 @@ const normalizeAshbyJobs = (payload, source) => {
             provider: "Ashby",
             tags: [job.department, job.team].filter(Boolean),
             postedAt: job.publishedAt || null,
+            ...details,
         };
     });
 };
@@ -120,6 +167,7 @@ const getGreenhouseLocations = (job) => {
 
 const normalizeGreenhouseJobs = (payload, source) => {
     return (payload.jobs || []).map((job) => {
+        const details = extractJobDetails(job.content);
         const locations = getGreenhouseLocations(job);
         const tags = (job.metadata || [])
             .filter((item) => /department|team|category/i.test(item.name || ""))
@@ -136,12 +184,15 @@ const normalizeGreenhouseJobs = (payload, source) => {
             provider: "Greenhouse",
             tags,
             postedAt: job.first_published || job.updated_at || null,
+            ...details,
         };
     });
 };
 
 const normalizeLeverJobs = (payload, source) => {
     return (Array.isArray(payload) ? payload : []).map((job) => {
+        const detailHtml = [job.description, ...(job.lists || []).map(list => `<h3>${list.text || ""}</h3>${list.content || ""}`)].join(" ");
+        const details = extractJobDetails(detailHtml);
         const locations = [
             ...(job.categories?.allLocations || []),
             job.categories?.location,
@@ -164,6 +215,7 @@ const normalizeLeverJobs = (payload, source) => {
             postedAt: job.createdAt
                 ? new Date(job.createdAt).toISOString()
                 : null,
+            ...details,
         };
     });
 };
@@ -218,7 +270,7 @@ const getSourceUrl = ({ provider, board }) => {
     }
 
     if (provider === "greenhouse") {
-        return `https://boards-api.greenhouse.io/v1/boards/${board}/jobs`;
+        return `https://boards-api.greenhouse.io/v1/boards/${board}/jobs?content=true`;
     }
 
     if (provider === "lever") {
@@ -342,24 +394,138 @@ const refreshJobs = async () => {
         return new Date(second.postedAt || 0) - new Date(first.postedAt || 0);
     });
 
-    cache = {
+    return cacheJobs({
         jobs: uniqueJobs,
         fetchedAt: Date.now(),
         sources,
-    };
+    });
+};
 
-    await setCachedJson(REDIS_CACHE_KEY, cache, CACHE_TTL_SECONDS);
+const refreshJobsWithLock = async () => {
+    if (refreshInFlight) return refreshInFlight;
 
+    refreshInFlight = refreshJobs().finally(() => {
+        refreshInFlight = null;
+    });
+    return refreshInFlight;
+};
+
+const getCachedJobs = async ({ allowStale = false } = {}) => {
+    if (cache.fetchedAt && (allowStale || Date.now() - cache.fetchedAt < CACHE_TTL_MS)) {
+        return cache;
+    }
+
+    const sharedCache = await getCachedJson(REDIS_CACHE_KEY);
+    if (!sharedCache?.jobs || !sharedCache?.fetchedAt) return null;
+    if (!allowStale && Date.now() - sharedCache.fetchedAt >= CACHE_TTL_MS) return null;
+    cache = sharedCache;
     return cache;
 };
 
-const getCachedJobs = async () => {
-    if (Date.now() - cache.fetchedAt < CACHE_TTL_MS) return cache;
-    const sharedCache = await getCachedJson(REDIS_CACHE_KEY);
-    if (!sharedCache?.jobs || !sharedCache?.fetchedAt) return null;
-    if (Date.now() - sharedCache.fetchedAt >= CACHE_TTL_MS) return null;
-    cache = sharedCache;
-    return cache;
+const toCareerSource = source => ({
+    ...source,
+    careerUrl: source.careerUrl || source.career_url,
+});
+
+const addSourceJobsToCache = async source => {
+    const normalizedSource = toCareerSource(source);
+    const discoveredJobs = await loadCompanyJobs(normalizedSource);
+    const current = await getCachedJobs({ allowStale: true });
+
+    // The normal first visit still builds the complete catalogue. In the common
+    // case, an existing Redis snapshot is updated in-place without re-crawling it.
+    if (!current) {
+        return {
+            jobsFound: discoveredJobs.length,
+            newJobsAdded: 0,
+            cacheUpdated: false,
+            matchingJobUrls: discoveredJobs.map(job => job.url),
+        };
+    }
+
+    const existingUrls = new Set(current.jobs.map(job => job.url));
+    const newJobs = discoveredJobs.filter(job => !existingUrls.has(job.url));
+    const nextSources = [
+        ...current.sources.filter(item => item.name.toLowerCase() !== normalizedSource.company.toLowerCase()),
+        {
+            name: normalizedSource.company,
+            provider: normalizedSource.provider,
+            status: "available",
+        },
+    ];
+    const nextJobs = Array.from(
+        new Map([...current.jobs, ...newJobs].map(job => [job.url, job])).values()
+    ).sort((first, second) => new Date(second.postedAt || 0) - new Date(first.postedAt || 0));
+
+    await cacheJobs({
+        jobs: nextJobs,
+        fetchedAt: Date.now(),
+        sources: nextSources,
+    });
+
+    return {
+        jobsFound: discoveredJobs.length,
+        newJobsAdded: newJobs.length,
+        cacheUpdated: true,
+        matchingJobUrls: discoveredJobs.map(job => job.url),
+    };
+};
+
+const toPublicDiscoveryTask = task => ({
+    id: task.id,
+    company: task.company,
+    status: task.status,
+    jobsFound: task.jobsFound,
+    newJobsAdded: task.newJobsAdded,
+    error: task.error,
+    createdAt: task.createdAt,
+    completedAt: task.completedAt,
+});
+
+const enqueueSourceJobDiscovery = source => {
+    const task = {
+        id: randomUUID(),
+        company: source.company,
+        status: "queued",
+        jobsFound: null,
+        newJobsAdded: null,
+        error: null,
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+    };
+    sourceDiscoveryTasks.set(task.id, task);
+
+    void Promise.resolve().then(async () => {
+        task.status = "processing";
+        const discovery = await addSourceJobsToCache(source);
+
+        if (!discovery.cacheUpdated) {
+            task.status = "refreshing_catalogue";
+            const refreshed = await refreshJobsWithLock();
+            const finalUrls = new Set(refreshed.jobs.map(job => job.url));
+            discovery.newJobsAdded = discovery.matchingJobUrls
+                .filter(url => finalUrls.has(url)).length;
+        }
+
+        task.status = "complete";
+        task.jobsFound = discovery.jobsFound;
+        task.newJobsAdded = discovery.newJobsAdded;
+        task.completedAt = new Date().toISOString();
+    }).catch(error => {
+        task.status = "failed";
+        task.error = error.message || "Could not inspect this career site.";
+        task.completedAt = new Date().toISOString();
+        console.error(`Background source discovery failed for ${task.company}:`, task.error);
+    });
+
+    const cleanupTimer = setTimeout(() => sourceDiscoveryTasks.delete(task.id), 60 * 60 * 1000);
+    cleanupTimer.unref?.();
+    return toPublicDiscoveryTask(task);
+};
+
+const getSourceDiscoveryTask = id => {
+    const task = sourceDiscoveryTasks.get(id);
+    return task ? toPublicDiscoveryTask(task) : null;
 };
 
 const getActiveJobPostings = async ({
@@ -368,10 +534,31 @@ const getActiveJobPostings = async ({
     refresh = false,
     page = 1,
     limit = 30,
+    company = "",
+    excludeCompany = "",
+    remoteOnly = false,
+    keywords = "",
+    specialization = "all",
+    eligibility = "all",
+    employmentType = "all",
+    applicationState = "all",
+    appliedJobKeys = new Set(),
 } = {}) => {
-    const current = !refresh
-        ? (await getCachedJobs()) || await refreshJobs()
-        : await refreshJobs();
+    let current;
+    if (refresh) {
+        current = await refreshJobsWithLock();
+    } else {
+        current = await getCachedJobs({ allowStale: true });
+        if (!current) {
+            current = await refreshJobsWithLock();
+        } else if (Date.now() - current.fetchedAt >= CACHE_TTL_MS) {
+            // Return the existing catalogue immediately after an application;
+            // source refreshes should never block the user's trip back to results.
+            void refreshJobsWithLock().catch(error => {
+                console.error("Background job refresh failed:", error.message);
+            });
+        }
+    }
     const queryTerms = query
         .toLowerCase()
         .split(/\s+/)
@@ -379,14 +566,15 @@ const getActiveJobPostings = async ({
     const useDefaultSoftwareFilter =
         query.trim().toLowerCase() === "software engineer";
     const normalizedLocation = location.trim().toLowerCase();
+    const normalizedCompany = company.trim().toLowerCase();
+    const excludedCompanies = excludeCompany.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
+    const requirementTerms = keywords.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
+    const specializationPattern = SPECIALIZATION_PATTERNS[specialization] || null;
+    const employmentTypePattern = EMPLOYMENT_TYPE_PATTERNS[employmentType] || null;
 
     const filteredJobs = current.jobs.filter((job) => {
-        const searchableText = [
-            job.title,
-            job.company,
-            job.location,
-            ...(job.tags || []),
-        ].join(" ").toLowerCase();
+        const jobText = getJobSearchText(job);
+        const searchableText = jobText.toLowerCase();
         const matchesQuery =
             useDefaultSoftwareFilter ||
             !queryTerms.length ||
@@ -396,7 +584,25 @@ const getActiveJobPostings = async ({
             job.location.toLowerCase().includes(normalizedLocation) ||
             (normalizedLocation === "remote" && job.remote);
 
-        return matchesQuery && matchesLocation;
+        const matchesCompany = !normalizedCompany || job.company.toLowerCase().includes(normalizedCompany);
+        const isExcluded = excludedCompanies.some(excluded => job.company.toLowerCase().includes(excluded));
+        const requirementText = [job.summary, ...(job.requirements || [])].join(" ").toLowerCase();
+        const matchesRequirements = !requirementTerms.length || requirementTerms.every(term => hasExactKeyword(requirementText, term));
+        const matchesRemote = !remoteOnly || job.remote;
+        const matchesSpecialization = !specializationPattern || specializationPattern.test(jobText);
+        const isRestricted = CITIZENSHIP_OR_CLEARANCE_RESTRICTION.test(jobText);
+        const matchesEligibility = eligibility === "permanent_resident_eligible"
+            ? !isRestricted
+            : eligibility === "citizen_or_clearance_required"
+                ? isRestricted
+                : true;
+        const matchesEmploymentType = !employmentTypePattern || employmentTypePattern.test(jobText);
+        const isApplied = appliedJobKeys.has(`url:${job.url}`) || appliedJobKeys.has(`id:${String(job.id || "")}`);
+        const matchesApplicationState = applicationState === "applied"
+            ? isApplied
+            : applicationState === "not_applied" ? !isApplied : true;
+
+        return matchesQuery && matchesLocation && matchesCompany && !isExcluded && matchesRequirements && matchesRemote && matchesSpecialization && matchesEligibility && matchesEmploymentType && matchesApplicationState;
     });
     const normalizedPage = Math.max(
         1,
@@ -433,4 +639,12 @@ const getActiveJobPostings = async ({
 module.exports = {
     getActiveJobPostings,
     invalidateJobCache,
+    addSourceJobsToCache,
+    enqueueSourceJobDiscovery,
+    getSourceDiscoveryTask,
+    refreshJobsInBackground: () => {
+        void refreshJobsWithLock().catch(error => {
+            console.error("Background job cache refresh failed:", error.message);
+        });
+    },
 };

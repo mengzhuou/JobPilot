@@ -6,4 +6,5 @@ router.use(requireAuth);
 router.post("/",c.create);
 router.get("/",requireAdmin,c.list);
 router.patch("/:id",requireAdmin,c.update);
+router.delete("/:id",requireAdmin,c.remove);
 module.exports=router;

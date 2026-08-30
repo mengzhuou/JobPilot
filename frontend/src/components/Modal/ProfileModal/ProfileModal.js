@@ -12,6 +12,10 @@ const ProfileModal = ({ show, onClose, studentData }) => {
           <button className="close-button" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
+            <div className="profile-identity">
+                {studentData.picture && <img src={studentData.picture} alt="" />}
+                <div><strong>{studentData.name}</strong>{studentData.role === "admin" && <span className="profile-admin-badge">Administrator</span>}</div>
+            </div>
             <div className="profile-report-info">
                 <span className="label">Name:</span>
                 <input type="text" value={studentData.name} readOnly />
@@ -22,7 +26,7 @@ const ProfileModal = ({ show, onClose, studentData }) => {
             </div>
             <div className="profile-report-info">
                 <span className="label">Role:</span>
-                <input type="text" value={studentData.role} readOnly />
+                <input type="text" value={studentData.role === "admin" ? "Administrator" : "Member"} readOnly />
             </div>
         </div>
         <div className="modal-footer">

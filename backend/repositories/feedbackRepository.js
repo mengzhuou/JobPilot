@@ -10,4 +10,8 @@ const updateFeedback = async (id,data) => (await pool.query(
     "UPDATE jobpilot.feedback SET status=$1,admin_note=$2,updated_at=NOW() WHERE id=$3::UUID RETURNING *",
     [data.status,data.adminNote || null,id]
 )).rows[0];
-module.exports={createFeedback,listFeedback,updateFeedback};
+const deleteFeedback = async id => (await pool.query(
+    "DELETE FROM jobpilot.feedback WHERE id=$1::UUID RETURNING id",
+    [id]
+)).rows[0];
+module.exports={createFeedback,listFeedback,updateFeedback,deleteFeedback};

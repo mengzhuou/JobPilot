@@ -12,3 +12,4 @@
 20260830	14:00:31	8fdcc3d0-7ec7-46f5-824c-2342e5ca4568	error: relation "jobpilot.job_preferences" does not exist	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30	http://localhost:3000
 20260830	14:00:31	178f7cf2-0e40-4053-ae85-411ae2ae750d	error: column "role" does not exist	GET	/api/auth/me	http://localhost:3000
 20260830	14:00:31	8ec88cd7-ab2a-48c4-be7b-db227adf38a6	error: relation "jobpilot.job_preferences" does not exist	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30	http://localhost:3000
+20260830	16:42:30	ae7d3c82-7a63-4743-9885-391c85781973	TypeError: Cannot read properties of null (reading 'url')	POST	/api/applications/start	http://localhost:3000

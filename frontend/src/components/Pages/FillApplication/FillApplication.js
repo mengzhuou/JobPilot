@@ -49,6 +49,8 @@ const FillApplication = () => {
         employmentType: job.employmentType,
         workplaceType: job.workplaceType,
         jobPostedAt: job.jobPostedAt,
+        summary: job.summary,
+        requirements: job.requirements,
     };
 
     const startApplication = async () => {
@@ -113,6 +115,12 @@ const FillApplication = () => {
                     <div><span>Employment</span><strong>{job.employmentType || "Not provided"}</strong></div>
                     <div><span>Career source</span><strong>{job.source || "Official career site"}</strong></div>
                 </div>
+
+                {(job.summary || job.requirements?.length > 0) && <section className="job-requirements-panel">
+                    <h2>What this role is looking for</h2>
+                    {job.summary && <p>{job.summary}</p>}
+                    {job.requirements?.length > 0 && <ul>{job.requirements.slice(0, 8).map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul>}
+                </section>}
 
                 <label className="application-url-label">
                     Application URL

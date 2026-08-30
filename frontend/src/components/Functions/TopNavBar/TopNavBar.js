@@ -86,11 +86,21 @@ const TopNavBar = () => {
                 <div className={`sidebar ${isSidebarOpen ? 'open' : ''}`} ref={sidebarRef}>
                     <div className="profile-section">
                         <div className="profile-info">
-                            <h3 className="student-name-bar">{studentData.name}</h3>
+                            <h3 className="student-name-bar">{studentData.name} {studentData.role === "admin" && <span className="admin-badge">(Admin)</span>}</h3>
                         </div>
                     </div>
 
                     <div className="nav-links">
+                        <button
+                            className="nav-link nav-link-button"
+                            type="button"
+                            onClick={() => {
+                                setShowProfileModal(true);
+                                setIsSidebarOpen(false);
+                            }}
+                        >
+                            My Profile
+                        </button>
                         <NavLink
                             className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
                             to="/active-job-postings"

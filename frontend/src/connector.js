@@ -51,6 +51,14 @@ const getActiveJobPostings = async ({
     refresh = false,
     page = 1,
     limit = 30,
+    company = "",
+    excludeCompany = "",
+    remoteOnly = false,
+    keywords = "",
+    specialization = "all",
+    eligibility = "all",
+    employmentType = "all",
+    applicationState = "all",
 } = {}) => {
     const res = await api.get(
         "/api/job-postings",
@@ -61,6 +69,14 @@ const getActiveJobPostings = async ({
                 refresh,
                 page,
                 limit,
+                company,
+                excludeCompany,
+                remoteOnly,
+                keywords,
+                specialization,
+                eligibility,
+                employmentType,
+                applicationState,
             },
         }
     );
@@ -70,8 +86,11 @@ const getActiveJobPostings = async ({
 
 const addCareerSource = async input => {
     const res = await api.post("/api/job-postings/sources", { input });
-    return res.data.source;
+    return res.data;
 };
+const getCareerSourceDiscovery = async id => (
+    await api.get(`/api/job-postings/sources/discovery/${id}`)
+).data.discovery;
 const getCareerSources = async () => (await api.get("/api/job-postings/sources")).data.sources;
 const setJobPreference = async job => (await api.post("/api/job-preferences", job)).data.job;
 const getJobPreferences = async state => (await api.get("/api/job-preferences", { params:{state} })).data.jobs;
@@ -79,6 +98,7 @@ const deleteJobPreference = async id => { await api.delete(`/api/job-preferences
 const submitFeedback = async data => (await api.post("/api/feedback",data)).data.feedback;
 const getFeedback = async () => (await api.get("/api/feedback")).data.feedback;
 const updateFeedback = async (id,data) => (await api.patch(`/api/feedback/${id}`,data)).data.feedback;
+const deleteFeedback = async id => { await api.delete(`/api/feedback/${id}`); };
 const createManualApplication = async data => (await api.post("/api/job-applications/manual",data)).data.application;
 
 const getJobApplicationHistory = async ({
@@ -86,9 +106,10 @@ const getJobApplicationHistory = async ({
     search = "",
     page = 1,
     limit = 12,
+    dateRange = "all",
 } = {}) => {
     const res = await api.get("/api/job-applications", {
-        params: { status, search, page, limit },
+        params: { status, search, page, limit, dateRange },
     });
     return res.data;
 };
@@ -118,6 +139,7 @@ export {
     getApplicationStatus,
     getActiveJobPostings,
     addCareerSource,
+    getCareerSourceDiscovery,
     getCareerSources,
     setJobPreference,
     getJobPreferences,
@@ -125,6 +147,7 @@ export {
     submitFeedback,
     getFeedback,
     updateFeedback,
+    deleteFeedback,
     createManualApplication,
     getJobApplicationHistory,
     getJobApplicationSummary,
