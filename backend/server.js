@@ -24,6 +24,7 @@ const express = require("express");
 const cors = require("cors");
 
 const applicationRoutes = require("./routes/applicationRoutes");
+const jobPostingRoutes = require("./routes/jobPostingRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -45,6 +46,7 @@ app.use(express.json());
 // ====================
 
 app.use("/api/applications", applicationRoutes);
+app.use("/api/job-postings", jobPostingRoutes);
 
 
 // ====================

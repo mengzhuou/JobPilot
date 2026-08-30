@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import "./FillApplication.css";
 import Button from "../../Button/Button";
 import {
@@ -8,7 +9,10 @@ import {
 } from "../../../connector.js";
 
 const FillApplication = () => {
-    const [jobUrl, setJobUrl] = useState("");
+    const location = useLocation();
+    const [jobUrl, setJobUrl] = useState(
+        location.state?.jobUrl || ""
+    );
     const [logs, setLogs] = useState([]);
     const [status, setStatus] = useState("idle");
     const isStarting = status === "starting";

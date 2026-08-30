@@ -47,8 +47,28 @@ const getApplicationStatus = async () => {
     return res.data;
 };
 
+const getActiveJobPostings = async ({
+    query = "software engineer",
+    location = "",
+    refresh = false,
+} = {}) => {
+    const res = await axios.get(
+        `${BACKEND_URL}/api/job-postings`,
+        {
+            params: {
+                query,
+                location,
+                refresh,
+            },
+        }
+    );
+
+    return res.data;
+};
+
 export {
     openAndFillApplication,
     stopApplication,
     getApplicationStatus,
+    getActiveJobPostings,
 };

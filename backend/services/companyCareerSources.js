@@ -1,0 +1,16 @@
+module.exports = [
+    { company: "OpenAI", provider: "ashby", board: "openai" },
+    { company: "Notion", provider: "ashby", board: "notion" },
+    { company: "Ramp", provider: "ashby", board: "ramp" },
+    { company: "Linear", provider: "ashby", board: "linear" },
+    { company: "Cursor", provider: "ashby", board: "cursor" },
+    { company: "Cloudflare", provider: "greenhouse", board: "cloudflare" },
+    { company: "Datadog", provider: "greenhouse", board: "datadog" },
+    { company: "MongoDB", provider: "greenhouse", board: "mongodb" },
+    { company: "Figma", provider: "greenhouse", board: "figma" },
+    { company: "Samsara", provider: "greenhouse", board: "samsara" },
+    { company: "Stripe", provider: "greenhouse", board: "stripe" },
+    { company: "Reddit", provider: "greenhouse", board: "reddit" },
+    { company: "Dropbox", provider: "greenhouse", board: "dropbox" },
+    { company: "Palantir", provider: "lever", board: "palantir" },
+];

@@ -19,20 +19,6 @@ const TopNavBar = () => {
         setIsSidebarOpen(!isSidebarOpen);
     };
 
-    const openProfileModal = () => {
-        setShowProfileModal(true);
-        setIsSidebarOpen(false);
-    };
-
-    const toggleDropdown = () => {
-        const { isDroppedDown } = this.state;
-        this.setState({ isDroppedDown: !isDroppedDown })
-    }
-
-    const profileNav = () => {
-        navigate("/ReservationHistory");
-    }
-
     const closeProfileModal = () => {
         setShowProfileModal(false);
     };
@@ -45,6 +31,11 @@ const TopNavBar = () => {
 
     const goToAdminSite = () => {
         navigate("/SelectTask");
+        setIsSidebarOpen(false);
+    };
+
+    const goToActiveJobPostings = () => {
+        navigate("/active-job-postings");
         setIsSidebarOpen(false);
     };
     useEffect(() => {
@@ -90,8 +81,12 @@ const TopNavBar = () => {
                     </div>
 
                     <div className="nav-links">
-                        <div className="nav-link" onClick={openProfileModal}>Profile</div>
-                        <div className="nav-link" onClick={profileNav}> Reservation History</div>
+                        <div
+                            className="nav-link"
+                            onClick={goToActiveJobPostings}
+                        >
+                            Active Job Postings
+                        </div>
                         {(studentData.role === 'Admin' || studentData.role === 'SA' || studentData.role === 'Professor') && (
                             <div className="nav-link" onClick={goToAdminSite}>Admin Site</div>
                         )}

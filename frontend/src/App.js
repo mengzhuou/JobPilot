@@ -2,6 +2,7 @@ import React, { Component, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import TopNavBar from "./components/Functions/TopNavBar/TopNavBar";
 import FillApplication from "./components/Pages/FillApplication/FillApplication";
+import ActiveJobPostings from "./components/Pages/ActiveJobPostings/ActiveJobPostings";
 import { Provider, useDispatch } from "react-redux";
 import store from "./components/redux/store";
 import { jwtDecode } from "jwt-decode";
@@ -33,6 +34,10 @@ class App extends Component {
                   <Routes>
                       {/* Public route - Login */}
                       <Route path="/" element={<FillApplication />} />
+                      <Route
+                          path="/active-job-postings"
+                          element={<ActiveJobPostings />}
+                      />
                   </Routes>
               </Router>
           </Provider>
