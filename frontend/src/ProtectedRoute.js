@@ -3,9 +3,10 @@ import { Navigate } from 'react-router-dom';
 
 const ProtectedRoute = ({ element }) => {
   const token = localStorage.getItem('authToken');
+  const mockSession = localStorage.getItem('jobpilotMockSession');
 
-  if (!token) {
-    return <Navigate to="/" />;
+  if (!token && !mockSession) {
+    return <Navigate to="/login" replace />;
   }
 
   return element;

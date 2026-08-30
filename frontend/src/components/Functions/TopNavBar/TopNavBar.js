@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import './TopNavBar.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import ProfileModal from "../../Modal/ProfileModal/ProfileModal";
 import { faBars, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { logout } from "../../redux/reducers/authSlice";
 
 const TopNavBar = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
     const navigate = useNavigate();
+    const dispatch = useDispatch();
     const studentData = useSelector((state) => state.studentData);
     const sidebarRef = useRef(null);
     const closeButtonRef = useRef(null);
@@ -25,7 +27,9 @@ const TopNavBar = () => {
 
     const logoutNav = () => {
         localStorage.removeItem('authToken');
-        navigate("/");
+        localStorage.removeItem('jobpilotMockSession');
+        dispatch(logout());
+        navigate("/login");
         setIsSidebarOpen(false);
     };
 

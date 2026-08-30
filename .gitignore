@@ -7,3 +7,8 @@
 # Local environment files may contain credentials
 /backend/.env
 /frontend/.env
+
+
+# Node dependencies
+/backend/node_modules/
+/frontend/node_modules/

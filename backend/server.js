@@ -26,6 +26,7 @@ const cors = require("cors");
 const applicationRoutes = require("./routes/applicationRoutes");
 const jobPostingRoutes = require("./routes/jobPostingRoutes");
 const errorHandler = require("./middleware/errorHandler");
+const { verifyDatabaseConnection } = require("./config/postgres");
 
 const app = express();
 
@@ -60,6 +61,19 @@ app.use(errorHandler);
 // Start Server
 // ====================
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+const startServer = async () => {
+    try {
+        const connection = await verifyDatabaseConnection();
+
+        console.log(`PostgreSQL connected: ${connection.database}`);
+
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+        });
+    } catch (error) {
+        console.error("Unable to connect to PostgreSQL:", error.message);
+        process.exit(1);
+    }
+};
+
+startServer();
