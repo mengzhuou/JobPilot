@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+    deleteJobApplication,
     getJobApplicationHistory,
     getJobApplicationSummary,
     updateJobApplication,
@@ -115,6 +116,20 @@ const JobAppliedHistory = () => {
                 requestError.response?.data?.message ||
                 "Unable to update this application."
             );
+        } finally {
+            setSavingId(null);
+        }
+    };
+
+    const removeApplication = async application => {
+        if (!window.confirm(`Delete ${application.job_title || "this application"} from your history?`)) return;
+        setSavingId(application.id);
+        setError("");
+        try {
+            await deleteJobApplication(application.id);
+            await loadHistory();
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || "Unable to delete this application.");
         } finally {
             setSavingId(null);
         }
@@ -259,6 +274,14 @@ const JobAppliedHistory = () => {
                                     disabled={savingId === application.id}
                                 >
                                     {savingId === application.id ? "Saving…" : "Save notes"}
+                                </button>
+                                <button
+                                    className="delete-application-button"
+                                    type="button"
+                                    onClick={() => removeApplication(application)}
+                                    disabled={savingId === application.id}
+                                >
+                                    Delete record
                                 </button>
                             </div>
                         </article>

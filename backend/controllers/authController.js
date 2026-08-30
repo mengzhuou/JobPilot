@@ -16,6 +16,7 @@ const publicUser = user => ({
     firstName: user.first_name,
     lastName: user.last_name,
     picture: user.picture_url,
+    role: user.role,
 });
 
 const cookieOptions = () => ({

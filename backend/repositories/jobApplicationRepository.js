@@ -57,6 +57,26 @@ const createOrRefreshApplication = async (userId, application) => {
     return result.rows[0];
 };
 
+const createManualApplication = async (userId, application) => {
+    if (!ALLOWED_STATUSES.has(application.status || "applied")) {
+        throw Object.assign(new Error("Invalid application status"), { statusCode: 400 });
+    }
+    const result = await pool.query(
+        `INSERT INTO jobpilot.job_applications
+            (user_id,job_url,job_title,company,location,source,status,notes,applied_at)
+         VALUES ($1,$2,$3,$4,$5,'Manual entry',$6::VARCHAR(30),$7,$8::TIMESTAMPTZ)
+         ON CONFLICT (user_id,job_url) DO UPDATE SET
+            job_title=EXCLUDED.job_title, company=EXCLUDED.company,
+            location=EXCLUDED.location, status=EXCLUDED.status,
+            notes=EXCLUDED.notes, applied_at=EXCLUDED.applied_at, updated_at=NOW()
+         RETURNING *`,
+        [userId,application.jobUrl,application.jobTitle,application.company,
+            application.location || null,application.status || "applied",
+            application.notes || null,application.appliedAt || new Date().toISOString()]
+    );
+    return result.rows[0];
+};
+
 const listApplications = async (userId, filters) => {
     const page = Math.max(Number(filters.page) || 1, 1);
     const limit = Math.min(Math.max(Number(filters.limit) || 12, 1), 50);
@@ -155,6 +175,16 @@ const updateApplication = async (userId, applicationId, changes) => {
     return result.rows[0] || null;
 };
 
+const deleteApplication = async (userId, applicationId) => {
+    const result = await pool.query(
+        `DELETE FROM jobpilot.job_applications
+         WHERE id = $1::UUID AND user_id = $2::UUID
+         RETURNING id`,
+        [applicationId, userId]
+    );
+    return Boolean(result.rows[0]);
+};
+
 const getJobApplicationSignals = async (userId, jobs) => {
     if (!jobs.length) return new Map();
 
@@ -190,6 +220,8 @@ const getJobApplicationSignals = async (userId, jobs) => {
 module.exports = {
     ALLOWED_STATUSES,
     createOrRefreshApplication,
+    createManualApplication,
+    deleteApplication,
     getJobApplicationSignals,
     getApplicationSummary,
     listApplications,

@@ -38,6 +38,7 @@
 .history-card-edit label { display: grid; gap: 6px; color: #475467; font-size: 12px; font-weight: 750; }
 .history-card-edit select { height: 40px; padding: 0 10px; } .history-card-edit textarea { min-height: 68px; padding: 10px; resize: vertical; }
 .history-card-edit button { justify-self: end; padding: 10px 16px; } button:disabled { cursor: wait; opacity: .55; }
+.history-card-edit .delete-application-button { border: 1px solid #efc3bf; background: #fff; color: #b42318; }
 .history-error, .history-state { max-width: 1180px; margin: 14px auto; padding: 32px 20px; box-sizing: border-box; border: 1px solid #e0e6ef; border-radius: 14px; background: #fff; color: #667085; text-align: center; }
 .history-error { border-color: #f3c8c4; background: #fff5f4; color: #b42318; }
 .history-empty { padding: 58px 20px; } .history-empty h2 { margin: 14px 0 6px; color: #172033; } .history-empty p { margin: 0; }

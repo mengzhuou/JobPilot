@@ -105,6 +105,12 @@ const TopNavBar = () => {
                         >
                             Job Applied History
                         </NavLink>
+                        <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/saved-jobs" onClick={()=>setIsSidebarOpen(false)}>Saved Jobs</NavLink>
+                        <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/blocked-jobs" onClick={()=>setIsSidebarOpen(false)}>Blocked Jobs</NavLink>
+                        <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/add-application" onClick={()=>setIsSidebarOpen(false)}>Add Custom Application</NavLink>
+                        <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/feedback" onClick={()=>setIsSidebarOpen(false)}>Send Feedback</NavLink>
+                        {studentData.role === "admin" && <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/admin/companies" onClick={()=>setIsSidebarOpen(false)}>Add Company</NavLink>}
+                        {studentData.role === "admin" && <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/admin/feedback" onClick={()=>setIsSidebarOpen(false)}>Feedback Inbox</NavLink>}
                         {(studentData.role === 'Admin' || studentData.role === 'SA' || studentData.role === 'Professor') && (
                             <div className="nav-link" onClick={goToAdminSite}>Admin Site</div>
                         )}

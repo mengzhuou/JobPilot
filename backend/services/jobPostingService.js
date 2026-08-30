@@ -1,4 +1,7 @@
 const companyCareerSources = require("./companyCareerSources");
+const cheerio = require("cheerio");
+const { listCustomCareerSources } = require("../repositories/customCareerSourceRepository");
+const { getCachedJson, setCachedJson, deleteCachedValue } = require("../config/redis");
 
 const SOFTWARE_JOB_PATTERN =
     /\b(software|frontend|front-end|backend|back-end|full[ -]?stack|web|mobile|ios|android|java|react|node(?:\.js)?|python|devops|cloud|platform|application|site reliability|data engineer)\b/i;
@@ -9,11 +12,18 @@ const US_STATE_PATTERN =
 const US_LOCATION_PATTERN =
     /\b(US|USA|U\.S\.|United States|North America|Worldwide|Anywhere)\b/i;
 
-const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_TTL_SECONDS = Number(process.env.JOB_CACHE_TTL_SECONDS) || 10 * 60;
+const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
+const REDIS_CACHE_KEY = "jobpilot:active-jobs:v1";
 let cache = {
     jobs: [],
     fetchedAt: 0,
     sources: [],
+};
+
+const invalidateJobCache = () => {
+    cache.fetchedAt = 0;
+    void deleteCachedValue(REDIS_CACHE_KEY);
 };
 
 const fetchJson = async (url) => {
@@ -30,6 +40,15 @@ const fetchJson = async (url) => {
     }
 
     return response.json();
+};
+
+const fetchHtml = async url => {
+    const response = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 JobPilot/1.0" },
+        signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+    return response.text();
 };
 
 const flattenValues = (value) => {
@@ -149,6 +168,50 @@ const normalizeLeverJobs = (payload, source) => {
     });
 };
 
+const normalizeGoogleJobs = (html, source) => {
+    const $ = cheerio.load(html);
+    const jobs = [];
+    $('a[href*="jobs/results/"][aria-label^="Learn more about"]').each((_, element) => {
+        const link = $(element);
+        const card = link.closest(".sMn82b");
+        const title = link.attr("aria-label").replace(/^Learn more about\s*/i, "").trim();
+        const location = card.find("span.r0wTof").first().text().trim();
+        const relativeUrl = link.attr("href");
+        const id = (relativeUrl.match(/results\/(\d+)-/) || [])[1] || relativeUrl;
+        jobs.push({
+            id: `google-${id}`,
+            title,
+            company: source.company,
+            location,
+            remote: /remote/i.test(location),
+            url: new URL(
+                relativeUrl,
+                "https://www.google.com/about/careers/applications/"
+            ).toString(),
+            source: "Official career site",
+            provider: "Google Careers",
+            tags: ["Software Engineering"],
+            postedAt: null,
+        });
+    });
+    return jobs;
+};
+
+const normalizeGenericCareerPage = (html, source) => {
+    const $ = cheerio.load(html);
+    const jobs = [];
+    $("a[href]").each((index, element) => {
+        const link = $(element);
+        const title = link.text().replace(/\s+/g, " ").trim();
+        if (!ENGINEERING_PATTERN.test(title) || !SOFTWARE_JOB_PATTERN.test(title)) return;
+        const surroundingText = link.closest("li, article, section, div").first().text().replace(/\s+/g, " ");
+        const location = (surroundingText.match(/(?:[A-Z][a-z .'-]+,\s*)?(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)(?:,?\s*USA)?/i) || [])[0] || "United States";
+        const url = new URL(link.attr("href"), source.careerUrl).toString();
+        jobs.push({ id: `generic-${source.company}-${index}`, title, company: source.company, location, remote: /remote/i.test(surroundingText), url, source: "Official career site", provider: "Company career page", tags: [], postedAt: null });
+    });
+    return jobs;
+};
+
 const getSourceUrl = ({ provider, board }) => {
     if (provider === "ashby") {
         return `https://api.ashbyhq.com/posting-api/job-board/${board}`;
@@ -162,10 +225,18 @@ const getSourceUrl = ({ provider, board }) => {
         return `https://api.lever.co/v0/postings/${board}?mode=json`;
     }
 
+    if (provider === "google") {
+        return "https://www.google.com/about/careers/applications/jobs/results/?location=United%20States&q=software%20engineer";
+    }
+
+    if (provider === "generic") return null;
+
     throw new Error(`Unsupported career provider: ${provider}`);
 };
 
 const normalizeJobs = (payload, source) => {
+    if (source.provider === "google") return normalizeGoogleJobs(payload, source);
+    if (source.provider === "generic") return normalizeGenericCareerPage(payload, source);
     if (source.provider === "ashby") {
         return normalizeAshbyJobs(payload, source);
     }
@@ -178,7 +249,10 @@ const normalizeJobs = (payload, source) => {
 };
 
 const loadCompanyJobs = async (source) => {
-    const payload = await fetchJson(getSourceUrl(source));
+    const sourceUrl = getSourceUrl(source);
+    const payload = source.provider === "google" || source.provider === "generic"
+        ? await fetchHtml(sourceUrl || source.careerUrl)
+        : await fetchJson(sourceUrl);
 
     return normalizeJobs(payload, source)
         .filter((job) => job.url)
@@ -223,13 +297,21 @@ const settleWithConcurrency = async (
 };
 
 const refreshJobs = async () => {
+    const customSources = await listCustomCareerSources();
+    const allSources = [
+        ...companyCareerSources,
+        ...customSources.filter(custom => !companyCareerSources.some(source =>
+            source.company.toLowerCase() === custom.company.toLowerCase()
+            || (custom.board && source.provider === custom.provider && source.board === custom.board)
+        )),
+    ];
     const results = await settleWithConcurrency(
-        companyCareerSources,
+        allSources,
         loadCompanyJobs
     );
     const jobs = [];
     const sources = results.map((result, index) => {
-        const source = companyCareerSources[index];
+        const source = allSources[index];
 
         if (result.status === "fulfilled") {
             jobs.push(...result.value);
@@ -266,6 +348,17 @@ const refreshJobs = async () => {
         sources,
     };
 
+    await setCachedJson(REDIS_CACHE_KEY, cache, CACHE_TTL_SECONDS);
+
+    return cache;
+};
+
+const getCachedJobs = async () => {
+    if (Date.now() - cache.fetchedAt < CACHE_TTL_MS) return cache;
+    const sharedCache = await getCachedJson(REDIS_CACHE_KEY);
+    if (!sharedCache?.jobs || !sharedCache?.fetchedAt) return null;
+    if (Date.now() - sharedCache.fetchedAt >= CACHE_TTL_MS) return null;
+    cache = sharedCache;
     return cache;
 };
 
@@ -276,9 +369,8 @@ const getActiveJobPostings = async ({
     page = 1,
     limit = 30,
 } = {}) => {
-    const isCacheFresh = Date.now() - cache.fetchedAt < CACHE_TTL_MS;
-    const current = !refresh && isCacheFresh
-        ? cache
+    const current = !refresh
+        ? (await getCachedJobs()) || await refreshJobs()
         : await refreshJobs();
     const queryTerms = query
         .toLowerCase()
@@ -340,4 +432,5 @@ const getActiveJobPostings = async ({
 
 module.exports = {
     getActiveJobPostings,
+    invalidateJobCache,
 };

@@ -10,7 +10,7 @@ const { pool } = require("../config/postgres");
 
 const migrationsDirectory = path.resolve(__dirname, "../db/migrations");
 
-const migrateDatabase = async () => {
+const migrateDatabase = async ({ closePool = false } = {}) => {
     const client = await pool.connect();
 
     try {
@@ -59,11 +59,15 @@ const migrateDatabase = async () => {
         }
     } finally {
         client.release();
-        await pool.end();
+        if (closePool) await pool.end();
     }
 };
 
-migrateDatabase().catch(error => {
-    console.error("Database migration failed:", error);
-    process.exitCode = 1;
-});
+if (require.main === module) {
+    migrateDatabase({ closePool: true }).catch(error => {
+        console.error("Database migration failed:", error);
+        process.exitCode = 1;
+    });
+}
+
+module.exports = { migrateDatabase };

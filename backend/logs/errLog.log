@@ -5,3 +5,10 @@
 20260830	12:56:32	04168e53-2162-4d25-9b2e-c19022807fd2	error: inconsistent types deduced for parameter $1	PATCH	/api/job-applications/8e3deda7-7646-4f57-ab1b-19e2dd604535	http://localhost:3000
 20260830	12:58:07	82444a74-b536-43e1-a971-9625a1602afb	error: inconsistent types deduced for parameter $1	PATCH	/api/job-applications/ebeab292-26fa-478e-9add-1121f1dce35f	http://localhost:3000
 20260830	12:58:09	43f6d8fa-7baa-47c8-b25a-82aaf72b42e8	error: inconsistent types deduced for parameter $1	PATCH	/api/job-applications/ebeab292-26fa-478e-9add-1121f1dce35f	http://localhost:3000
+20260830	13:58:41	aa4d731a-6103-49fe-9aa9-a465fd32839a	error: relation "jobpilot.job_preferences" does not exist	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30	http://localhost:3000
+20260830	13:59:19	8e4c8999-8bbc-48cb-b731-0bcd775baab7	error: relation "jobpilot.job_preferences" does not exist	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30	http://localhost:3000
+20260830	13:59:19	a4a084d5-1d98-4d60-afbc-32acdd906732	error: relation "jobpilot.job_preferences" does not exist	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30	http://localhost:3000
+20260830	14:00:31	9e1f36fe-efb3-4e95-b30e-8c1306b58def	error: column "role" does not exist	GET	/api/auth/me	http://localhost:3000
+20260830	14:00:31	8fdcc3d0-7ec7-46f5-824c-2342e5ca4568	error: relation "jobpilot.job_preferences" does not exist	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30	http://localhost:3000
+20260830	14:00:31	178f7cf2-0e40-4053-ae85-411ae2ae750d	error: column "role" does not exist	GET	/api/auth/me	http://localhost:3000
+20260830	14:00:31	8ec88cd7-ab2a-48c4-be7b-db227adf38a6	error: relation "jobpilot.job_preferences" does not exist	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30	http://localhost:3000

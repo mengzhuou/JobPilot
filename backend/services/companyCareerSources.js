@@ -2,6 +2,7 @@
 // Add new employers only after confirming that their board returns published jobs.
 module.exports = [
     // Core technology employers
+    { company: "Google", provider: "google", board: "google-careers", careerUrl: "https://www.google.com/about/careers/applications/jobs/results/", group: "core" },
     { company: "OpenAI", provider: "ashby", board: "openai", group: "core" },
     { company: "Notion", provider: "ashby", board: "notion", group: "core" },
     { company: "Ramp", provider: "ashby", board: "ramp", group: "core" },

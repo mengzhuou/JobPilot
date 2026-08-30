@@ -33,8 +33,11 @@ const applicationRoutes = require("./routes/applicationRoutes");
 const jobPostingRoutes = require("./routes/jobPostingRoutes");
 const authRoutes = require("./routes/authRoutes");
 const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
+const jobPreferenceRoutes = require("./routes/jobPreferenceRoutes");
+const feedbackRoutes = require("./routes/feedbackRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const { verifyDatabaseConnection } = require("./config/postgres");
+const { migrateDatabase } = require("./scripts/migrateDatabase");
 const cookieParser = require("cookie-parser");
 
 const app = express();
@@ -61,6 +64,8 @@ app.use(cookieParser());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/job-applications", jobApplicationRoutes);
+app.use("/api/job-preferences", jobPreferenceRoutes);
+app.use("/api/feedback", feedbackRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/job-postings", jobPostingRoutes);
 
@@ -78,6 +83,7 @@ app.use(errorHandler);
 
 const startServer = async () => {
     try {
+        await migrateDatabase();
         const connection = await verifyDatabaseConnection();
 
         console.log(`PostgreSQL connected: ${connection.database}`);

@@ -5,6 +5,11 @@ import FillApplication from "./components/Pages/FillApplication/FillApplication"
 import ActiveJobPostings from "./components/Pages/ActiveJobPostings/ActiveJobPostings";
 import JobAppliedHistory from "./components/Pages/JobAppliedHistory/JobAppliedHistory";
 import Login from "./components/Pages/Login/Login";
+import JobPreferences from "./components/Pages/Management/JobPreferences";
+import AdminCompanies from "./components/Pages/Management/AdminCompanies";
+import Feedback from "./components/Pages/Management/Feedback";
+import AdminFeedback from "./components/Pages/Management/AdminFeedback";
+import ManualApplication from "./components/Pages/Management/ManualApplication";
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
 import store from "./components/redux/store";
@@ -62,6 +67,12 @@ const AppRoutes = () => {
                     path="/job-applied-history"
                     element={<ProtectedRoute element={<JobAppliedHistory />} />}
                 />
+                <Route path="/saved-jobs" element={<ProtectedRoute element={<JobPreferences state="saved" />} />} />
+                <Route path="/blocked-jobs" element={<ProtectedRoute element={<JobPreferences state="blocked" />} />} />
+                <Route path="/feedback" element={<ProtectedRoute element={<Feedback />} />} />
+                <Route path="/add-application" element={<ProtectedRoute element={<ManualApplication />} />} />
+                <Route path="/admin/companies" element={<ProtectedRoute element={<AdminCompanies />} />} />
+                <Route path="/admin/feedback" element={<ProtectedRoute element={<AdminFeedback />} />} />
                 <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
         </>
@@ -85,7 +96,7 @@ const TokenVerification = () => {
                 }
 
                 const { user } = await response.json();
-                dispatch(setStudentInfo({ ...user, role: "User" }));
+                dispatch(setStudentInfo(user));
                 dispatch(loginSuccess());
             } catch (error) {
                 console.error("Session restoration failed:", error);

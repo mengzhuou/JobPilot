@@ -101,6 +101,26 @@
     padding: 0 24px;
 }
 
+.career-source-request {
+    display: grid;
+    grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr);
+    max-width: 1180px;
+    margin: 16px auto 0;
+    padding: 18px 20px;
+    box-sizing: border-box;
+    align-items: center;
+    gap: 16px 24px;
+    border: 1px dashed #b8c8df;
+    border-radius: 14px;
+    background: #f9fbff;
+}
+.career-source-request h2 { margin: 0 0 4px; font-size: 16px; }
+.career-source-request p { margin: 0; color: #667085; font-size: 12px; line-height: 1.45; }
+.career-source-request form { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
+.career-source-request input { min-width: 0; height: 42px; padding: 0 12px; border: 1px solid #d8e0eb; border-radius: 9px; box-sizing: border-box; font: inherit; }
+.career-source-request button { padding: 0 16px; border: 0; border-radius: 9px; background: #3361ae; color: #fff; cursor: pointer; font: inherit; font-weight: 750; }
+.career-source-request .career-source-message { grid-column: 1 / -1; color: #27579f; font-weight: 700; }
+
 .job-results-summary {
     display: flex;
     max-width: 1180px;
@@ -305,6 +325,9 @@
     background: #d7efe5;
     color: #087a55;
 }
+.job-card-secondary-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+.job-card-secondary-actions button { padding:7px 10px; border:1px solid #d8e0eb; border-radius:8px; background:#fff; color:#526174; cursor:pointer; font:inherit; font-size:11px; font-weight:750; }
+.job-card-secondary-actions button:last-child { color:#9b2c2c; }
 
 .load-more-jobs {
     display: flex;
@@ -356,4 +379,7 @@
     .job-card-grid {
         grid-template-columns: 1fr;
     }
+    .career-source-request { grid-template-columns: 1fr; }
+    .career-source-request form { grid-template-columns: 1fr; }
+    .career-source-request button { min-height: 42px; }
 }

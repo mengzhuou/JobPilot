@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
-import { getActiveJobPostings } from "../../../connector";
+import { getActiveJobPostings, setJobPreference } from "../../../connector";
 import "./ActiveJobPostings.css";
 
 const formatPostedDate = (date) => {
@@ -99,6 +99,7 @@ const ActiveJobPostings = () => {
     }, []);
 
     const visibleJobs = jobs.filter(job => {
+        if (job.currentUserBlocked) return false;
         if (displayFilter === "applied") return job.currentUserApplied;
         if (displayFilter === "not_applied") return !job.currentUserApplied;
         return true;
@@ -123,6 +124,19 @@ const ActiveJobPostings = () => {
                 jobPostedAt: job.postedAt,
             },
         });
+    };
+
+    const updatePreference = async (job, state) => {
+        try {
+            await setJobPreference({ state, jobUrl:job.url, jobTitle:job.title,
+                company:job.company, location:job.location, source:job.source,
+                externalJobId:job.id });
+            setJobs(current => current.map(item => item.id === job.id
+                ? { ...item, currentUserSaved:state === "saved", currentUserBlocked:state === "blocked" }
+                : item));
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || "Unable to update this job.");
+        }
     };
 
     return (
@@ -267,6 +281,10 @@ const ActiveJobPostings = () => {
                                     >
                                         {job.currentUserApplied ? "Applied" : "Autofill"}
                                     </button>
+                                </div>
+                                <div className="job-card-secondary-actions">
+                                    <button type="button" onClick={() => updatePreference(job, "saved")}>{job.currentUserSaved ? "★ Saved" : "☆ Save"}</button>
+                                    <button type="button" onClick={() => updatePreference(job, "blocked")}>Block</button>
                                 </div>
                             </article>
                         ))}

@@ -68,6 +68,19 @@ const getActiveJobPostings = async ({
     return res.data;
 };
 
+const addCareerSource = async input => {
+    const res = await api.post("/api/job-postings/sources", { input });
+    return res.data.source;
+};
+const getCareerSources = async () => (await api.get("/api/job-postings/sources")).data.sources;
+const setJobPreference = async job => (await api.post("/api/job-preferences", job)).data.job;
+const getJobPreferences = async state => (await api.get("/api/job-preferences", { params:{state} })).data.jobs;
+const deleteJobPreference = async id => { await api.delete(`/api/job-preferences/${id}`); };
+const submitFeedback = async data => (await api.post("/api/feedback",data)).data.feedback;
+const getFeedback = async () => (await api.get("/api/feedback")).data.feedback;
+const updateFeedback = async (id,data) => (await api.patch(`/api/feedback/${id}`,data)).data.feedback;
+const createManualApplication = async data => (await api.post("/api/job-applications/manual",data)).data.application;
+
 const getJobApplicationHistory = async ({
     status = "",
     search = "",
@@ -95,13 +108,27 @@ const confirmJobApplication = async application => {
     return res.data.application;
 };
 
+const deleteJobApplication = async id => {
+    await api.delete(`/api/job-applications/${id}`);
+};
+
 export {
     openAndFillApplication,
     stopApplication,
     getApplicationStatus,
     getActiveJobPostings,
+    addCareerSource,
+    getCareerSources,
+    setJobPreference,
+    getJobPreferences,
+    deleteJobPreference,
+    submitFeedback,
+    getFeedback,
+    updateFeedback,
+    createManualApplication,
     getJobApplicationHistory,
     getJobApplicationSummary,
     updateJobApplication,
     confirmJobApplication,
+    deleteJobApplication,
 };

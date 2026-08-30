@@ -3062,6 +3062,7 @@ const startMultiPageMonitor = async (
 ) => {
 
     let submitClicked = false;
+    let stepAdvanceRequested = false;
 
 
     const installSubmitListener = () => {
@@ -3106,6 +3107,12 @@ const startMultiPageMonitor = async (
                     label.includes("submit application")
                 ) {
                     window.__jobPilotNotifySubmitClick();
+                } else if (
+                    label === "next" ||
+                    label === "continue" ||
+                    label.includes("save and continue")
+                ) {
+                    window.__jobPilotNotifyStepAdvance();
                 }
             },
             true
@@ -3120,6 +3127,13 @@ const startMultiPageMonitor = async (
             console.log(
                 "Submit clicked; waiting for application confirmation."
             );
+        }
+    );
+
+    await page.exposeFunction(
+        "__jobPilotNotifyStepAdvance",
+        () => {
+            stepAdvanceRequested = true;
         }
     );
 
@@ -3166,14 +3180,6 @@ const startMultiPageMonitor = async (
 
 
             try {
-
-                const applicationScope =
-                    await findApplicationScope(
-                        page,
-                        0,
-                        false
-                    );
-
                 if (submitClicked) {
 
                     let submissionConfirmed = false;
@@ -3238,6 +3244,23 @@ const startMultiPageMonitor = async (
                     }
                 }
 
+                // Never rescan simply because the user typed, selected,
+                // or corrected a field. Only an explicit Next/Continue
+                // action is allowed to start another autofill pass.
+                if (!stepAdvanceRequested) {
+                    return;
+                }
+
+                stepAdvanceRequested = false;
+                await page.waitForTimeout(900);
+
+                const applicationScope =
+                    await findApplicationScope(
+                        page,
+                        0,
+                        false
+                    );
+
                 const signature =
                     await getFormSignature(applicationScope);
 
@@ -3258,9 +3281,6 @@ const startMultiPageMonitor = async (
                 console.log(
                     "\n========== NEW APPLICATION STEP DETECTED =========="
                 );
-
-
-                await page.waitForTimeout(750);
 
 
                 const fields =
@@ -3292,7 +3312,7 @@ const startMultiPageMonitor = async (
 
 
     console.log(
-        "Multi-page monitoring is active. Navigate with Next and new fields will be filled automatically."
+        "Step monitoring is active. JobPilot will only refill after Next or Continue."
     );
 };
 
@@ -3489,15 +3509,6 @@ const startApplicationAgent = async (
 
 
     // ==================================================
-    // 5. DEBUG UI
-    // ==================================================
-
-    await inspectInteractiveElements(
-        applicationScope
-    );
-
-
-    // ==================================================
     // 6. EXPAND ACCORDIONS
     // ==================================================
 
@@ -3512,135 +3523,6 @@ const startApplicationAgent = async (
 
     await page.waitForTimeout(
         2000
-    );
-
-
-    // ==================================================
-    // 8. DEBUG AGAIN
-    // ==================================================
-
-    await inspectInteractiveElements(
-        applicationScope
-    );
-
-
-    // ==================================================
-    // 9. PAGE COUNTS
-    // ==================================================
-
-    const inputCount =
-        await applicationScope
-            .locator("input")
-            .count();
-
-
-    const textareaCount =
-        await applicationScope
-            .locator("textarea")
-            .count();
-
-
-    const selectCount =
-        await applicationScope
-            .locator("select")
-            .count();
-
-
-    const buttonCount =
-        await applicationScope
-            .locator("button")
-            .count();
-
-
-    console.log(
-        "\n========== PAGE ELEMENTS =========="
-    );
-
-
-    console.log(
-        "Inputs:    ",
-        inputCount
-    );
-
-
-    console.log(
-        "Textareas: ",
-        textareaCount
-    );
-
-
-    console.log(
-        "Selects:   ",
-        selectCount
-    );
-
-
-    console.log(
-        "Buttons:   ",
-        buttonCount
-    );
-
-
-    console.log(
-        "==================================="
-    );
-
-
-    // ==================================================
-    // 10. EXTRACT FIELDS
-    // ==================================================
-
-    const applicationFields =
-        await extractApplicationFields(
-            applicationScope
-        );
-
-
-    // ==================================================
-    // 11. PRINT FIELDS
-    // ==================================================
-
-    printApplicationFields(
-        applicationFields
-    );
-
-
-    // ==================================================
-    // 12. APPLICATION JSON
-    // ==================================================
-
-    const normalizedApplication = {
-
-        job: {
-
-            url:
-                jobUrl,
-
-            title:
-                await page.title()
-        },
-
-        fields:
-            applicationFields
-    };
-
-
-    console.log(
-        "\n========== APPLICATION JSON =========="
-    );
-
-
-    console.log(
-        JSON.stringify(
-            normalizedApplication,
-            null,
-            2
-        )
-    );
-
-
-    console.log(
-        "\n======================================"
     );
 
 
@@ -3673,6 +3555,14 @@ const startApplicationAgent = async (
         await extractApplicationFields(
             applicationScope
         );
+
+    const normalizedApplication = {
+        job: {
+            url: jobUrl,
+            title: await page.title()
+        },
+        fields: finalFields
+    };
 
 
     console.log(

@@ -47,7 +47,7 @@ const Login = () => {
                     throw new Error(body.message || "Google sign-in failed");
                 }
 
-                dispatch(setStudentInfo({ ...body.user, role: "User" }));
+                dispatch(setStudentInfo(body.user));
                 dispatch(loginSuccess());
                 navigate("/active-job-postings", { replace: true });
             } catch (error) {

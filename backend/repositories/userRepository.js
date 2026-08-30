@@ -47,6 +47,7 @@ const findUserById = async id => {
             first_name,
             last_name,
             picture_url,
+            role,
             created_at,
             last_login_at
         FROM jobpilot.users
