@@ -25,12 +25,20 @@ const TopNavBar = () => {
         setShowProfileModal(false);
     };
 
-    const logoutNav = () => {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('jobpilotMockSession');
-        dispatch(logout());
-        navigate("/login");
-        setIsSidebarOpen(false);
+    const logoutNav = async () => {
+        try {
+            const backendUrl = process.env.REACT_APP_BACKEND_URL || "http://localhost:3500";
+            await fetch(`${backendUrl}/api/auth/logout`, {
+                method: "POST",
+                credentials: "include",
+            });
+        } catch (error) {
+            console.error("Logout request failed:", error);
+        } finally {
+            dispatch(logout());
+            navigate("/login");
+            setIsSidebarOpen(false);
+        }
     };
 
     const goToAdminSite = () => {

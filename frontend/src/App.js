@@ -3,13 +3,12 @@ import { BrowserRouter as Router, Navigate, Routes, Route, useLocation } from "r
 import TopNavBar from "./components/Functions/TopNavBar/TopNavBar";
 import FillApplication from "./components/Pages/FillApplication/FillApplication";
 import ActiveJobPostings from "./components/Pages/ActiveJobPostings/ActiveJobPostings";
-import Login, { MOCK_SESSION_KEY, MOCK_TOKEN } from "./components/Pages/Login/Login";
+import Login from "./components/Pages/Login/Login";
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
 import store from "./components/redux/store";
-import { jwtDecode } from "jwt-decode";
 import { setStudentInfo } from "./components/redux/actions/studentActions";
-import { loginSuccess } from "./components/redux/reducers/authSlice";
+import { authCheckComplete, loginSuccess } from "./components/redux/reducers/authSlice";
 
 class App extends Component {
     state = {
@@ -68,36 +67,28 @@ const TokenVerification = () => {
     const dispatch = useDispatch();
 
     useEffect(() => {
-        const token = localStorage.getItem('authToken');
-        const mockSession = localStorage.getItem(MOCK_SESSION_KEY);
-
-        if (token === MOCK_TOKEN && mockSession) {
+        const restoreSession = async () => {
             try {
-                dispatch(setStudentInfo(JSON.parse(mockSession)));
-                dispatch(loginSuccess());
-                return;
-            } catch (error) {
-                localStorage.removeItem(MOCK_SESSION_KEY);
-                localStorage.removeItem('authToken');
-            }
-        }
+                const backendUrl = process.env.REACT_APP_BACKEND_URL || "http://localhost:3500";
+                const response = await fetch(`${backendUrl}/api/auth/me`, {
+                    credentials: "include",
+                });
 
-        if (token) {
-            try {
-                const decoded = jwtDecode(token);
-
-                if (decoded.exp * 1000 > Date.now()) {
-                    const { email, role, name } = decoded;
-
-                    dispatch(setStudentInfo({ email, role, name }));
-                } else {
-                    localStorage.removeItem('authToken');
+                if (!response.ok) {
+                    dispatch(authCheckComplete());
+                    return;
                 }
+
+                const { user } = await response.json();
+                dispatch(setStudentInfo({ ...user, role: "User" }));
+                dispatch(loginSuccess());
             } catch (error) {
-                console.error('Token verification failed:', error);
-                localStorage.removeItem('authToken');
+                console.error("Session restoration failed:", error);
+                dispatch(authCheckComplete());
             }
-        }
+        };
+
+        restoreSession();
     }, [dispatch]);
 
     return null;

@@ -20,13 +20,21 @@ if (
     );
 }
 
+if (!process.env.GOOGLE_CLIENT_ID || !process.env.SESSION_SECRET) {
+    throw new Error(
+        "GOOGLE_CLIENT_ID and SESSION_SECRET are required in backend/.env."
+    );
+}
+
 const express = require("express");
 const cors = require("cors");
 
 const applicationRoutes = require("./routes/applicationRoutes");
 const jobPostingRoutes = require("./routes/jobPostingRoutes");
+const authRoutes = require("./routes/authRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const { verifyDatabaseConnection } = require("./config/postgres");
+const cookieParser = require("cookie-parser");
 
 const app = express();
 
@@ -37,15 +45,20 @@ const PORT = process.env.PORT || 3500;
 // Middleware
 // ====================
 
-app.use(cors());
+app.use(cors({
+    origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+    credentials: true,
+}));
 
 app.use(express.json());
+app.use(cookieParser());
 
 
 // ====================
 // Routes
 // ====================
 
+app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/job-postings", jobPostingRoutes);
 

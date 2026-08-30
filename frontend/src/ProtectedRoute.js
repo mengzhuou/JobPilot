@@ -1,11 +1,15 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 
 const ProtectedRoute = ({ element }) => {
-  const token = localStorage.getItem('authToken');
-  const mockSession = localStorage.getItem('jobpilotMockSession');
+  const { isAuthenticated, isInitialized } = useSelector(state => state.auth);
 
-  if (!token && !mockSession) {
+  if (!isInitialized) {
+    return <div className="auth-loading">Checking your session…</div>;
+  }
+
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 

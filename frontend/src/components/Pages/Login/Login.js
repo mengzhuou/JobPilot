@@ -1,40 +1,106 @@
-import React, { useEffect, useState } from "react";
-import { useDispatch } from "react-redux";
+import React, { useEffect, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { setStudentInfo } from "../../redux/actions/studentActions";
 import { loginSuccess } from "../../redux/reducers/authSlice";
 import "./Login.css";
 
-const MOCK_SESSION_KEY = "jobpilotMockSession";
-const MOCK_TOKEN = "jobpilot-mock-token";
+const GOOGLE_SCRIPT_ID = "google-identity-services";
 
 const Login = () => {
+    const googleButtonRef = useRef(null);
+    const [errorMessage, setErrorMessage] = useState("");
     const [isSigningIn, setIsSigningIn] = useState(false);
+    const isAuthenticated = useSelector(state => state.auth.isAuthenticated);
     const navigate = useNavigate();
     const dispatch = useDispatch();
 
     useEffect(() => {
-        if (localStorage.getItem(MOCK_SESSION_KEY)) {
+        if (isAuthenticated) {
             navigate("/active-job-postings", { replace: true });
         }
-    }, [navigate]);
+    }, [isAuthenticated, navigate]);
 
-    const handleMockGoogleLogin = () => {
-        setIsSigningIn(true);
+    useEffect(() => {
+        const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
-        const mockUser = {
-            email: "demo@jobpilot.local",
-            name: "JobPilot Demo User",
-            role: "User",
-            picture: null,
+        if (!clientId) {
+            setErrorMessage("Google sign-in is not configured.");
+            return undefined;
+        }
+
+        const handleGoogleCredential = async googleResponse => {
+            setErrorMessage("");
+            setIsSigningIn(true);
+
+            try {
+                const backendUrl = process.env.REACT_APP_BACKEND_URL || "http://localhost:3500";
+                const response = await fetch(`${backendUrl}/api/auth/google`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ credential: googleResponse.credential }),
+                });
+                const body = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(body.message || "Google sign-in failed");
+                }
+
+                dispatch(setStudentInfo({ ...body.user, role: "User" }));
+                dispatch(loginSuccess());
+                navigate("/active-job-postings", { replace: true });
+            } catch (error) {
+                setErrorMessage(error.message || "Unable to sign in with Google.");
+                setIsSigningIn(false);
+            }
         };
 
-        localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(mockUser));
-        localStorage.setItem("authToken", MOCK_TOKEN);
-        dispatch(setStudentInfo(mockUser));
-        dispatch(loginSuccess());
-        navigate("/active-job-postings", { replace: true });
-    };
+        const renderGoogleButton = () => {
+            if (!window.google?.accounts?.id || !googleButtonRef.current) {
+                return;
+            }
+
+            window.google.accounts.id.initialize({
+                client_id: clientId,
+                callback: handleGoogleCredential,
+            });
+            googleButtonRef.current.replaceChildren();
+            window.google.accounts.id.renderButton(googleButtonRef.current, {
+                type: "standard",
+                theme: "outline",
+                size: "large",
+                text: "continue_with",
+                shape: "rectangular",
+                logo_alignment: "left",
+                width: 330,
+            });
+        };
+
+        if (window.google?.accounts?.id) {
+            renderGoogleButton();
+            return undefined;
+        }
+
+        let script = document.getElementById(GOOGLE_SCRIPT_ID);
+        if (!script) {
+            script = document.createElement("script");
+            script.id = GOOGLE_SCRIPT_ID;
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
+
+        script.addEventListener("load", renderGoogleButton);
+        script.addEventListener("error", () => {
+            setErrorMessage("Google sign-in could not be loaded.");
+        });
+
+        return () => {
+            script.removeEventListener("load", renderGoogleButton);
+        };
+    }, [dispatch, navigate]);
 
     return (
         <main className="login-page">
@@ -70,20 +136,17 @@ const Login = () => {
                         <p>Sign in to continue to your active job postings.</p>
                     </div>
 
-                    <button
-                        className="google-login-button"
-                        type="button"
-                        onClick={handleMockGoogleLogin}
-                        disabled={isSigningIn}
-                    >
-                        <span className="google-icon" aria-hidden="true">G</span>
-                        <span>{isSigningIn ? "Signing in…" : "Continue with Google"}</span>
-                    </button>
+                    {errorMessage && (
+                        <div className="login-error" role="alert">{errorMessage}</div>
+                    )}
 
-                    <p className="mock-login-note">
-                        Demo mode: this button creates a local mock session. Google
-                        authentication will replace it next.
-                    </p>
+                    <div
+                        className={`google-button-container ${isSigningIn ? "is-loading" : ""}`}
+                        ref={googleButtonRef}
+                        aria-label="Sign in with Google"
+                    />
+
+                    {isSigningIn && <p className="login-progress">Signing you in…</p>}
 
                     <p className="login-legal">
                         By continuing, you agree to JobPilot&apos;s Terms and acknowledge
@@ -95,5 +158,4 @@ const Login = () => {
     );
 };
 
-export { MOCK_SESSION_KEY, MOCK_TOKEN };
 export default Login;
