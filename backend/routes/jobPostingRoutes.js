@@ -4,6 +4,7 @@ const {
     getCareerSourceDiscovery,
     listCareerSources,
     listActiveJobPostings,
+    previewCareerSource,
 } = require("../controllers/jobPostingController");
 
 const router = express.Router();
@@ -14,6 +15,7 @@ router.use(requireAuth);
 router.get("/", listActiveJobPostings);
 router.get("/sources", requireAdmin, listCareerSources);
 router.post("/sources", requireAdmin, createCareerSource);
+router.post("/sources/preview", requireAdmin, previewCareerSource);
 router.get("/sources/discovery/:id", requireAdmin, getCareerSourceDiscovery);
 
 module.exports = router;

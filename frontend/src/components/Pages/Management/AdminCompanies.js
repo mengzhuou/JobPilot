@@ -3,14 +3,15 @@ import {
     addCareerSource,
     getCareerSourceDiscovery,
     getCareerSources,
+    previewCareerSource,
 } from "../../../connector";
 import "./ManagementPages.css";
 
 const discoveryMessage = discovery => {
     if (discovery.status === "complete") {
         const foundLabel = discovery.jobsFound === 1 ? "job" : "jobs";
-        const addedLabel = discovery.newJobsAdded === 1 ? "job was" : "jobs were";
-        return `${discovery.company} discovery is complete: ${discovery.jobsFound} matching U.S. technical ${foundLabel} found; ${discovery.newJobsAdded} new ${addedLabel} added to Active Job Postings.`;
+        const addedLabel = discovery.newJobsAdded === 1 ? "was" : "were";
+        return `${discovery.company} discovery is complete: ${discovery.jobsFound} matching U.S. technical ${foundLabel} ${addedLabel} added to Active Job Postings.`;
     }
 
     if (discovery.status === "failed") {
@@ -26,6 +27,8 @@ const AdminCompanies = () => {
     const [message, setMessage] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [discovery, setDiscovery] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const [careerSearchUrl, setCareerSearchUrl] = useState("");
 
     const load = useCallback(() => getCareerSources()
         .then(setSources)
@@ -60,12 +63,32 @@ const AdminCompanies = () => {
         event.preventDefault();
         setIsSubmitting(true);
         setMessage("");
+        setCareerSearchUrl("");
+        try {
+            const result = await previewCareerSource(input);
+            setPreview(result);
+            setMessage(`${result.company} was verified. ${result.jobsFound} matching U.S. software-engineering jobs were found, including ${result.newJobsFound} new jobs.`);
+        } catch (error) {
+            setMessage(error.response?.data?.message || error.message);
+            const companyName = input.trim();
+            if (error.response?.status !== 409 && companyName && !/^https?:\/\//i.test(companyName)) {
+                setCareerSearchUrl(`https://www.google.com/search?q=${encodeURIComponent(`${companyName} careers`)}`);
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const confirmAdd = async () => {
+        setIsSubmitting(true);
+        setMessage("");
         try {
             const result = await addCareerSource(input);
-            setInput("");
             setDiscovery(result.discovery);
             setMessage(discoveryMessage(result.discovery));
-            void load();
+            setInput("");
+            setPreview(null);
+            await load();
         } catch (error) {
             setMessage(error.response?.data?.message || error.message);
         } finally {
@@ -81,11 +104,16 @@ const AdminCompanies = () => {
         <section className="management-panel">
             <form className="management-form" onSubmit={submit}>
                 <label className="full">Company name or careers URL
-                    <input value={input} onChange={event => setInput(event.target.value)} placeholder="Google or https://jobs.company.com" required disabled={isSubmitting} />
+                    <input value={input} onChange={event => { setInput(event.target.value); setPreview(null); setCareerSearchUrl(""); }} placeholder="Official careers URL or company name" required disabled={isSubmitting} />
                 </label>
-                <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving source…" : "Add company source"}</button>
+                <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Checking source…" : "Check jobs"}</button>
+                {preview && <button type="button" onClick={confirmAdd} disabled={isSubmitting}>Add verified company</button>}
             </form>
             {message && <p className={`management-message${discovery?.status === "failed" ? " error" : ""}`}>{message}</p>}
+            {careerSearchUrl && <div className="career-search-fallback">
+                <p>Automatic discovery could not validate this company. Search for its official careers page, copy that URL, then paste it into the field above.</p>
+                <a href={careerSearchUrl} target="_blank" rel="noreferrer">Search Google for careers ↗</a>
+            </div>}
             <div className="source-grid">
                 {sources.map((source, index) => <div className="source-chip" key={`${source.company}-${index}`}>
                     <strong>{source.company}</strong><span>{source.provider} · {source.type}</span>

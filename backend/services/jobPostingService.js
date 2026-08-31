@@ -1,7 +1,7 @@
 const companyCareerSources = require("./companyCareerSources");
 const cheerio = require("cheerio");
 const { randomUUID } = require("crypto");
-const { listCustomCareerSources } = require("../repositories/customCareerSourceRepository");
+const { listCustomCareerSources, resolveSource } = require("../repositories/customCareerSourceRepository");
 const { getCachedJson, setCachedJson, deleteCachedValue } = require("../config/redis");
 
 const SOFTWARE_JOB_PATTERN =
@@ -23,6 +23,7 @@ let cache = {
     sources: [],
 };
 let refreshInFlight = null;
+let firstBatchInFlight = null;
 const sourceDiscoveryTasks = new Map();
 
 const SPECIALIZATION_PATTERNS = {
@@ -65,13 +66,21 @@ const invalidateJobCache = () => {
 };
 
 const fetchJson = async (url) => {
-    const response = await fetch(url, {
+    let response;
+    try {
+        response = await fetch(url, {
         headers: {
             Accept: "application/json",
             "User-Agent": "JobPilot/1.0 (official career-site index)",
         },
         signal: AbortSignal.timeout(15000),
-    });
+        });
+    } catch (cause) {
+        const error = new Error(`Could not reach career source ${new URL(url).hostname}`);
+        error.statusCode = 502;
+        error.cause = cause;
+        throw error;
+    }
 
     if (!response.ok) {
         throw new Error(`Request failed with status ${response.status}`);
@@ -81,10 +90,18 @@ const fetchJson = async (url) => {
 };
 
 const fetchHtml = async url => {
-    const response = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 JobPilot/1.0" },
-        signal: AbortSignal.timeout(15000),
-    });
+    let response;
+    try {
+        response = await fetch(url, {
+            headers: { "User-Agent": "Mozilla/5.0 JobPilot/1.0" },
+            signal: AbortSignal.timeout(15000),
+        });
+    } catch (cause) {
+        const error = new Error(`Could not reach ${new URL(url).hostname}`);
+        error.statusCode = 502;
+        error.cause = cause;
+        throw error;
+    }
     if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
     return response.text();
 };
@@ -262,6 +279,9 @@ const normalizeGoogleJobs = (html, source) => {
 
 const normalizeGenericCareerPage = (html, source) => {
     const $ = cheerio.load(html);
+    // Eightfold is frequently hosted on a company's custom careers domain,
+    // so hostname detection alone is not sufficient.
+    if ($("#smartApplyData").length) return normalizeEightfoldJobs(html, source);
     const jobs = [];
     $("a[href]").each((index, element) => {
         const link = $(element);
@@ -273,6 +293,34 @@ const normalizeGenericCareerPage = (html, source) => {
         jobs.push({ id: `generic-${source.company}-${index}`, title, company: source.company, location, remote: /remote/i.test(surroundingText), url, source: "Official career site", provider: "Company career page", tags: [], postedAt: null });
     });
     return jobs;
+};
+
+const normalizeEightfoldJobs = (html, source) => {
+    const $ = cheerio.load(html);
+    const serializedData = $("#smartApplyData").text().trim();
+    if (!serializedData) return [];
+
+    let payload;
+    try {
+        payload = JSON.parse(serializedData);
+    } catch {
+        return [];
+    }
+
+    return (payload.positions || []).map(job => ({
+        id: `eightfold-${source.board || payload.domain}-${job.id}`,
+        title: job.posting_name || job.name,
+        company: source.company,
+        location: (job.locations || [job.location]).filter(Boolean).join(" · "),
+        remote: /remote/i.test(`${job.location || ""} ${job.work_location_option || ""}`),
+        url: job.canonicalPositionUrl || new URL(`careers/job/${job.id}`, source.careerUrl).toString(),
+        source: "Official career site",
+        provider: "Eightfold",
+        tags: [job.department, job.business_unit, job.work_location_option].filter(Boolean),
+        postedAt: job.t_create ? new Date(job.t_create * 1000).toISOString() : null,
+        summary: "",
+        requirements: [],
+    }));
 };
 
 const getSourceUrl = ({ provider, board }) => {
@@ -293,6 +341,7 @@ const getSourceUrl = ({ provider, board }) => {
     }
 
     if (provider === "generic") return null;
+    if (provider === "eightfold") return null;
 
     throw new Error(`Unsupported career provider: ${provider}`);
 };
@@ -300,6 +349,7 @@ const getSourceUrl = ({ provider, board }) => {
 const normalizeJobs = (payload, source) => {
     if (source.provider === "google") return normalizeGoogleJobs(payload, source);
     if (source.provider === "generic") return normalizeGenericCareerPage(payload, source);
+    if (source.provider === "eightfold") return normalizeEightfoldJobs(payload, source);
     if (source.provider === "ashby") {
         return normalizeAshbyJobs(payload, source);
     }
@@ -308,10 +358,46 @@ const normalizeJobs = (payload, source) => {
         return normalizeGreenhouseJobs(payload, source);
     }
 
+    if (source.provider === "oracle-uber") {
+        return payload.map(job => ({
+            id: `uber-${job.Id}`,
+            title: job.Title,
+            company: "Uber",
+            location: job.PrimaryLocation || job.PrimaryLocationCountry || "",
+            remote: /remote/i.test(`${job.PrimaryLocation || ""} ${job.WorkplaceType || ""}`),
+            url: `https://iaziqy.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/UberCareers/job/${job.Id}`,
+            source: "Official career site",
+            provider: "Oracle Recruiting",
+            tags: [job.JobFamily, job.JobFunction, job.WorkplaceType].filter(Boolean),
+            postedAt: job.PostedDate || null,
+            summary: job.ShortDescriptionStr || "",
+            requirements: [job.ExternalQualificationsStr, job.ExternalResponsibilitiesStr].filter(Boolean),
+        }));
+    }
+
     return normalizeLeverJobs(payload, source);
 };
 
 const loadCompanyJobs = async (source) => {
+    if (source.provider === "oracle-uber") {
+        const endpoint = "https://iaziqy.fa.ocs.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions";
+        const makeUrl = offset => `${endpoint}?onlyData=true&expand=requisitionList&finder=${encodeURIComponent(`findReqs;siteNumber=UberCareers,offset=${offset},limit=200`)}`;
+        const firstPayload = await fetchJson(makeUrl(0));
+        const firstResult = firstPayload.items?.[0] || {};
+        const total = Number(firstResult.TotalJobsCount) || 0;
+        const offsets = Array.from({ length: Math.ceil(total / 200) - 1 }, (_, index) => (index + 1) * 200);
+        const remainingPayloads = await Promise.all(offsets.map(offset => fetchJson(makeUrl(offset))));
+        const requisitions = [firstPayload, ...remainingPayloads].flatMap(payload => payload.items?.[0]?.requisitionList || []);
+        return normalizeJobs(requisitions, source).filter(job => job.url).filter(isSoftwareEngineeringJob);
+    }
+    if (source.provider === "eightfold") {
+        const careerUrl = new URL(source.careerUrl);
+        careerUrl.searchParams.set("query", "software engineer");
+        const html = await fetchHtml(careerUrl.toString());
+        return normalizeJobs(html, source)
+            .filter(job => job.url)
+            .filter(isSoftwareEngineeringJob);
+    }
     const sourceUrl = getSourceUrl(source);
     const payload = source.provider === "google" || source.provider === "generic"
         ? await fetchHtml(sourceUrl || source.careerUrl)
@@ -325,7 +411,8 @@ const loadCompanyJobs = async (source) => {
 const settleWithConcurrency = async (
     items,
     worker,
-    concurrency = 8
+    concurrency = 8,
+    onSettled = null
 ) => {
     const results = new Array(items.length);
     let nextIndex = 0;
@@ -346,6 +433,7 @@ const settleWithConcurrency = async (
                     reason: error,
                 };
             }
+            onSettled?.(results, index);
         }
     };
 
@@ -368,57 +456,70 @@ const refreshJobs = async () => {
             || (custom.board && source.provider === custom.provider && source.board === custom.board)
         )),
     ];
-    const results = await settleWithConcurrency(
-        allSources,
-        loadCompanyJobs
-    );
-    const jobs = [];
-    const sources = results.map((result, index) => {
-        const source = allSources[index];
+    const makeSnapshot = (results, refreshing) => {
+        const jobs = [];
+        const sources = allSources.map((source, index) => {
+            const result = results[index];
+            if (!result) return { name: source.company, provider: source.provider, status: "loading" };
+            if (result.status === "fulfilled") jobs.push(...result.value);
+            return {
+                name: source.company,
+                provider: source.provider,
+                status: result.status === "fulfilled" ? "available" : "unavailable",
+            };
+        });
+        const uniqueJobs = Array.from(new Map(jobs.map(job => [job.url, job])).values())
+            .sort((first, second) => new Date(second.postedAt || 0) - new Date(first.postedAt || 0));
+        return { jobs: uniqueJobs, fetchedAt: Date.now(), sources, refreshing };
+    };
 
-        if (result.status === "fulfilled") {
-            jobs.push(...result.value);
-        } else {
+    const results = await settleWithConcurrency(allSources, loadCompanyJobs, 8, partialResults => {
+        const snapshot = makeSnapshot(partialResults, true);
+        cache = snapshot;
+        if (snapshot.jobs.length >= 30) firstBatchInFlight?.resolve(snapshot);
+    });
+    const finalSnapshot = makeSnapshot(results, false);
+    firstBatchInFlight?.resolve(finalSnapshot);
+    results.forEach((result, index) => {
+        const source = allSources[index];
+        if (result.status === "rejected") {
             console.error(
                 `Failed to load ${source.company} careers:`,
                 result.reason.message
             );
         }
-
-        return {
-            name: source.company,
-            provider: source.provider,
-            status:
-                result.status === "fulfilled"
-                    ? "available"
-                    : "unavailable",
-        };
     });
 
-    if (!jobs.length && results.every((result) => result.status === "rejected")) {
+    if (!finalSnapshot.jobs.length && results.every((result) => result.status === "rejected")) {
         throw new Error("All company career sites are currently unavailable.");
     }
 
-    const uniqueJobs = Array.from(
-        new Map(jobs.map((job) => [job.url, job])).values()
-    ).sort((first, second) => {
-        return new Date(second.postedAt || 0) - new Date(first.postedAt || 0);
-    });
-
-    return cacheJobs({
-        jobs: uniqueJobs,
-        fetchedAt: Date.now(),
-        sources,
-    });
+    return cacheJobs(finalSnapshot);
 };
 
 const refreshJobsWithLock = async () => {
     if (refreshInFlight) return refreshInFlight;
 
-    refreshInFlight = refreshJobs().finally(() => {
+    firstBatchInFlight = {};
+    firstBatchInFlight.promise = new Promise((resolve, reject) => {
+        firstBatchInFlight.resolve = resolve;
+        firstBatchInFlight.reject = reject;
+    });
+    firstBatchInFlight.promise.catch(() => {});
+    const batch = firstBatchInFlight;
+    refreshInFlight = refreshJobs().catch(error => {
+        batch.reject(error);
+        throw error;
+    }).finally(() => {
         refreshInFlight = null;
+        if (firstBatchInFlight === batch) firstBatchInFlight = null;
     });
     return refreshInFlight;
+};
+
+const startRefreshAndWaitForFirstBatch = async () => {
+    if (!refreshInFlight) void refreshJobsWithLock().catch(() => {});
+    return firstBatchInFlight ? firstBatchInFlight.promise : getCachedJobs({ allowStale: true });
 };
 
 const getCachedJobs = async ({ allowStale = false } = {}) => {
@@ -438,9 +539,91 @@ const toCareerSource = source => ({
     careerUrl: source.careerUrl || source.career_url,
 });
 
-const addSourceJobsToCache = async source => {
+const inspectCareerSource = async source => {
     const normalizedSource = toCareerSource(source);
     const discoveredJobs = await loadCompanyJobs(normalizedSource);
+    if (!discoveredJobs.length) {
+        const error = new Error("No matching U.S. software-engineering jobs were found at this career source. The company was not saved.");
+        error.statusCode = 422;
+        throw error;
+    }
+    const current = await getCachedJobs({ allowStale: true });
+    const existingUrls = new Set((current?.jobs || []).map(job => job.url));
+    return {
+        source: normalizedSource,
+        discoveredJobs,
+        jobsFound: discoveredJobs.length,
+        newJobsFound: discoveredJobs.filter(job => !existingUrls.has(job.url)).length,
+    };
+};
+
+const extractSearchResultUrls = html => {
+    const $ = cheerio.load(html || "");
+    const urls = new Set();
+    $("a[href]").each((_, element) => {
+        let href = $(element).attr("href") || "";
+        if (href.startsWith("/url?")) href = new URL(href, "https://www.google.com").searchParams.get("q") || "";
+        try {
+            const parsed = new URL(href);
+            const duckDuckGoTarget = parsed.searchParams.get("uddg");
+            urls.add(duckDuckGoTarget ? decodeURIComponent(duckDuckGoTarget) : parsed.toString());
+        } catch {}
+    });
+    return [...urls];
+};
+
+const discoverCareerSource = async companyName => {
+    const displayName = companyName.trim().replace(/\b\w/g, character => character.toUpperCase());
+    const normalizedName = companyName.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const slugs = [...new Set([
+        normalizedName.replace(/\s+/g, ""),
+        normalizedName.replace(/\s+/g, "-"),
+    ].filter(Boolean))];
+    const guessedSources = slugs.flatMap(board => [
+        { company: displayName, provider: "ashby", board, careerUrl: `https://jobs.ashbyhq.com/${board}` },
+        { company: displayName, provider: "greenhouse", board, careerUrl: `https://boards.greenhouse.io/${board}` },
+        { company: displayName, provider: "lever", board, careerUrl: `https://jobs.lever.co/${board}` },
+    ]);
+    const guessedInspections = await Promise.allSettled(guessedSources.map(inspectCareerSource));
+    const validatedGuess = guessedInspections.find(result => result.status === "fulfilled");
+    if (validatedGuess) return validatedGuess.value;
+
+    const query = encodeURIComponent(`${companyName} software engineer careers jobs`);
+    const searches = await Promise.allSettled([
+        fetchHtml(`https://www.google.com/search?q=${query}`),
+        fetchHtml(`https://html.duckduckgo.com/html/?q=${query}`),
+    ]);
+    const blockedHosts = /(?:linkedin|indeed|glassdoor|ziprecruiter|simplify|builtin|wellfound|monster|google)\./i;
+    const candidates = searches.flatMap(result => result.status === "fulfilled" ? extractSearchResultUrls(result.value) : [])
+        .filter(url => {
+            try {
+                const parsed = new URL(url);
+                return !blockedHosts.test(parsed.hostname) && (/ashbyhq\.com$|greenhouse\.io$|lever\.co$/i.test(parsed.hostname) || /career|jobs/i.test(parsed.pathname));
+            } catch { return false; }
+        })
+        .sort((left, right) => Number(!/ashbyhq|greenhouse|lever/i.test(left)) - Number(!/ashbyhq|greenhouse|lever/i.test(right)));
+
+    const attempted = new Set();
+    for (const candidate of candidates.slice(0, 15)) {
+        try {
+            const source = resolveSource(candidate);
+            const key = `${source.provider}:${source.board || source.careerUrl}`;
+            if (attempted.has(key)) continue;
+            attempted.add(key);
+            source.company = displayName;
+            const inspection = await inspectCareerSource(source);
+            return inspection;
+        } catch {}
+    }
+
+    const error = new Error(`JobPilot searched for ${companyName}, but could not validate an official career source containing matching U.S. software-engineering jobs. Try the company's official careers URL.`);
+    error.statusCode = 422;
+    throw error;
+};
+
+const addSourceJobsToCache = async (source, prefetchedJobs = null) => {
+    const normalizedSource = toCareerSource(source);
+    const discoveredJobs = prefetchedJobs || await loadCompanyJobs(normalizedSource);
     const current = await getCachedJobs({ allowStale: true });
 
     // The normal first visit still builds the complete catalogue. In the common
@@ -560,11 +743,15 @@ const getActiveJobPostings = async ({
 } = {}) => {
     let current;
     if (refresh) {
-        current = await refreshJobsWithLock();
+        current = await getCachedJobs({ allowStale: true });
+        void refreshJobsWithLock().catch(error => {
+            console.error("Background job refresh failed:", error.message);
+        });
+        if (!current) current = await startRefreshAndWaitForFirstBatch();
     } else {
         current = await getCachedJobs({ allowStale: true });
         if (!current) {
-            current = await refreshJobsWithLock();
+            current = await startRefreshAndWaitForFirstBatch();
         } else if (Date.now() - current.fetchedAt >= CACHE_TTL_MS) {
             // Return the existing catalogue immediately after an application;
             // source refreshes should never block the user's trip back to results.
@@ -670,6 +857,7 @@ const getActiveJobPostings = async ({
         companiesAvailable: current.sources.filter(
             (source) => source.status === "available"
         ).length,
+        refreshing: Boolean(refreshInFlight || current.refreshing),
     };
 };
 
@@ -677,6 +865,8 @@ module.exports = {
     getActiveJobPostings,
     invalidateJobCache,
     addSourceJobsToCache,
+    inspectCareerSource,
+    discoverCareerSource,
     enqueueSourceJobDiscovery,
     getSourceDiscoveryTask,
     refreshJobsInBackground: () => {

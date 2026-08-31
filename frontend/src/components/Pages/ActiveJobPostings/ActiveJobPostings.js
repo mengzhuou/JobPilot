@@ -33,6 +33,7 @@ const ActiveJobPostings = () => {
     const [fetchedAt, setFetchedAt] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
     const [hasMore, setHasMore] = useState(false);
@@ -50,6 +51,7 @@ const ActiveJobPostings = () => {
     const [locations, setLocations] = useState(Array.isArray(savedFilters.locations) ? savedFilters.locations.filter(value => !/remote/i.test(value)) : []);
     const [locationChipInput, setLocationChipInput] = useState("");
     const [experienceRange, setExperienceRange] = useState(savedFilters.experienceRange || "all");
+    const [applyClearedFilters, setApplyClearedFilters] = useState(false);
     const activeAdvancedFilters = [company, excludeCompany, keywords, remoteOnly, specialization !== "all", eligibility !== "all", employmentType !== "all", postedWithin !== "all", locations.length > 0, experienceRange !== "all"]
         .filter(Boolean).length;
     const locationSuggestions = useMemo(() => Array.from(new Set([
@@ -60,13 +62,16 @@ const ActiveJobPostings = () => {
         forceRefresh = false,
         targetPage = 1,
         append = false,
+        silent = false,
     } = {}) => {
-        if (append) {
+        if (silent) {
+            // Keep the first batch visible while the server fills the catalogue.
+        } else if (append) {
             setIsLoadingMore(true);
         } else {
             setIsLoading(true);
         }
-        setError("");
+        if (!silent) setError("");
 
         try {
             const result = await getActiveJobPostings({
@@ -110,6 +115,7 @@ const ActiveJobPostings = () => {
             setPage(result.page || targetPage);
             setTotal(result.total || 0);
             setHasMore(Boolean(result.hasMore));
+            setIsRefreshing(Boolean(result.refreshing));
         } catch (requestError) {
             setError(
                 requestError.response?.data?.message ||
@@ -117,7 +123,9 @@ const ActiveJobPostings = () => {
                 "Unable to load active job postings."
             );
         } finally {
-            if (append) {
+            if (silent) {
+                // No loading-state transition for background catalogue updates.
+            } else if (append) {
                 setIsLoadingMore(false);
             } else {
                 setIsLoading(false);
@@ -130,6 +138,36 @@ const ActiveJobPostings = () => {
         // Searches are submitted explicitly; application-state tabs reload server totals.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [displayFilter]);
+
+    useEffect(() => {
+        if (!isRefreshing) return undefined;
+        const timer = window.setTimeout(() => {
+            loadJobs({ targetPage: 1, silent: true });
+        }, 1500);
+        return () => window.clearTimeout(timer);
+    }, [isRefreshing, loadJobs]);
+
+    useEffect(() => {
+        if (!applyClearedFilters) return;
+        setApplyClearedFilters(false);
+        loadJobs({ targetPage: 1 });
+    }, [applyClearedFilters, loadJobs]);
+
+    const clearAdvancedFilters = () => {
+        setCompany("");
+        setExcludeCompany("");
+        setKeywords("");
+        setRemoteOnly(false);
+        setSpecialization("all");
+        setEligibility("all");
+        setEmploymentType("all");
+        setPostedWithin("all");
+        setLocations([]);
+        setLocationChipInput("");
+        setExperienceRange("all");
+        localStorage.removeItem(FILTER_STORAGE_KEY);
+        setApplyClearedFilters(true);
+    };
 
     useEffect(() => {
         localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
@@ -244,7 +282,10 @@ const ActiveJobPostings = () => {
             <section className="advanced-filter-shell" aria-label="Advanced job filters">
                 <div className="advanced-filter-heading">
                     <div><span>Refine results</span><strong>Advanced filters</strong></div>
-                    <button className="advanced-filter-toggle" type="button" onClick={() => setShowAdvanced(value => !value)}>{showAdvanced ? "Hide filters" : "Show filters"}{activeAdvancedFilters > 0 && <b>{activeAdvancedFilters}</b>}</button>
+                    <div className="advanced-filter-heading-actions">
+                        {activeAdvancedFilters > 0 && <button className="clear-filters" type="button" onClick={clearAdvancedFilters}>Clear filters</button>}
+                        <button className="advanced-filter-toggle" type="button" onClick={() => setShowAdvanced(value => !value)}>{showAdvanced ? "Hide filters" : "Show filters"}{activeAdvancedFilters > 0 && <b>{activeAdvancedFilters}</b>}</button>
+                    </div>
                 </div>
                 {showAdvanced && <div className="advanced-filter-panel">
                     <label className="advanced-filter-wide">Available Locations
@@ -299,7 +340,7 @@ const ActiveJobPostings = () => {
                             <option value="citizen_or_clearance_required">Only citizenship or clearance-restricted jobs</option>
                         </select>
                     </label>
-                    <div className="advanced-filter-actions"><button className="clear-filters" type="button" onClick={() => { setCompany(""); setExcludeCompany(""); setKeywords(""); setRemoteOnly(false); setSpecialization("all"); setEligibility("all"); setEmploymentType("all"); setPostedWithin("all"); setLocations([]); setExperienceRange("all"); localStorage.removeItem(FILTER_STORAGE_KEY); }}>Clear</button><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
+                    <div className="advanced-filter-actions"><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
                 </div>}
             </section>
 
@@ -335,6 +376,7 @@ const ActiveJobPostings = () => {
                         (source) => source.status === "available"
                     ).length}
                     /{companiesChecked || sources.length} available
+                    {isRefreshing && " · updating…"}
                 </span>
                 {fetchedAt && (
                     <span>

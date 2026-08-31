@@ -103,11 +103,13 @@
 
 .advanced-filter-shell { max-width: 1180px; margin: 14px auto 0; border: 1px solid #e0e6ef; border-radius: 16px; background: #fff; overflow: hidden; }
 .advanced-filter-heading { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; gap: 16px; }
-.advanced-filter-heading div { display: grid; gap: 2px; }
+.advanced-filter-heading > div:first-child { display: grid; gap: 2px; }
 .advanced-filter-heading span { color: #667085; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .advanced-filter-heading strong { color: #172033; font-size: 15px; }
 .advanced-filter-toggle { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid #cbd7e8; border-radius: 9px; background: #f7f9fc; color: #27579f; cursor: pointer; font: inherit; font-size: 13px; font-weight: 800; }
 .advanced-filter-toggle b { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: #3361ae; color: #fff; font-size: 11px; }
+.advanced-filter-heading-actions { display: flex; align-items: center; gap: 8px; }
+.advanced-filter-heading-actions .clear-filters { min-height: 38px; padding: 8px 12px; border: 1px solid #d6deea; border-radius: 9px; background: #fff; color: #526174; cursor: pointer; font: inherit; font-size: 13px; font-weight: 800; }
 .advanced-filter-panel { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; padding: 22px; border-top: 1px solid #e5eaf2; background: #fbfcfe; }
 .advanced-filter-panel label { display: grid; grid-column: span 4; gap: 7px; color: #475467; font-size: 12px; font-weight: 800; }
 .advanced-filter-panel .advanced-filter-wide { grid-column: 1 / -1; padding: 16px 0; border-bottom: 1px solid #e5eaf2; }
@@ -130,7 +132,6 @@
 .eligibility-filter-note { grid-column: 1 / -1; margin: -4px 0 0; color: #667085; font-size: 12px; line-height: 1.4; }
 .advanced-filter-actions { display: flex; align-items: end; justify-content: end; gap: 8px; grid-column: 1 / -1; }
 .advanced-filter-actions button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 9px; background: #3361ae; color: #fff; cursor: pointer; font: inherit; font-size: 13px; font-weight: 800; }
-.advanced-filter-actions .clear-filters { border: 1px solid #d6deea; background: #fff; color: #526174; }
 
 .career-source-request {
     display: grid;

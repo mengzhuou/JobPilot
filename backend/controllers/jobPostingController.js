@@ -1,16 +1,35 @@
 const asyncHandler = require("express-async-handler");
 const {
     getActiveJobPostings,
+    addSourceJobsToCache,
     enqueueSourceJobDiscovery,
     getSourceDiscoveryTask,
+    inspectCareerSource,
+    discoverCareerSource,
 } = require("../services/jobPostingService");
-const { addCustomCareerSource, listCustomCareerSources } = require("../repositories/customCareerSourceRepository");
+const { addResolvedCareerSource, listCustomCareerSources, resolveSource } = require("../repositories/customCareerSourceRepository");
 const { getPreferenceSignals } = require("../repositories/jobPreferenceRepository");
 const companyCareerSources = require("../services/companyCareerSources");
 const {
     getAppliedJobKeys,
     getJobApplicationSignals,
 } = require("../repositories/jobApplicationRepository");
+
+const normalizeCompanyName = value => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const ensureCompanyIsNew = async input => {
+    const rawInput = String(input || "").trim();
+    if (!rawInput || /^https?:\/\//i.test(rawInput) || /^[^\s]+\.[a-z]{2,}/i.test(rawInput)) return;
+    const normalizedInput = normalizeCompanyName(rawInput);
+    const customSources = await listCustomCareerSources();
+    const existing = [...companyCareerSources, ...customSources].find(source =>
+        normalizeCompanyName(source.company) === normalizedInput
+    );
+    if (existing) {
+        const error = new Error(`${existing.company} is already in the company resource list.`);
+        error.statusCode = 409;
+        throw error;
+    }
+};
 
 const listActiveJobPostings = asyncHandler(async (req, res) => {
     const applicationState = req.query.applicationState || "all";
@@ -56,10 +75,44 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
     res.json(results);
 });
 
+const resolveAndInspectCareerSource = async input => {
+    try {
+        const source = resolveSource(input);
+        const hostname = new URL(source.careerUrl).hostname;
+        if (source.provider !== "generic" || hostname.includes(".")) {
+            return inspectCareerSource(source);
+        }
+    } catch (error) {
+        if (/^https?:\/\//i.test(String(input || "").trim())) throw error;
+    }
+    return discoverCareerSource(String(input || "").trim());
+};
+
 const createCareerSource = asyncHandler(async (req, res) => {
-    const source = await addCustomCareerSource(req.auth.userId, req.body.input);
-    const discovery = enqueueSourceJobDiscovery(source);
-    res.status(202).json({ source, discovery });
+    await ensureCompanyIsNew(req.body.input);
+    const inspection = await resolveAndInspectCareerSource(req.body.input);
+    const resolvedSource = inspection.source;
+    const source = await addResolvedCareerSource(req.auth.userId, resolvedSource, req.body.input);
+    const cacheResult = await addSourceJobsToCache(source, inspection.discoveredJobs);
+    res.status(201).json({ source, discovery: {
+        company: source.company,
+        status: "complete",
+        jobsFound: inspection.jobsFound,
+        newJobsAdded: cacheResult.newJobsAdded,
+    } });
+});
+
+const previewCareerSource = asyncHandler(async (req, res) => {
+    await ensureCompanyIsNew(req.body.input);
+    const inspection = await resolveAndInspectCareerSource(req.body.input);
+    const source = inspection.source;
+    res.json({ preview: {
+        company: source.company,
+        careerUrl: source.careerUrl,
+        provider: source.provider,
+        jobsFound: inspection.jobsFound,
+        newJobsFound: inspection.newJobsFound,
+    } });
 });
 
 const getCareerSourceDiscovery = asyncHandler(async (req, res) => {
@@ -79,6 +132,7 @@ const listCareerSources = asyncHandler(async (req, res) => {
 module.exports = {
     listActiveJobPostings,
     createCareerSource,
+    previewCareerSource,
     getCareerSourceDiscovery,
     listCareerSources,
 };

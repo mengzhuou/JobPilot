@@ -94,6 +94,9 @@ const addCareerSource = async input => {
     const res = await api.post("/api/job-postings/sources", { input });
     return res.data;
 };
+const previewCareerSource = async input => (
+    await api.post("/api/job-postings/sources/preview", { input })
+).data.preview;
 const getCareerSourceDiscovery = async id => (
     await api.get(`/api/job-postings/sources/discovery/${id}`)
 ).data.discovery;
@@ -145,6 +148,7 @@ export {
     getApplicationStatus,
     getActiveJobPostings,
     addCareerSource,
+    previewCareerSource,
     getCareerSourceDiscovery,
     getCareerSources,
     setJobPreference,
