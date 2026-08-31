@@ -59,6 +59,9 @@ const getActiveJobPostings = async ({
     eligibility = "all",
     employmentType = "all",
     applicationState = "all",
+    postedWithin = "all",
+    locations = [],
+    experienceRange = "all",
 } = {}) => {
     const res = await api.get(
         "/api/job-postings",
@@ -77,6 +80,9 @@ const getActiveJobPostings = async ({
                 eligibility,
                 employmentType,
                 applicationState,
+                postedWithin,
+                locations: locations.join(","),
+                experienceRange,
             },
         }
     );

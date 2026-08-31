@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
 import { getActiveJobPostings, setJobPreference } from "../../../connector";
 import "./ActiveJobPostings.css";
@@ -26,7 +26,6 @@ const ActiveJobPostings = () => {
     const navigate = useNavigate();
     const routeLocation = useRouteLocation();
     const [query, setQuery] = useState("software engineer");
-    const [location, setLocation] = useState("");
     const [jobs, setJobs] = useState([]);
     const [sources, setSources] = useState([]);
     const [companiesChecked, setCompaniesChecked] = useState(0);
@@ -47,8 +46,15 @@ const ActiveJobPostings = () => {
     const [specialization, setSpecialization] = useState(savedFilters.specialization || "all");
     const [eligibility, setEligibility] = useState(savedFilters.eligibility || "all");
     const [employmentType, setEmploymentType] = useState(savedFilters.employmentType || "all");
-    const activeAdvancedFilters = [company, excludeCompany, keywords, remoteOnly, specialization !== "all", eligibility !== "all", employmentType !== "all"]
+    const [postedWithin, setPostedWithin] = useState(savedFilters.postedWithin || "all");
+    const [locations, setLocations] = useState(Array.isArray(savedFilters.locations) ? savedFilters.locations.filter(value => !/remote/i.test(value)) : []);
+    const [locationChipInput, setLocationChipInput] = useState("");
+    const [experienceRange, setExperienceRange] = useState(savedFilters.experienceRange || "all");
+    const activeAdvancedFilters = [company, excludeCompany, keywords, remoteOnly, specialization !== "all", eligibility !== "all", employmentType !== "all", postedWithin !== "all", locations.length > 0, experienceRange !== "all"]
         .filter(Boolean).length;
+    const locationSuggestions = useMemo(() => Array.from(new Set([
+        ...jobs.flatMap(job => String(job.location || "").split(" · ").map(value => value.trim()).filter(Boolean)),
+    ])).filter(value => !/remote/i.test(value) && !locations.includes(value) && value.toLowerCase().includes(locationChipInput.trim().toLowerCase())).slice(0, 8), [jobs, locationChipInput, locations]);
 
     const loadJobs = useCallback(async ({
         forceRefresh = false,
@@ -65,7 +71,6 @@ const ActiveJobPostings = () => {
         try {
             const result = await getActiveJobPostings({
                 query,
-                location,
                 refresh: forceRefresh,
                 page: targetPage,
                 limit: 30,
@@ -77,6 +82,9 @@ const ActiveJobPostings = () => {
                 eligibility,
                 employmentType,
                 applicationState: displayFilter,
+                postedWithin,
+                locations,
+                experienceRange,
             });
 
             setJobs((currentJobs) => {
@@ -115,7 +123,7 @@ const ActiveJobPostings = () => {
                 setIsLoading(false);
             }
         }
-    }, [company, displayFilter, eligibility, employmentType, excludeCompany, keywords, location, query, remoteOnly, specialization]);
+    }, [company, displayFilter, eligibility, employmentType, excludeCompany, experienceRange, keywords, locations, postedWithin, query, remoteOnly, specialization]);
 
     useEffect(() => {
         loadJobs({ targetPage: 1 });
@@ -127,8 +135,10 @@ const ActiveJobPostings = () => {
         localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
             showAdvanced, company, excludeCompany, keywords, remoteOnly,
             specialization, eligibility, employmentType,
+            postedWithin,
+            locations, experienceRange,
         }));
-    }, [showAdvanced, company, excludeCompany, keywords, remoteOnly, specialization, eligibility, employmentType]);
+    }, [showAdvanced, company, excludeCompany, keywords, remoteOnly, specialization, eligibility, employmentType, postedWithin, locations, experienceRange]);
 
     useEffect(() => {
         if (!routeLocation.state?.confirmedJobUrl) return undefined;
@@ -148,9 +158,16 @@ const ActiveJobPostings = () => {
         loadJobs();
     };
 
+    const addLocationChip = value => {
+        const matchedLocation = locationSuggestions.find(item => item.toLowerCase() === value.trim().toLowerCase());
+        if (matchedLocation) {
+            setLocations(current => [...current, matchedLocation]);
+        }
+        setLocationChipInput("");
+    };
+
     const startAutofill = (job) => {
-        navigate("/autofill", {
-            state: {
+        const autofillJob = {
                 jobUrl: job.url,
                 jobTitle: job.title,
                 company: job.company,
@@ -162,8 +179,11 @@ const ActiveJobPostings = () => {
                 jobPostedAt: job.postedAt,
                 summary: job.summary,
                 requirements: job.requirements,
-            },
-        });
+        };
+        const storageKey = `jobpilot.autofill.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(storageKey, JSON.stringify(autofillJob));
+        window.open(`/autofill?job=${encodeURIComponent(storageKey)}`, "_blank", "noopener,noreferrer");
+        window.setTimeout(() => localStorage.removeItem(storageKey), 60_000);
     };
 
     const updatePreference = async (job, state) => {
@@ -204,21 +224,12 @@ const ActiveJobPostings = () => {
             </section>
 
             <form className="job-search-panel" onSubmit={handleSearch}>
-                <label>
+                <label className="simple-keyword-search">
                     Role or technology
                     <input
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
                         placeholder="Software engineer, React, Java..."
-                    />
-                </label>
-
-                <label>
-                    Location
-                    <input
-                        value={location}
-                        onChange={(event) => setLocation(event.target.value)}
-                        placeholder="Dallas, TX or Remote"
                     />
                 </label>
 
@@ -236,6 +247,17 @@ const ActiveJobPostings = () => {
                     <button className="advanced-filter-toggle" type="button" onClick={() => setShowAdvanced(value => !value)}>{showAdvanced ? "Hide filters" : "Show filters"}{activeAdvancedFilters > 0 && <b>{activeAdvancedFilters}</b>}</button>
                 </div>
                 {showAdvanced && <div className="advanced-filter-panel">
+                    <label className="advanced-filter-wide">Available Locations
+                        <div className="location-autocomplete">
+                            <div className="location-chip-input">
+                                {locations.map(item => <span key={item}>{item}<button type="button" aria-label={`Remove ${item}`} onClick={() => setLocations(current => current.filter(locationItem => locationItem !== item))}>×</button></span>)}
+                                <input value={locationChipInput} onChange={event => setLocationChipInput(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && locationSuggestions[0]) { event.preventDefault(); addLocationChip(locationSuggestions[0]); } }} placeholder="Start typing a city, state" role="combobox" aria-controls="location-filter-suggestions" aria-expanded={Boolean(locationChipInput && locationSuggestions.length)} />
+                            </div>
+                            {locationChipInput && locationSuggestions.length > 0 && <div className="location-suggestions" id="location-filter-suggestions" role="listbox">{locationSuggestions.map(item => <button type="button" role="option" aria-selected="false" key={item} onMouseDown={event => event.preventDefault()} onClick={() => addLocationChip(item)}>{item}</button>)}</div>}
+                            <br/>
+                            <label className="remote-filter"><input type="checkbox" lassName="remote-filter" checked={remoteOnly} onChange={event => setRemoteOnly(event.target.checked)} /> Remote jobs only</label>
+                        </div>
+                    </label>
                     <label>Company<input value={company} onChange={event => setCompany(event.target.value)} placeholder="e.g. Google or Stripe" /></label>
                     <label>Exclude companies<input value={excludeCompany} onChange={event => setExcludeCompany(event.target.value)} placeholder="e.g. Amazon, Meta" /></label>
                     <label>Required skills / keywords<input value={keywords} onChange={event => setKeywords(event.target.value)} placeholder="e.g. React, Java, Kubernetes" /></label>
@@ -255,6 +277,21 @@ const ActiveJobPostings = () => {
                             <option value="intern">Intern</option>
                         </select>
                     </label>
+                    <label>Date posted
+                        <select value={postedWithin} onChange={event => setPostedWithin(event.target.value)}>
+                            <option value="all">Any posting date</option>
+                            <option value="day">New in the last 24 hours</option>
+                            <option value="week">Posted within 1 week</option>
+                            <option value="month">Posted within 1 month</option>
+                            <option value="three_months">Posted within 3 months</option>
+                            <option value="six_months">Posted within 6 months</option>
+                        </select>
+                    </label>
+                    <label>Experience level
+                        <select value={experienceRange} onChange={event => setExperienceRange(event.target.value)}>
+                            <option value="all">Any experience level</option><option value="0_1">0–1 years</option><option value="2_3">2–3 years</option><option value="4_5">4–5 years</option><option value="6_9">6–9 years</option><option value="10_plus">10+ years</option>
+                        </select>
+                    </label>
                     <label>Work authorization / clearance
                         <select value={eligibility} onChange={event => setEligibility(event.target.value)}>
                             <option value="all">All eligibility requirements</option>
@@ -262,9 +299,7 @@ const ActiveJobPostings = () => {
                             <option value="citizen_or_clearance_required">Only citizenship or clearance-restricted jobs</option>
                         </select>
                     </label>
-                    <label className="remote-filter"><input type="checkbox" checked={remoteOnly} onChange={event => setRemoteOnly(event.target.checked)} /> Remote jobs only</label>
-                    <p className="eligibility-filter-note">Eligibility matching uses explicit citizenship and active-clearance language in the employer&apos;s posting.</p>
-                    <div className="advanced-filter-actions"><button className="clear-filters" type="button" onClick={() => { setCompany(""); setExcludeCompany(""); setKeywords(""); setRemoteOnly(false); setSpecialization("all"); setEligibility("all"); setEmploymentType("all"); localStorage.removeItem(FILTER_STORAGE_KEY); }}>Clear</button><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
+                    <div className="advanced-filter-actions"><button className="clear-filters" type="button" onClick={() => { setCompany(""); setExcludeCompany(""); setKeywords(""); setRemoteOnly(false); setSpecialization("all"); setEligibility("all"); setEmploymentType("all"); setPostedWithin("all"); setLocations([]); setExperienceRange("all"); localStorage.removeItem(FILTER_STORAGE_KEY); }}>Clear</button><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
                 </div>}
             </section>
 

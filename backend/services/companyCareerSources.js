@@ -117,7 +117,7 @@ module.exports = [
     { company: "SpaceX", provider: "greenhouse", board: "spacex", group: "simplify" },
     { company: "SteerBridge", provider: "lever", board: "steerbridge", group: "simplify" },
     { company: "Strada", provider: "ashby", board: "stradahq", group: "simplify" },
-    { company: "Tax Relief Advocates", provider: "greenhouse", board: "taxreliefadvocates", group: "simplify" },
+    { company: "Tax Relief Advocates", provider: " ggreenhouse", board: "taxreliefadvocates", group: "simplify" },
     { company: "Torc Robotics", provider: "greenhouse", board: "torcrobotics", group: "simplify" },
     { company: "Tracebit", provider: "ashby", board: "tracebit", group: "simplify" },
     { company: "TransMarket Group", provider: "greenhouse", board: "transmarketgroup", group: "simplify" },

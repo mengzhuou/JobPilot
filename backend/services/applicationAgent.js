@@ -240,10 +240,14 @@ const getProfileValue = (field) => {
 
         return {
             value:
-                `${profile.candidate.location.city}, ${profile.candidate.location.state}`,
+                question === "location" && profile.application_answers?.preferred_application_location
+                    ? profile.application_answers.preferred_application_location
+                    : `${profile.candidate.location.city}, ${profile.candidate.location.state}`,
 
             source:
-                "candidate.location"
+                question === "location" && profile.application_answers?.preferred_application_location
+                    ? "application_answers.preferred_application_location"
+                    : "candidate.location"
         };
     }
 
@@ -2603,6 +2607,17 @@ const fillCheckbox = async (
     if (
         typeof value === "boolean"
     ) {
+
+        const input = getFieldLocator(page, field);
+        if (input) {
+            const ashbyEntry = input.first().locator("xpath=ancestor::*[@data-field-path][1]");
+            const ashbyOption = ashbyEntry.locator(`[data-option="${value ? "yes" : "no"}"]`);
+            if (await ashbyOption.count() && await ashbyOption.first().isVisible().catch(() => false)) {
+                await ashbyOption.first().click({ force: true });
+                console.log("SELECTED ASHBY YES/NO:", value ? "Yes" : "No");
+                return true;
+            }
+        }
 
         if (!value) {
             return true;

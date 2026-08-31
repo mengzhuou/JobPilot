@@ -163,6 +163,7 @@
   "application_answers": {
     "how_heard_about_company": "Careers site",
     "referral_category": "Careers site",
+    "preferred_application_location": "Dallas, Texas, United States",
     "active_security_clearance": "Never held a clearance",
     "givebutter": {
       "how_heard_about_company": "LinkedIn"
@@ -258,6 +259,10 @@
     "llm_coding_workflow": {
       "questions": ["How do LLMs show up in how you write code today? Where do they make you better, and where do you not trust them yet?"],
       "answer": "Code models show up daily as smart autocomplete and boilerplate generators that speed up routine programming tasks. They help with repetitive syntax, initial unit-test drafts, and quick explanations of unfamiliar APIs or libraries. I do not yet trust them with complex system architecture, subtle concurrency bugs, or deep security vulnerabilities, where plausible-looking output can hide broken logic. I treat every output as a draft and carefully review and test it before it reaches production."
+    },
+    "resume_project_role": {
+      "questions": ["In 2-3 sentences, describe a specific project from your resume and your exact role in it.", "Describe a project from your resume and your role in it."],
+      "answer": "I served as the Full-Stack Tech Lead for a 10-person team building the LMC Film Lab equipment-management platform with React, Redux, Node.js, Express, and MongoDB. I led the technical implementation across the frontend and backend, coordinated the team's development work, and helped deliver workflows for inventory, reservations, and equipment tracking."
     }
 }
 }

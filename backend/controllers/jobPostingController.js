@@ -13,7 +13,10 @@ const {
 } = require("../repositories/jobApplicationRepository");
 
 const listActiveJobPostings = asyncHandler(async (req, res) => {
-    const appliedJobKeys = await getAppliedJobKeys(req.auth.userId);
+    const applicationState = req.query.applicationState || "all";
+    const appliedJobKeys = applicationState === "all"
+        ? new Set()
+        : await getAppliedJobKeys(req.auth.userId);
     const results = await getActiveJobPostings({
         query: req.query.query,
         location: req.query.location,
@@ -27,15 +30,17 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
         specialization: req.query.specialization,
         eligibility: req.query.eligibility,
         employmentType: req.query.employmentType,
-        applicationState: req.query.applicationState,
+        applicationState,
         appliedJobKeys,
+        postedWithin: req.query.postedWithin,
+        locations: req.query.locations,
+        experienceRange: req.query.experienceRange,
     });
 
-    const signals = await getJobApplicationSignals(
-        req.auth.userId,
-        results.jobs || []
-    );
-    const preferences = await getPreferenceSignals(req.auth.userId, results.jobs || []);
+    const [signals, preferences] = await Promise.all([
+        getJobApplicationSignals(req.auth.userId, results.jobs || []),
+        getPreferenceSignals(req.auth.userId, results.jobs || []),
+    ]);
     results.jobs = (results.jobs || []).map(job => {
         const signal = signals.get(`url:${job.url}`)
             || signals.get(`id:${String(job.id || "")}`)

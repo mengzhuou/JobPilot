@@ -15,6 +15,7 @@ const US_LOCATION_PATTERN =
 
 const CACHE_TTL_SECONDS = Number(process.env.JOB_CACHE_TTL_SECONDS) || 10 * 60;
 const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
+const SHARED_CACHE_TTL_SECONDS = Math.max(CACHE_TTL_SECONDS, 24 * 60 * 60);
 const REDIS_CACHE_KEY = "jobpilot:active-jobs:v2";
 let cache = {
     jobs: [],
@@ -40,11 +41,21 @@ const hasExactKeyword = (text, keyword) => new RegExp(
     `(^|[^a-z0-9])${escapeRegExp(keyword)}(?=$|[^a-z0-9])`, "i"
 ).test(text);
 
+const getRequiredExperienceYears = text => {
+    const values = [];
+    const pattern = /\b(\d{1,2})(?:\s*(?:-|–|to)\s*\d{1,2})?\+?\s*(?:years?|yrs?)\b/gi;
+    let match;
+    while ((match = pattern.exec(text)) !== null) values.push(Number(match[1]));
+    return values.length ? Math.max(...values) : null;
+};
+
 const CITIZENSHIP_OR_CLEARANCE_RESTRICTION = /\b(?:u\.?s\.?\s*citizen(?:ship)?\s*(?:is\s*)?(?:required|only)|citizens?\s+only|must\s+be\s+(?:a\s+)?u\.?s\.?\s*citizen|active\s+(?:security\s+)?clearance|security\s+clearance\s+(?:is\s+)?required|top[- ]secret|ts\/?sci)\b/i;
 
 const cacheJobs = async nextCache => {
     cache = nextCache;
-    await setCachedJson(REDIS_CACHE_KEY, cache, CACHE_TTL_SECONDS);
+    // Redis retains a stale snapshot longer than the freshness window so a
+    // restarted server can respond immediately and refresh it in background.
+    await setCachedJson(REDIS_CACHE_KEY, cache, SHARED_CACHE_TTL_SECONDS);
     return cache;
 };
 
@@ -543,6 +554,9 @@ const getActiveJobPostings = async ({
     employmentType = "all",
     applicationState = "all",
     appliedJobKeys = new Set(),
+    postedWithin = "all",
+    locations = "",
+    experienceRange = "all",
 } = {}) => {
     let current;
     if (refresh) {
@@ -571,6 +585,21 @@ const getActiveJobPostings = async ({
     const requirementTerms = keywords.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
     const specializationPattern = SPECIALIZATION_PATTERNS[specialization] || null;
     const employmentTypePattern = EMPLOYMENT_TYPE_PATTERNS[employmentType] || null;
+    const postedWithinMs = {
+        day: 24 * 60 * 60 * 1000,
+        week: 7 * 24 * 60 * 60 * 1000,
+        month: 30 * 24 * 60 * 60 * 1000,
+        three_months: 90 * 24 * 60 * 60 * 1000,
+        six_months: 180 * 24 * 60 * 60 * 1000,
+    }[postedWithin] || null;
+    const requestedLocations = locations.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
+    const requestedExperience = {
+        "0_1": { min: 0, max: 1 },
+        "2_3": { min: 2, max: 3 },
+        "4_5": { min: 4, max: 5 },
+        "6_9": { min: 6, max: 9 },
+        "10_plus": { min: 10, max: Infinity },
+    }[experienceRange] || null;
 
     const filteredJobs = current.jobs.filter((job) => {
         const jobText = getJobSearchText(job);
@@ -601,8 +630,16 @@ const getActiveJobPostings = async ({
         const matchesApplicationState = applicationState === "applied"
             ? isApplied
             : applicationState === "not_applied" ? !isApplied : true;
+        const postedAt = job.postedAt ? new Date(job.postedAt).getTime() : NaN;
+        const matchesPostedDate = !postedWithinMs || (Number.isFinite(postedAt) && postedAt >= Date.now() - postedWithinMs);
+        const matchesLocations = !requestedLocations.length || requestedLocations.some(requestedLocation =>
+            job.location.toLowerCase().includes(requestedLocation) || (requestedLocation === "remote" && job.remote)
+        );
+        const requiredExperience = getRequiredExperienceYears(jobText);
+        const matchesExperience = !requestedExperience || (requiredExperience !== null &&
+            requiredExperience >= requestedExperience.min && requiredExperience <= requestedExperience.max);
 
-        return matchesQuery && matchesLocation && matchesCompany && !isExcluded && matchesRequirements && matchesRemote && matchesSpecialization && matchesEligibility && matchesEmploymentType && matchesApplicationState;
+        return matchesQuery && matchesLocation && matchesCompany && !isExcluded && matchesRequirements && matchesRemote && matchesSpecialization && matchesEligibility && matchesEmploymentType && matchesApplicationState && matchesPostedDate && matchesLocations && matchesExperience;
     });
     const normalizedPage = Math.max(
         1,

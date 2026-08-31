@@ -60,7 +60,7 @@
 
 .job-search-panel {
     display: grid;
-    grid-template-columns: 1fr 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     max-width: 1180px;
     margin: 0 auto;
     padding: 22px;
@@ -108,8 +108,21 @@
 .advanced-filter-heading strong { color: #172033; font-size: 15px; }
 .advanced-filter-toggle { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid #cbd7e8; border-radius: 9px; background: #f7f9fc; color: #27579f; cursor: pointer; font: inherit; font-size: 13px; font-weight: 800; }
 .advanced-filter-toggle b { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: #3361ae; color: #fff; font-size: 11px; }
-.advanced-filter-panel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 18px; border-top: 1px solid #e5eaf2; background: #fbfcfe; }
-.advanced-filter-panel label { display: grid; gap: 7px; color: #475467; font-size: 12px; font-weight: 800; }
+.advanced-filter-panel { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; padding: 22px; border-top: 1px solid #e5eaf2; background: #fbfcfe; }
+.advanced-filter-panel label { display: grid; grid-column: span 4; gap: 7px; color: #475467; font-size: 12px; font-weight: 800; }
+.advanced-filter-panel .advanced-filter-wide { grid-column: 1 / -1; padding: 16px 0; border-bottom: 1px solid #e5eaf2; }
+.advanced-filter-panel .remote-filter { max-width: 150px }
+.advanced-filter-panel label:nth-of-type(11) { grid-column: span 8; }
+.location-autocomplete { position: relative; }
+.location-chip-input { min-height: 42px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 6px 9px; box-sizing: border-box; border: 1px solid #d6deea; border-radius: 9px; background: #fff; }
+.location-chip-input:focus-within { border-color: #3361ae; box-shadow: 0 0 0 3px rgba(51, 97, 174, .12); }
+.location-chip-input span { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 999px; background: #eaf0fa; color: #27579f; font-size: 12px; }
+.location-chip-input span button { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #526174; cursor: pointer; font: inherit; line-height: 1; }
+.advanced-filter-panel .location-chip-input input { flex: 1; min-width: 180px; height: 28px; padding: 0 3px; border: 0; box-shadow: none; outline: none; }
+.location-suggestions { position: absolute; z-index: 20; top: calc(100% + 5px); right: 0; left: 0; display: grid; overflow: hidden; border: 1px solid #d6deea; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(31,48,78,.16); }
+.location-suggestions button { padding: 10px 12px; border: 0; border-bottom: 1px solid #edf0f5; background: #fff; color: #344054; cursor: pointer; font: inherit; text-align: left; }
+.location-suggestions button:last-child { border-bottom: 0; }
+.location-suggestions button:hover,.location-suggestions button:focus { background: #edf3ff; color: #27579f; outline: none; }
 .advanced-filter-panel input:not([type="checkbox"]),.advanced-filter-panel select { min-width: 0; height: 42px; padding: 0 12px; box-sizing: border-box; border: 1px solid #d6deea; border-radius: 9px; background: #fff; color: #172033; font: inherit; }
 .advanced-filter-panel input:not([type="checkbox"]):focus,.advanced-filter-panel select:focus { border-color: #3361ae; outline: none; box-shadow: 0 0 0 3px rgba(51, 97, 174, .12); }
 .advanced-filter-panel .remote-filter { display: flex; min-height: 42px; align-items: center; gap: 9px; align-self: end; padding: 0 12px; border: 1px solid #d6deea; border-radius: 9px; background: #fff; white-space: nowrap; }
@@ -398,6 +411,7 @@
         grid-template-columns: 1fr;
     }
     .advanced-filter-panel { grid-template-columns: 1fr; }
+    .advanced-filter-panel label,.advanced-filter-panel label:nth-of-type(11),.advanced-filter-panel .advanced-filter-wide { grid-column: auto; }
     .advanced-filter-actions { grid-column: auto; justify-content: stretch; }
     .advanced-filter-actions button { flex: 1; }
     .career-source-request { grid-template-columns: 1fr; }

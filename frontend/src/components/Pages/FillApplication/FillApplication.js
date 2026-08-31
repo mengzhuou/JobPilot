@@ -12,7 +12,15 @@ import {
 const FillApplication = () => {
     const routeLocation = useLocation();
     const navigate = useNavigate();
-    const job = routeLocation.state || {};
+    const job = React.useMemo(() => {
+        if (routeLocation.state) return routeLocation.state;
+        const storageKey = new URLSearchParams(routeLocation.search).get("job");
+        if (!storageKey) return {};
+        try {
+            return JSON.parse(localStorage.getItem(storageKey)) || {};
+        }
+        catch { return {}; }
+    }, [routeLocation.search, routeLocation.state]);
     const [jobUrl, setJobUrl] = useState(job.jobUrl || "");
     const [status, setStatus] = useState("idle");
     const [showConfirmation, setShowConfirmation] = useState(false);

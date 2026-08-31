@@ -3,11 +3,13 @@ const { createClient } = require("redis");
 let client;
 let connectionPromise;
 let unavailableLogged = false;
+let unavailableUntil = 0;
 
 const getRedisClient = async () => {
     if (!process.env.REDIS_URL) return null;
+    if (Date.now() < unavailableUntil) return null;
     if (!client) {
-        client = createClient({ url: process.env.REDIS_URL, socket: { connectTimeout: 2000, reconnectStrategy: false } });
+        client = createClient({ url: process.env.REDIS_URL, socket: { connectTimeout: 500, reconnectStrategy: false } });
         client.on("error", error => {
             if (!unavailableLogged) {
                 console.warn(`Redis unavailable; using memory cache: ${error.message}`);
@@ -16,7 +18,10 @@ const getRedisClient = async () => {
         });
     }
     if (!client.isOpen) {
-        connectionPromise ||= client.connect().catch(() => null).finally(() => { connectionPromise = null; });
+        connectionPromise ||= client.connect().catch(() => {
+            unavailableUntil = Date.now() + 60_000;
+            return null;
+        }).finally(() => { connectionPromise = null; });
         await connectionPromise;
     }
     return client.isReady ? client : null;
