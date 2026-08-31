@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import "./FillApplication.scss";
 import Button from "../../Button/Button";
 import {
@@ -9,9 +9,16 @@ import {
     stopApplication as stopApplicationAgent,
 } from "../../../connector.js";
 
+const formatJobDate = value => {
+    if (!value) return "Not provided";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+        ? String(value)
+        : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+};
+
 const FillApplication = () => {
     const routeLocation = useLocation();
-    const navigate = useNavigate();
     const job = React.useMemo(() => {
         if (routeLocation.state) return routeLocation.state;
         const storageKey = new URLSearchParams(routeLocation.search).get("job");
@@ -57,6 +64,7 @@ const FillApplication = () => {
         employmentType: job.employmentType,
         workplaceType: job.workplaceType,
         jobPostedAt: job.jobPostedAt,
+        salary: job.salary,
         summary: job.summary,
         requirements: job.requirements,
     };
@@ -94,10 +102,15 @@ const FillApplication = () => {
         setError("");
         try {
             await confirmJobApplication(applicationPayload);
-            navigate("/active-job-postings", {
-                replace: true,
-                state: { confirmedJobId: job.externalJobId, confirmedJobUrl: jobUrl },
-            });
+            localStorage.setItem("jobpilot.application.confirmed", JSON.stringify({
+                externalJobId: job.externalJobId,
+                jobUrl,
+                confirmedAt: Date.now(),
+            }));
+            setShowConfirmation(false);
+            setStatus("applied");
+            setIsConfirming(false);
+            window.setTimeout(() => window.close(), 50);
         } catch (requestError) {
             setError(requestError.response?.data?.message
                 || "Unable to save this application.");
@@ -121,8 +134,15 @@ const FillApplication = () => {
                     <div><span>Location</span><strong>{job.location || "Not provided"}</strong></div>
                     <div><span>Workplace</span><strong>{job.workplaceType || "Not provided"}</strong></div>
                     <div><span>Employment</span><strong>{job.employmentType || "Not provided"}</strong></div>
+                    <div><span>Salary</span><strong>{job.salary || "Not listed"}</strong></div>
+                    <div><span>Date posted</span><strong>{formatJobDate(job.jobPostedAt)}</strong></div>
                     <div><span>Career source</span><strong>{job.source || "Official career site"}</strong></div>
                 </div>
+
+                {(job.provider || job.tags?.length > 0) && <div className="autofill-job-tags" aria-label="Job details">
+                    {job.provider && <span>{job.provider}</span>}
+                    {(job.tags || []).slice(0, 5).map(tag => <span key={tag}>{tag}</span>)}
+                </div>}
 
                 {(job.summary || job.requirements?.length > 0) && <section className="job-requirements-panel">
                     <h2>What this role is looking for</h2>
@@ -161,7 +181,7 @@ const FillApplication = () => {
                         <h2 id="confirmation-title">Did you apply?</h2>
                         <p>Let us know so JobPilot can track your application and keep your job list current.</p>
                         <button className="confirm-applied" type="button" onClick={confirmApplied} disabled={isConfirming}>{isConfirming ? "Saving…" : "Yes, I applied!"}</button>
-                        <button className="confirm-not-applied" type="button" onClick={() => navigate("/active-job-postings")}>No, I didn&apos;t apply</button>
+                        <button className="confirm-not-applied" type="button" onClick={() => setShowConfirmation(false)}>No, I didn&apos;t apply</button>
                     </section>
                 </div>
             )}

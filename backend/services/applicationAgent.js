@@ -10,12 +10,19 @@ const {
     inspectInteractiveElements,
     printApplicationFields
 } = require("./applicationAgentDebug");
+const {
+    SITE_TYPES,
+    detectApplicationSite,
+    getApplicationPageIdentity,
+} = require("./applicationSiteAdapters");
 
 let context = null;
 let page = null;
 let pageMonitor = null;
 let monitorBusy = false;
 let lastFormSignature = null;
+let resumeUploaded = false;
+let externalProfileImported = false;
 
 const resumePath = path.resolve(
     __dirname,
@@ -28,13 +35,27 @@ const userDataDir = path.resolve(
 );
 
 const QUESTION_STOP_WORDS = new Set(["a", "an", "and", "are", "do", "have", "how", "is", "of", "or", "the", "to", "us", "what", "where", "you", "your"]);
-const questionTokens = value => new Set(normalizeText(value).split(" ").filter(token => token.length > 2 && !QUESTION_STOP_WORDS.has(token)));
+const QUESTION_TOKEN_ALIASES = {
+    authorised: "authorization", authorized: "authorization", authorization: "authorization",
+    eligible: "authorization", eligibility: "authorization", right: "authorization",
+    employed: "work", employment: "work", worked: "work", working: "work",
+    developed: "build", created: "build", built: "build", building: "build",
+    relocation: "relocate", relocating: "relocate", commute: "commuting",
+    applications: "application", roles: "role", tools: "tool",
+    requires: "require", required: "require", requirements: "require",
+};
+const questionTokens = value => new Set(normalizeText(value).split(" ")
+    .filter(token => token.length > 2 && !QUESTION_STOP_WORDS.has(token))
+    .map(token => QUESTION_TOKEN_ALIASES[token] || token));
 const questionSimilarity = (left, right) => {
     const leftTokens = questionTokens(left);
     const rightTokens = questionTokens(right);
     if (!leftTokens.size || !rightTokens.size) return 0;
     const overlap = [...leftTokens].filter(token => rightTokens.has(token)).length;
-    return overlap / Math.max(leftTokens.size, rightTokens.size);
+    if (overlap < 2 && Math.min(leftTokens.size, rightTokens.size) > 1) return 0;
+    const dice = (2 * overlap) / (leftTokens.size + rightTokens.size);
+    const containment = overlap / Math.min(leftTokens.size, rightTokens.size);
+    return Math.max(dice, containment * 0.86);
 };
 const getCuratedQuestionAnswer = question => {
     let bestMatch = null;
@@ -46,7 +67,7 @@ const getCuratedQuestionAnswer = question => {
             if (!bestMatch || score > bestMatch.score) bestMatch = { key, answer: item.answer, score };
         });
     });
-    return bestMatch && bestMatch.score >= 0.72 ? bestMatch : null;
+    return bestMatch && bestMatch.score >= 0.64 ? bestMatch : null;
 };
 
 
@@ -54,7 +75,7 @@ const getCuratedQuestionAnswer = question => {
 // PROFILE VALUE
 // ==================================================
 
-const getProfileValue = (field) => {
+const getProfileValue = (field, siteAdapter = { type: SITE_TYPES.GENERIC }) => {
 
     const question =
         normalizeText(
@@ -178,6 +199,35 @@ const getProfileValue = (field) => {
     // PHONE
     // --------------------------------------------------
 
+    const phoneDigits = String(profile.candidate.phone || "").replace(/\D/g, "");
+    const phoneFieldHint = normalizeText([
+        question,
+        field.placeholder,
+        field.ariaLabel,
+        name,
+        id,
+    ].filter(Boolean).join(" "));
+
+    if (phoneFieldHint.includes("country code")) {
+        return {
+            value: getAvailableFormOption(field, [
+                "United States (+1)",
+                "United States +1",
+                "US (+1)",
+                "+1",
+                "United States",
+            ]) || "+1",
+            source: "candidate.phone_country_code"
+        };
+    }
+
+    if (phoneFieldHint.includes("area code")) {
+        return {
+            value: phoneDigits.slice(0, 3),
+            source: "candidate.phone_area_code"
+        };
+    }
+
     if (
         field.type === "tel" ||
         question.includes("phone") ||
@@ -211,7 +261,8 @@ const getProfileValue = (field) => {
     if (
         question === "city" ||
         question === "current city" ||
-        question === "city of residence"
+        question === "city of residence" ||
+        question === "location city"
     ) {
 
         return {
@@ -259,6 +310,23 @@ const getProfileValue = (field) => {
     // --------------------------------------------------
     // LINKEDIN
     // --------------------------------------------------
+
+    if (
+        question.includes("url") &&
+        (
+            question.includes("portfolio") ||
+            question.includes("github") ||
+            question.includes("linkedin")
+        )
+    ) {
+        return {
+            value:
+                profile.candidate.links.portfolio ||
+                profile.candidate.links.github ||
+                profile.candidate.links.linkedin,
+            source: "candidate.links.portfolio"
+        };
+    }
 
     if (
         question.includes("linkedin")
@@ -348,21 +416,90 @@ const getProfileValue = (field) => {
 
     if (
         question.includes("legally authorized to work") ||
-        question.includes("legal authorization to work")
+        question.includes("legal authorization to work") ||
+        question.includes("currently authorized to work") ||
+        question.includes("right to work in the united states")
+    ) {
+
+        const booleanOptions = (field.options || []).map(normalizeText);
+        const usesYesNo = booleanOptions.includes("yes") && booleanOptions.includes("no");
+        const greenhouseBooleanControl = siteAdapter.type === SITE_TYPES.GREENHOUSE
+            && (field.role === "combobox" || field.ariaAutocomplete === "list");
+
+        return {
+            value: usesYesNo || field.ashbyYesNo || greenhouseBooleanControl
+                ? profile.work_authorization?.authorized_to_work_without_sponsorship
+                : getAvailableFormOption(
+                    field,
+                    profile.work_authorization?.authorized_to_work_form_options
+                ),
+            source:
+                usesYesNo || field.ashbyYesNo || greenhouseBooleanControl
+                    ? "work_authorization.authorized_to_work_without_sponsorship"
+                    : "work_authorization.authorized_to_work_form_options"
+        };
+    }
+
+
+    if (
+        question.includes("currently based in the us") ||
+        question.includes("currently based in the united states")
     ) {
 
         return {
-            value:
-                profile.work_authorization
-                    ?.authorized_to_work_without_sponsorship,
-            source:
-                "work_authorization.authorized_to_work_without_sponsorship"
+            value: normalizeText(profile.candidate?.location?.country).includes("united states"),
+            source: "candidate.location.country"
+        };
+    }
+
+
+    if (question.includes("citizenship status")) {
+
+        return {
+            value: getAvailableFormOption(
+                field,
+                profile.work_authorization?.citizenship_status_form_options
+            ),
+            source: "work_authorization.citizenship_status_form_options"
+        };
+    }
+
+
+    if (
+        question.includes("essential functions") &&
+        question.includes("reasonable accommodation")
+    ) {
+
+        return {
+            value: profile.application_answers?.can_perform_essential_functions,
+            source: "application_answers.can_perform_essential_functions"
+        };
+    }
+
+
+    if (
+        siteAdapter.spacexQuestions &&
+        question.includes("spacex") &&
+        question.includes("employment history")
+    ) {
+
+        return {
+            value: getAvailableFormOption(
+                field,
+                profile.application_answers?.spacex_employment_history_form_options
+            ),
+            source: "application_answers.spacex_employment_history_form_options"
         };
     }
 
     if (
         question.includes("require sponsorship") ||
-        question.includes("employment visa sponsorship")
+        question.includes("immigration sponsorship") ||
+        question.includes("employment visa sponsorship") ||
+        (
+            question.includes("sponsorship") &&
+            question.includes("immigration support")
+        )
     ) {
 
         return {
@@ -375,6 +512,73 @@ const getProfileValue = (field) => {
     }
 
 
+    if (
+        question.includes("keep your application for 12 months") ||
+        question.includes("retain your application for future roles")
+    ) {
+
+        return {
+            value: profile.application_answers?.retain_application_for_future_roles,
+            source: "application_answers.retain_application_for_future_roles"
+        };
+    }
+
+
+    if (
+        question.includes("currently employed by one of ubers subsidiaries") ||
+        question.includes("currently employed by an uber subsidiary")
+    ) {
+
+        return {
+            value: profile.application_answers?.currently_employed_by_uber_subsidiary,
+            source: "application_answers.currently_employed_by_uber_subsidiary"
+        };
+    }
+
+
+    if (question.includes("open to being considered for other roles")) {
+
+        return {
+            value: profile.application_answers?.open_to_other_roles,
+            source: "application_answers.open_to_other_roles"
+        };
+    }
+
+
+    if (
+        question.includes("been a driver") ||
+        question.includes("delivered with uber eats") ||
+        question.includes("delivered with uber freight")
+    ) {
+
+        return {
+            value: profile.application_answers?.uber_driver_or_delivery_partner,
+            source: "application_answers.uber_driver_or_delivery_partner"
+        };
+    }
+
+
+    if (question.includes("ever been employed by uber")) {
+
+        return {
+            value: profile.application_answers?.previously_employed_by_uber,
+            source: "application_answers.previously_employed_by_uber"
+        };
+    }
+
+
+    if (
+        question.includes("comfortable working onsite") &&
+        (question.includes("days a week") || question.includes("days per week"))
+    ) {
+
+        return {
+            value: true,
+            source: "job_preferences.office_days_per_week_form_option"
+        };
+    }
+
+
     // --------------------------------------------------
     // EXPERIENCE / EDUCATION / ROLE PREFERENCES
     // --------------------------------------------------
@@ -382,6 +586,17 @@ const getProfileValue = (field) => {
     const workHistory =
         profile.career
             ?.work_history || [];
+
+    if (
+        question.includes("current or most recent company") ||
+        question.includes("current most recent company") ||
+        question.includes("name of your current company")
+    ) {
+        return {
+            value: profile.career?.current_company,
+            source: "career.current_company"
+        };
+    }
 
 
     if (
@@ -507,8 +722,20 @@ const getProfileValue = (field) => {
     ) {
 
         return {
-            value: "Bachelor’s Degree",
+            value: "Bachelor",
             source: "education.highest_level"
+        };
+    }
+
+    if (
+        question === "discipline" ||
+        question.includes("field of study") ||
+        question.includes("area of study")
+    ) {
+
+        return {
+            value: profile.education?.field_of_study,
+            source: "education.field_of_study"
         };
     }
 
@@ -605,6 +832,7 @@ const getProfileValue = (field) => {
         name.includes("gender") ||
         id.includes("gender") ||
         question === "gender" ||
+        question.includes("gender identity") ||
         question.includes("select your gender")
     ) {
 
@@ -627,10 +855,16 @@ const getProfileValue = (field) => {
     // RACE
     // --------------------------------------------------
 
+    if (/race or national origin option [2-9]/.test(question)) {
+        return null;
+    }
+
     if (
         name.includes("race") ||
         id.includes("race") ||
         question === "race" ||
+        question.includes("ethnicity") ||
+        question.includes("ethnicities") ||
         question.includes("raceethnicity") ||
         question.includes("race ethnicity")
     ) {
@@ -651,6 +885,31 @@ const getProfileValue = (field) => {
 
 
     // --------------------------------------------------
+    // SEXUAL ORIENTATION / TRANSGENDER STATUS
+    // --------------------------------------------------
+
+    if (question.includes("sexual orientation")) {
+        return {
+            value: getAvailableFormOption(
+                field,
+                profile.eeoc?.sexual_orientation?.form_options
+            ) || profile.eeoc?.sexual_orientation?.answer,
+            source: "eeoc.sexual_orientation.form_options"
+        };
+    }
+
+    if (question.includes("transgender experience") || question.includes("transgender")) {
+        return {
+            value: getAvailableFormOption(
+                field,
+                profile.eeoc?.transgender_status?.form_options
+            ) || profile.eeoc?.transgender_status?.is_transgender,
+            source: "eeoc.transgender_status.form_options"
+        };
+    }
+
+
+    // --------------------------------------------------
     // VETERAN
     // --------------------------------------------------
 
@@ -659,6 +918,19 @@ const getProfileValue = (field) => {
         id.includes("veteran") ||
         question.includes("veteran")
     ) {
+
+        if (
+            siteAdapter.type === SITE_TYPES.GREENHOUSE &&
+            (
+                question.includes("served in the military") ||
+                question.includes("have you served")
+            )
+        ) {
+            return {
+                value: false,
+                source: "eeoc.veteran_status.answer"
+            };
+        }
 
         return {
             value:
@@ -676,11 +948,69 @@ const getProfileValue = (field) => {
 
 
     // --------------------------------------------------
+    // NETFLIX-SPECIFIC APPLICATION / EEOC QUESTIONS
+    // --------------------------------------------------
+
+    if (siteAdapter.netflixQuestions) {
+        const orientationOptions = [
+            "asexual", "bisexual", "gay", "heterosexual", "lesbian",
+            "pansexual", "queer", "not listed", "i choose not to disclose",
+        ];
+        const isOrientationOption = orientationOptions.some(option =>
+            question === option || question.endsWith(` ${option}`)
+        );
+
+        if (field.type === "checkbox" && isOrientationOption) {
+            return {
+                value: profile.eeoc?.sexual_orientation?.answer,
+                source: "eeoc.sexual_orientation.form_options"
+            };
+        }
+
+        if (question.includes("currently working for netflix") && question.includes("contractor")) {
+            return {
+                value: profile.application_answers?.currently_working_for_netflix_as_contractor,
+                source: "application_answers.currently_working_for_netflix_as_contractor"
+            };
+        }
+
+        if (question.includes("worked for netflix") && question.includes("past")) {
+            return {
+                value: profile.application_answers?.previously_worked_for_netflix,
+                source: "application_answers.previously_worked_for_netflix"
+            };
+        }
+    }
+
+    if (
+        question.includes("by selecting i agree") ||
+        (
+            question.includes("candidate privacy policy") &&
+            question.includes("agree")
+        )
+    ) {
+        return {
+            value: getAvailableFormOption(field, ["I agree", "Agree", "Yes"]),
+            source: "autofill_policy.candidate_privacy_acknowledgement"
+        };
+    }
+
+    if (
+        question.includes("by checking this box") &&
+        question.includes("i consent")
+    ) {
+        return {
+            value: true,
+            source: "autofill_policy.demographic_data_consent"
+        };
+    }
+
+
+    // --------------------------------------------------
     // DISABILITY
     // --------------------------------------------------
 
     if (
-        field.type === "radio" &&
         (
             name.includes("disability") ||
             id.includes("disability") ||
@@ -716,6 +1046,61 @@ const getProfileValue = (field) => {
 // ==================================================
 // WAIT FOR APPLICATION UI
 // ==================================================
+
+const APPLY_ACTION_NAME = /^(?:apply|apply now|apply for this job|apply to this job|start application)$/i;
+
+const hasVisibleApplicationFields = async targetPage => {
+    const controls = targetPage.locator(
+        'input:not([type="hidden"]):not([type="search"]), textarea, select'
+    );
+    const count = await controls.count();
+    let visibleCount = 0;
+    for (let index = 0; index < Math.min(count, 4); index += 1) {
+        if (await controls.nth(index).isVisible().catch(() => false)) visibleCount += 1;
+    }
+    return visibleCount >= 2 || await targetPage.locator('input[type="file"]').first().isVisible().catch(() => false);
+};
+
+const openApplicationForm = async (targetPage, targetContext) => {
+    if (await hasVisibleApplicationFields(targetPage)) return targetPage;
+
+    for (const frame of targetPage.frames()) {
+        const candidates = [
+            frame.getByRole("button", { name: APPLY_ACTION_NAME }),
+            frame.getByRole("link", { name: APPLY_ACTION_NAME }),
+        ];
+
+        for (const candidateGroup of candidates) {
+            const candidateCount = await candidateGroup.count().catch(() => 0);
+            for (let index = 0; index < candidateCount; index += 1) {
+                const candidate = candidateGroup.nth(index);
+                const actionable = await candidate.isVisible().catch(() => false)
+                    && await candidate.isEnabled().catch(() => false);
+                if (!actionable) continue;
+
+                const pagesBeforeClick = new Set(targetContext.pages());
+                const previousUrl = targetPage.url();
+                const label = (await candidate.innerText().catch(() => "Apply")).trim() || "Apply";
+                console.log(`Opening application form via "${label}".`);
+                await candidate.click({ timeout: 10000 });
+                await targetPage.waitForTimeout(800).catch(() => {});
+
+                const popup = targetContext.pages().find(openPage => !pagesBeforeClick.has(openPage));
+                const applicationPage = popup || targetPage;
+                await applicationPage.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
+                await applicationPage.waitForTimeout(700).catch(() => {});
+                console.log(
+                    popup ? "Application opened in a new tab:" : previousUrl !== applicationPage.url() ? "Application page:" : "Application form opened:",
+                    applicationPage.url()
+                );
+                return applicationPage;
+            }
+        }
+    }
+
+    console.log("No separate Apply action was needed or found.");
+    return targetPage;
+};
 
 const waitForApplicationUI = async (page) => {
 
@@ -1101,7 +1486,10 @@ const expandAllAccordions = async (page) => {
 // EXTRACT FORM FIELDS
 // ==================================================
 
-const extractApplicationFields = async (page) => {
+const extractApplicationFields = async (
+    page,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
+) => {
 
     console.log(
         "\n========== EXTRACTING FORM FIELDS =========="
@@ -1114,7 +1502,7 @@ const extractApplicationFields = async (page) => {
                 "input, textarea, select"
             )
             .evaluateAll(
-                elements => {
+                (elements, siteType) => {
 
                     const cleanText =
                         text => {
@@ -1324,7 +1712,9 @@ const extractApplicationFields = async (page) => {
 
 
                             let type =
-                                rawType;
+                                element.tagName.toLowerCase() === "input"
+                                    ? rawType || "text"
+                                    : rawType;
 
 
                             if (
@@ -1365,6 +1755,20 @@ const extractApplicationFields = async (page) => {
                                 getQuestion(
                                     element
                                 );
+
+
+                            // Some career sites (including Oracle Candidate
+                            // Experience) render editable inputs without an id
+                            // or name. Give every extracted element a stable
+                            // locator for the duration of this autofill pass.
+                            const locatorKey =
+                                `jobpilot-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
+
+
+                            element.setAttribute(
+                                "data-jobpilot-field-key",
+                                locatorKey
+                            );
 
 
                             // ----------------------------------
@@ -1480,6 +1884,11 @@ const extractApplicationFields = async (page) => {
                                 );
 
 
+                            const ashbyYesNoContainer = siteType === "ashby"
+                                ? element.closest(".ashby-application-form-input-yesno")
+                                : null;
+
+
                             return {
 
                                 index,
@@ -1494,15 +1903,16 @@ const extractApplicationFields = async (page) => {
 
                                 id,
 
+                                locatorKey,
+
                                 placeholder:
                                     element.getAttribute(
                                         "placeholder"
                                     ),
 
                                 required:
-                                    element.hasAttribute(
-                                        "required"
-                                    ),
+                                    element.hasAttribute("required") ||
+                                    element.getAttribute("aria-required") === "true",
 
                                 ariaLabel:
                                     element.getAttribute(
@@ -1526,6 +1936,14 @@ const extractApplicationFields = async (page) => {
                                 checked:
                                     Boolean(element.checked),
 
+                                ashbyYesNo:
+                                    Boolean(ashbyYesNoContainer),
+
+                                ashbySelectedOption:
+                                    ashbyYesNoContainer
+                                        ?.querySelector('[data-option][aria-pressed="true"]')
+                                        ?.getAttribute("data-option") || null,
+
                                 visible:
                                     Boolean(
                                         element.getClientRects().length
@@ -1540,7 +1958,8 @@ const extractApplicationFields = async (page) => {
                             };
                         }
                     );
-                }
+                },
+                siteAdapter.type
             );
 
 
@@ -1568,7 +1987,10 @@ const extractApplicationFields = async (page) => {
             if (
                 !field.visible &&
                 field.type !== "file" &&
-                field.type !== "select"
+                (
+                    field.type !== "select" ||
+                    siteAdapter.type === SITE_TYPES.GREENHOUSE
+                )
             ) {
                 return false;
             }
@@ -1606,6 +2028,27 @@ const uploadResume = async (page) => {
     console.log(
         "\n========== UPLOADING RESUME =========="
     );
+
+
+    if (resumeUploaded) {
+
+        console.log(
+            "Resume was already uploaded in this application session."
+        );
+
+        return true;
+    }
+
+
+    if (externalProfileImported) {
+
+        console.log(
+            "Keeping the resume imported by the career site's autofill."
+        );
+
+        resumeUploaded = true;
+        return true;
+    }
 
 
     const fileInputs =
@@ -1657,6 +2100,9 @@ const uploadResume = async (page) => {
         );
 
 
+        resumeUploaded = true;
+
+
         await page.waitForTimeout(
             5000
         );
@@ -1690,6 +2136,13 @@ const getFieldLocator = (
     page,
     field
 ) => {
+
+    if (field.locatorKey) {
+
+        return page.locator(
+            `[data-jobpilot-field-key="${field.locatorKey}"]`
+        );
+    }
 
     if (field.id) {
 
@@ -1740,10 +2193,15 @@ const fillTextField = async (
 
     try {
 
+        const answerValue = typeof value === "boolean"
+            ? getBooleanFormAnswer(value, ["Yes", "No"])
+            : value;
+
+
         const formValue =
             field.type === "month"
-                ? String(value).slice(0, 7)
-                : String(value);
+                ? String(answerValue).slice(0, 7)
+                : String(answerValue);
 
         await locator
             .first()
@@ -1756,6 +2214,11 @@ const fillTextField = async (
             await page.waitForTimeout(250);
 
             const expected = normalizeText(formValue);
+            const normalizedQuestion = normalizeText(field.question || field.label || "");
+            const allowPartialOptionMatch =
+                normalizedQuestion.includes("location") ||
+                normalizedQuestion.includes("city") ||
+                normalizedQuestion.includes("address");
             const options = page.locator('[role="option"]');
             const optionCount = await options.count();
             for (let index = 0; index < optionCount; index++) {
@@ -1763,16 +2226,17 @@ const fillTextField = async (
                 if (!(await option.isVisible().catch(() => false))) continue;
                 const optionText = await option.innerText().catch(() => "");
                 const normalizedOption = normalizeText(optionText);
-                if (normalizedOption === expected || normalizedOption.includes(expected)) {
+                if (
+                    normalizedOption === expected ||
+                    (allowPartialOptionMatch && normalizedOption.includes(expected))
+                ) {
                     await option.click({ force: true });
                     console.log("COMBOBOX SELECTED:", optionText.trim());
                     return true;
                 }
             }
-            await locator.first().press("ArrowDown").catch(() => {});
-            await locator.first().press("Enter").catch(() => {});
-            console.log("COMBOBOX SELECTED BY KEYBOARD:", formValue);
-            return true;
+            console.log("COMBOBOX EXACT OPTION NOT FOUND:", formValue);
+            return false;
         }
 
 
@@ -2601,7 +3065,8 @@ const fillCheckbox = async (
     page,
     field,
     value,
-    fields
+    fields,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
 ) => {
 
     if (
@@ -2609,7 +3074,7 @@ const fillCheckbox = async (
     ) {
 
         const input = getFieldLocator(page, field);
-        if (input) {
+        if (input && siteAdapter.ashbyYesNo) {
             const ashbyEntry = input.first().locator("xpath=ancestor::*[@data-field-path][1]");
             const ashbyOption = ashbyEntry.locator(`[data-option="${value ? "yes" : "no"}"]`);
             if (await ashbyOption.count() && await ashbyOption.first().isVisible().catch(() => false)) {
@@ -2726,13 +3191,54 @@ const fillCheckbox = async (
 };
 
 
+const getLiveFieldState = async (
+    applicationScope,
+    field,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
+) => {
+    const locator = getFieldLocator(applicationScope, field);
+    if (!locator) return null;
+
+    return locator.first().evaluate((element, siteType) => {
+        const name = element.getAttribute("name");
+        const fieldContainerSelector = siteType === "ashby"
+            ? "[data-field-path], .ashby-application-form-field-entry"
+            : ".field, .field-entry, fieldset, [role='group']";
+        const fieldContainer = element.closest(fieldContainerSelector) || element.parentElement;
+        const ashbyContainer = siteType === "ashby"
+            ? element.closest(".ashby-application-form-input-yesno")
+            : null;
+        const customSelection = fieldContainer?.querySelector([
+            '[aria-selected="true"]',
+            '[aria-checked="true"]',
+            '[aria-pressed="true"]',
+            '[class*="singleValue"]',
+            '[class*="multiValue"]',
+            '[class*="selected-value"]',
+        ].join(", "));
+
+        return {
+            value: element.value,
+            checked: Boolean(element.checked),
+            groupChecked: Boolean(name && Array.from(document.getElementsByName(name))
+                .some(candidate => Boolean(candidate.checked))),
+            ashbySelectedOption: ashbyContainer
+                ?.querySelector('[data-option][aria-pressed="true"]')
+                ?.getAttribute("data-option") || null,
+            customHasSelection: Boolean(customSelection),
+        };
+    }, siteAdapter.type).catch(() => null);
+};
+
+
 // ==================================================
 // FILL APPLICATION
 // ==================================================
 
 const fillApplicationFields = async (
     page,
-    fields
+    fields,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
 ) => {
 
     console.log(
@@ -2828,7 +3334,8 @@ const fillApplicationFields = async (
 
         const profileValue =
             getProfileValue(
-                field
+                field,
+                siteAdapter
             );
 
 
@@ -2846,10 +3353,16 @@ const fillApplicationFields = async (
         }
 
 
+        // Greenhouse and other importers can populate fields after the
+        // extraction snapshot. Re-read this exact control immediately before
+        // deciding whether it is safe to fill.
+        const liveState = await getLiveFieldState(page, field, siteAdapter);
+
+
         // Preserve values already supplied by the user,
-        // resume parsing, or an earlier autofill pass.
+        // resume parsing, an external importer, or an earlier autofill pass.
         const currentValue =
-            String(field.value || "").trim();
+            String(liveState?.value ?? field.value ?? "").trim();
 
 
         const hasValidDateValue =
@@ -2893,42 +3406,36 @@ const fillApplicationFields = async (
                 field.type === "radio" ||
                 field.type === "checkbox"
             ) &&
-            fields.some(
+            (Boolean(liveState?.groupChecked) || fields.some(
                 candidate =>
                     candidate.type === field.type &&
                     candidate.name === field.name &&
                     candidate.checked
-            );
+            ));
+
+
+        const ashbyHasSelection =
+            field.ashbyYesNo &&
+            Boolean(liveState?.ashbySelectedOption || field.ashbySelectedOption);
+
+
+        const customControlHasSelection =
+            Boolean(liveState?.customHasSelection);
 
 
         const falseCheckboxIsAnswered =
             field.type === "checkbox" &&
-            profileValue.value === false;
-
-
-        const isProfileWorkHistoryField =
-            Number.isInteger(
-                field.workExperienceIndex
-            ) ||
-            Number.isInteger(
-                field.completedWorkExperienceIndex
-            );
-
-
-        const shouldOverrideExisting =
-            normalizeText(field.question)
-                .includes("how did you hear about") ||
-            normalizeText(field.question)
-                .includes("how did you first hear");
+            profileValue.value === false &&
+            !field.ashbyYesNo;
 
 
         if (
-            !isProfileWorkHistoryField &&
-            !shouldOverrideExisting &&
             (
                 hasTextValue ||
                 hasSelectValue ||
                 groupHasSelection ||
+                ashbyHasSelection ||
+                customControlHasSelection ||
                 falseCheckboxIsAnswered
             )
         ) {
@@ -3068,7 +3575,8 @@ const fillApplicationFields = async (
                     page,
                     field,
                     profileValue.value,
-                    fields
+                    fields,
+                    siteAdapter
                 );
 
 
@@ -3104,52 +3612,357 @@ const fillApplicationFields = async (
 };
 
 
+const fillCustomRadioGroups = async (
+    applicationScope,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
+) => {
+    if (!siteAdapter.oracleRadioPills) return;
+    const groups = applicationScope.locator('[role="radiogroup"]');
+    const groupCount = await groups.count().catch(() => 0);
+
+    for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+        const group = groups.nth(groupIndex);
+        if (!await group.isVisible().catch(() => false)) continue;
+
+        const question = await group.evaluate(element => {
+            const ariaLabel = element.getAttribute("aria-label");
+            if (ariaLabel) return ariaLabel.trim();
+
+            const labelledBy = element.getAttribute("aria-labelledby");
+            if (labelledBy) {
+                const text = labelledBy.split(/\s+/)
+                    .map(id => document.getElementById(id)?.innerText || "")
+                    .join(" ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                if (text) return text;
+            }
+
+            const row = element.closest(".input-row, fieldset, [role='group']");
+            return row?.querySelector("label, legend")?.innerText?.trim() || "";
+        }).catch(() => "");
+
+        const radios = group.getByRole("radio");
+        const optionCount = await radios.count().catch(() => 0);
+        const options = [];
+        let selectedOption = "";
+        for (let optionIndex = 0; optionIndex < optionCount; optionIndex += 1) {
+            const radio = radios.nth(optionIndex);
+            const optionText = (await radio.innerText().catch(() => "")).trim();
+            options.push(optionText);
+            if (await radio.getAttribute("aria-checked") === "true") selectedOption = optionText;
+        }
+
+        if (selectedOption) {
+            console.log(`KEEP EXISTING CUSTOM RADIO: ${question} -> ${selectedOption}`);
+            continue;
+        }
+
+        const profileValue = getProfileValue({
+            type: "radio",
+            question,
+            label: question,
+            options,
+        }, siteAdapter);
+        if (!profileValue || profileValue.value === undefined || profileValue.value === null) {
+            console.log(`SKIP CUSTOM RADIO: ${question}`);
+            continue;
+        }
+
+        const answer = getBooleanFormAnswer(profileValue.value, options);
+        const normalizedAnswer = normalizeText(answer);
+        let matchingRadio = null;
+        for (let optionIndex = 0; optionIndex < optionCount; optionIndex += 1) {
+            const radio = radios.nth(optionIndex);
+            const optionText = await radio.innerText().catch(() => "");
+            if (normalizeText(optionText) === normalizedAnswer) {
+                matchingRadio = radio;
+                break;
+            }
+        }
+
+        if (!matchingRadio) {
+            console.log(`CUSTOM RADIO OPTION NOT FOUND: ${question} -> ${answer}`);
+            continue;
+        }
+
+        if (await matchingRadio.getAttribute("aria-checked") !== "true") {
+            await matchingRadio.click({ force: true });
+        }
+        console.log(`SELECTED CUSTOM RADIO: ${question} -> ${answer}`);
+    }
+};
+
+
+const fillProviderCustomSelects = async (
+    applicationScope,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
+) => {
+    if (!siteAdapter.customSelects) return 0;
+
+    const comboboxes = applicationScope.getByRole("combobox");
+    const count = await comboboxes.count().catch(() => 0);
+    let selectedCount = 0;
+
+    for (let index = 0; index < count; index += 1) {
+        const combobox = comboboxes.nth(index);
+        if (!await combobox.isVisible().catch(() => false)) continue;
+
+        const metadata = await combobox.evaluate(element => {
+            const normalize = value => String(value || "").replace(/\s+/g, " ").trim();
+            const labelledBy = element.getAttribute("aria-labelledby");
+            const labelledText = labelledBy
+                ? labelledBy.split(/\s+/).map(id => document.getElementById(id)?.innerText || "").join(" ")
+                : "";
+            let container = element.closest("fieldset, [role='group'], .field, [class*='field']")
+                || element.parentElement;
+            let label = container?.querySelector("label, legend, [class*='label']");
+            for (let depth = 0; !label && container && depth < 6; depth += 1) {
+                container = container.parentElement;
+                label = container?.querySelector("label, legend, [class*='label']");
+            }
+            const currentValue = normalize(
+                element.value
+                || element.getAttribute("value")
+                || element.innerText
+                || element.textContent
+            );
+
+            return {
+                question: normalize(element.getAttribute("aria-label") || labelledText || label?.innerText),
+                placeholder: normalize(
+                    element.getAttribute("placeholder")
+                    || element.getAttribute("data-placeholder")
+                    || element.innerText
+                    || element.textContent
+                ),
+                selected: Boolean(currentValue)
+                    && !/^(?:select|choose)\b/i.test(currentValue)
+                    && !/\b(?:select|choose)(?:\.{3}|…)?$/i.test(currentValue),
+            };
+        }).catch(() => ({ question: "", placeholder: "", selected: false }));
+
+        if (metadata.selected) {
+            console.log(`KEEP EXISTING ${siteAdapter.type.toUpperCase()} SELECT: ${metadata.question || metadata.placeholder}`);
+            continue;
+        }
+
+        await combobox.scrollIntoViewIfNeeded().catch(() => {});
+        if (!await combobox.click({ force: true }).then(() => true).catch(() => false)) continue;
+        await applicationScope.waitForTimeout(150);
+
+        const optionLocators = applicationScope.locator([
+            '[role="option"]',
+            '[role="listbox"] li',
+            '[role="listbox"] button',
+        ].join(", "));
+        const optionCount = await optionLocators.count().catch(() => 0);
+        const visibleOptions = [];
+        for (let optionIndex = 0; optionIndex < optionCount; optionIndex += 1) {
+            const option = optionLocators.nth(optionIndex);
+            if (!await option.isVisible().catch(() => false)) continue;
+            const text = (await option.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+            if (text) visibleOptions.push({ option, text });
+        }
+
+        const profileValue = getProfileValue({
+            type: "select",
+            question: metadata.question,
+            label: metadata.question,
+            placeholder: metadata.placeholder,
+            ariaLabel: metadata.question,
+            options: visibleOptions.map(({ text }) => text),
+        }, siteAdapter);
+
+        if (!profileValue || profileValue.value === undefined || profileValue.value === null) {
+            continue;
+        }
+
+        const answer = getBooleanFormAnswer(profileValue.value, visibleOptions.map(({ text }) => text));
+        const expected = normalizeText(answer);
+        const match = visibleOptions.find(({ text }) => normalizeText(text) === expected);
+        if (!match) {
+            console.log(`${siteAdapter.type.toUpperCase()} CUSTOM OPTION NOT FOUND: ${metadata.question} -> ${answer}`);
+            continue;
+        }
+
+        await match.option.click({ force: true });
+        selectedCount += 1;
+        console.log(`SELECTED ${siteAdapter.type.toUpperCase()} CUSTOM OPTION: ${metadata.question} -> ${match.text}`);
+    }
+
+    return selectedCount;
+};
+
+
+const acceptAgreementCheckboxes = async (
+    targetPage,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
+) => {
+    let acceptedCount = 0;
+
+    for (const frame of targetPage.frames()) {
+        // Oracle Candidate Experience renders its legal disclaimer as a
+        // clickable span, without an input or checkbox role.
+        const customCheckboxes = siteAdapter.oracleAgreementCheckbox ? frame.locator([
+            ".apply-flow-input-checkbox__button",
+            "[class*='checkbox__button']",
+            "[data-bind*='toggleAccepted']",
+        ].join(", ")) : frame.locator("__jobpilot_no_oracle_agreement__");
+        const customCount = await customCheckboxes.count().catch(() => 0);
+
+        for (let index = 0; index < customCount; index += 1) {
+            const checkbox = customCheckboxes.nth(index);
+            const state = await checkbox.evaluate(element => {
+                const container = element.closest(
+                    ".apply-flow-input-checkbox, label, fieldset, [role='group']"
+                ) || element.parentElement;
+                const text = (container?.innerText || "")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                const checked = element.getAttribute("aria-checked") === "true"
+                    || /(?:^|\s)[^\s]*checkbox[^\s]*--checked(?:\s|$)/.test(element.className || "");
+
+                return {
+                    agreement: /^i agree\b/i.test(text)
+                        || /\bi agree (?:with|to)\b/i.test(text),
+                    checked,
+                };
+            }).catch(() => ({ agreement: false, checked: false }));
+
+            if (!state.agreement
+                || state.checked
+                || !await checkbox.isVisible().catch(() => false)) {
+                continue;
+            }
+
+            const clicked = await checkbox.click({ force: true })
+                .then(() => true)
+                .catch(() => false);
+            if (clicked) {
+                acceptedCount += 1;
+                console.log("Accepted a custom application agreement checkbox.");
+            }
+        }
+
+        const checkboxes = frame.getByRole("checkbox");
+        const count = await checkboxes.count().catch(() => 0);
+
+        for (let index = 0; index < count; index += 1) {
+            const checkbox = checkboxes.nth(index);
+            const agreement = await checkbox.evaluate(element => {
+                const labelText = Array.from(element.labels || [])
+                    .map(label => label.innerText || label.textContent || "")
+                    .join(" ");
+                const nearbyText = element.closest("label, fieldset, [role='group'], div")
+                    ?.innerText || "";
+                const text = [
+                    labelText,
+                    element.getAttribute("aria-label") || "",
+                    nearbyText,
+                ].join(" ").replace(/\s+/g, " ").trim();
+
+                return /^i agree\b/i.test(text)
+                    || /\bi agree (?:with|to)\b/i.test(text);
+            }).catch(() => false);
+
+            if (!agreement
+                || !await checkbox.isVisible().catch(() => false)
+                || await checkbox.isChecked().catch(() => false)) {
+                continue;
+            }
+
+            await checkbox.check({ force: true }).catch(() => {});
+            if (await checkbox.isChecked().catch(() => false)) {
+                acceptedCount += 1;
+                console.log("Accepted an application agreement checkbox.");
+            }
+        }
+    }
+
+    return acceptedCount;
+};
+
+
+const acknowledgePrivacyDialogs = async (
+    targetPage,
+    siteAdapter = { type: SITE_TYPES.GENERIC }
+) => {
+    if (!siteAdapter.acknowledgePrivacy) return false;
+
+    for (const frame of targetPage.frames()) {
+        const acknowledgeButtons = frame.getByRole("button", {
+            name: /^(?:i\s+)?acknowledge$/i,
+        });
+        const count = await acknowledgeButtons.count().catch(() => 0);
+
+        for (let index = 0; index < count; index += 1) {
+            const button = acknowledgeButtons.nth(index);
+            if (!await button.isVisible().catch(() => false)
+                || !await button.isEnabled().catch(() => false)) {
+                continue;
+            }
+
+            const clicked = await button.click({ force: true })
+                .then(() => true)
+                .catch(() => false);
+            if (clicked) {
+                console.log("Acknowledged the Netflix candidate privacy dialog.");
+                await targetPage.waitForTimeout(300);
+                return true;
+            }
+        }
+    }
+
+    return false;
+};
+
+
+const clickNextApplicationStep = async targetPage => {
+    const nextActionName = /^(?:next|continue|save and continue)$/i;
+
+    for (const frame of targetPage.frames()) {
+        const candidates = [
+            frame.getByRole("button", { name: nextActionName }),
+            frame.getByRole("link", { name: nextActionName }),
+        ];
+
+        for (const candidateGroup of candidates) {
+            const count = await candidateGroup.count().catch(() => 0);
+            for (let index = 0; index < count; index += 1) {
+                const candidate = candidateGroup.nth(index);
+                if (!await candidate.isVisible().catch(() => false)
+                    || !await candidate.isEnabled().catch(() => false)) {
+                    continue;
+                }
+
+                const label = (await candidate.innerText().catch(() => "Next")).trim() || "Next";
+                const clicked = await candidate.click({ timeout: 10000 })
+                    .then(() => true)
+                    .catch(error => {
+                        console.log(`Could not click ${label}:`, error.message);
+                        return false;
+                    });
+                if (!clicked) continue;
+                console.log(`Advanced application via "${label}".`);
+                return true;
+            }
+        }
+    }
+
+    console.log("No enabled Next or Continue action is available yet.");
+    return false;
+};
+
+
 // ==================================================
 // MULTI-PAGE APPLICATION MONITOR
 // ==================================================
 
-const getFormSignature = async page => {
-
-    return page.locator(
-        "input, textarea, select"
-    ).evaluateAll(elements => {
-
-        const fields = elements.map(element => {
-
-            const label =
-                element.labels && element.labels.length
-                    ? element.labels[0].innerText
-                    : element.getAttribute("aria-label") || "";
-
-
-            const options =
-                element.tagName === "SELECT"
-                    ? Array.from(element.options)
-                        .map(option => option.textContent.trim())
-                        .join("|")
-                    : "";
-
-
-            return [
-                element.tagName,
-                element.getAttribute("type") || "",
-                element.getAttribute("name") || "",
-                element.id || "",
-                label.replace(/\s+/g, " ").trim(),
-                options
-            ].join("|");
-        });
-
-
-        return `${location.href}::${fields.join("::")}`;
-    });
-};
-
-
 const startMultiPageMonitor = async (
     page,
     initialScope,
-    initialSignature = null,
+    siteAdapter,
     onSubmissionConfirmed = null
 ) => {
 
@@ -3251,10 +4064,9 @@ const startMultiPageMonitor = async (
     }
 
 
-    lastFormSignature =
-        initialSignature ||
-        await getFormSignature(initialScope)
-            .catch(() => null);
+    // Step monitoring is intentionally based on navigation, not form shape.
+    // Select widgets frequently add/remove hidden inputs on the same page.
+    lastFormSignature = await getApplicationPageIdentity(page, siteAdapter);
 
 
     pageMonitor = setInterval(
@@ -3272,14 +4084,12 @@ const startMultiPageMonitor = async (
 
 
             try {
-                if (submitClicked) {
-
-                    let submissionConfirmed = false;
+                let submissionConfirmed = false;
 
 
-                    for (const frame of page.frames()) {
-                        const confirmed =
-                            await frame.evaluate(() => {
+                for (const frame of page.frames()) {
+                    const confirmed =
+                        await frame.evaluate(() => {
 
                                 const text =
                                     document.body
@@ -3289,6 +4099,8 @@ const startMultiPageMonitor = async (
 
                                 const successText = [
                                     "successfully applied",
+                                    "application was successfully submitted",
+                                    "your application was successfully submitted",
                                     "application submitted",
                                     "application has been submitted",
                                     "thank you for applying",
@@ -3304,47 +4116,52 @@ const startMultiPageMonitor = async (
 
 
                                 return successText || successUrl;
-                            }).catch(() => false);
+                        }).catch(() => false);
 
 
-                        if (confirmed) {
-                            submissionConfirmed = true;
-                            break;
-                        }
-                    }
-
-
-                    if (submissionConfirmed) {
-
-                        console.log(
-                            "Application submission confirmed. Closing the tab."
-                        );
-
-                        if (onSubmissionConfirmed) {
-                            await onSubmissionConfirmed().catch(error => {
-                                console.log(
-                                    "Could not save application history:",
-                                    error.message
-                                );
-                            });
-                        }
-
-
-                        await page.waitForTimeout(1000);
-                        await page.close();
-                        return;
+                    if (confirmed) {
+                        submissionConfirmed = true;
+                        break;
                     }
                 }
 
-                // Never rescan simply because the user typed, selected,
-                // or corrected a field. Only an explicit Next/Continue
-                // action is allowed to start another autofill pass.
-                if (!stepAdvanceRequested) {
+
+                if (submissionConfirmed) {
+
+                    console.log(
+                        submitClicked
+                            ? "Application submission confirmed after Submit. Closing the browser."
+                            : "Application success page detected. Closing the browser."
+                    );
+
+                    if (onSubmissionConfirmed) {
+                        await onSubmissionConfirmed().catch(error => {
+                            console.log(
+                                "Could not save application history:",
+                                error.message
+                            );
+                        });
+                    }
+
+
+                    await page.waitForTimeout(1000);
+                    await closeApplicationSession();
                     return;
                 }
 
+                // Most providers use the URL as page identity. Oracle keeps
+                // the same URL while moving from verification/account setup
+                // into the real application, so its adapter contributes a
+                // stable phase marker. Ordinary field mutations are ignored.
+                const explicitAdvance = stepAdvanceRequested;
                 stepAdvanceRequested = false;
-                await page.waitForTimeout(900);
+                if (explicitAdvance) {
+                    await page.waitForTimeout(900);
+                }
+
+                const currentPageIdentity = await getApplicationPageIdentity(page, siteAdapter);
+                if (currentPageIdentity === lastFormSignature) return;
+                lastFormSignature = currentPageIdentity;
 
                 const applicationScope =
                     await findApplicationScope(
@@ -3353,38 +4170,33 @@ const startMultiPageMonitor = async (
                         false
                     );
 
-                const signature =
-                    await getFormSignature(applicationScope);
-
-
-                if (
-                    !signature ||
-                    signature === lastFormSignature
-                ) {
-                    return;
-                }
-
-
-                // Record first so changes caused by this fill pass
-                // can trigger one more pass for conditional fields.
-                lastFormSignature = signature;
-
-
                 console.log(
                     "\n========== NEW APPLICATION STEP DETECTED =========="
                 );
 
 
+                await uploadResume(
+                    applicationScope
+                );
+
+
                 const fields =
                     await extractApplicationFields(
-                        applicationScope
+                        applicationScope,
+                        siteAdapter
                     );
 
 
                 await fillApplicationFields(
                     applicationScope,
-                    fields
+                    fields,
+                    siteAdapter
                 );
+
+                await fillCustomRadioGroups(applicationScope, siteAdapter);
+                await fillProviderCustomSelects(applicationScope, siteAdapter);
+                await acceptAgreementCheckboxes(page, siteAdapter);
+                await clickNextApplicationStep(page);
 
             } catch (error) {
 
@@ -3404,7 +4216,7 @@ const startMultiPageMonitor = async (
 
 
     console.log(
-        "Step monitoring is active. JobPilot will only refill after Next or Continue."
+        "Step monitoring is active. JobPilot will refill and advance multi-page applications."
     );
 };
 
@@ -3425,6 +4237,8 @@ const closeApplicationSession = async (
 
     monitorBusy = false;
     lastFormSignature = null;
+    resumeUploaded = false;
+    externalProfileImported = false;
 
 
     if (!targetContext) {
@@ -3538,13 +4352,22 @@ const startApplicationAgent = async (
         page.url()
     );
 
+    page = await openApplicationForm(page, launchedContext);
+
+    let siteAdapter = await detectApplicationSite(page);
+    console.log(`Application site adapter: ${siteAdapter.type}`);
+
+    await acknowledgePrivacyDialogs(page, siteAdapter);
+
     const greenhouseAutofill = page.getByRole("button", {
         name: /autofill my application/i
     });
-    if (await greenhouseAutofill.first().isVisible().catch(() => false)) {
+    if (siteAdapter.greenhouseProfileImport
+        && await greenhouseAutofill.first().isVisible().catch(() => false)) {
         console.log("Greenhouse autofill is available; opening it first.");
         await greenhouseAutofill.first().click({ force: true });
         await page.waitForTimeout(1500);
+        externalProfileImported = true;
     }
 
 
@@ -3603,6 +4426,15 @@ const startApplicationAgent = async (
     );
 
 
+    const resolvedSiteAdapter = await detectApplicationSite(page);
+    if (resolvedSiteAdapter.type !== siteAdapter.type) {
+        console.log(`Application site adapter changed after navigation: ${siteAdapter.type} -> ${resolvedSiteAdapter.type}`);
+        siteAdapter = resolvedSiteAdapter;
+    }
+
+    await acknowledgePrivacyDialogs(page, siteAdapter);
+
+
     const applicationScope =
         await findApplicationScope(
             page
@@ -3654,7 +4486,8 @@ const startApplicationAgent = async (
 
     const finalFields =
         await extractApplicationFields(
-            applicationScope
+            applicationScope,
+            siteAdapter
         );
 
     const normalizedApplication = {
@@ -3680,25 +4513,27 @@ const startApplicationAgent = async (
     // 15. AUTOFILL
     // ==================================================
 
-    const signatureBeforeAutofill =
-        await getFormSignature(applicationScope)
-            .catch(() => null);
-
-
     await fillApplicationFields(
         applicationScope,
-        finalFields
+        finalFields,
+        siteAdapter
     );
 
 
-    // Watch for Next/Continue navigation and conditional
-    // fields that appear after answers are selected.
+    // Watch multi-page navigation and fill conditional fields
+    // that appear after answers are selected.
     await startMultiPageMonitor(
         page,
         applicationScope,
-        signatureBeforeAutofill,
+        siteAdapter,
         options.onSubmissionConfirmed
     );
+
+
+    await fillCustomRadioGroups(applicationScope, siteAdapter);
+    await fillProviderCustomSelects(applicationScope, siteAdapter);
+    await acceptAgreementCheckboxes(page, siteAdapter);
+    await clickNextApplicationStep(page);
 
 
     // ==================================================

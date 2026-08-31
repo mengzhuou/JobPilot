@@ -67,7 +67,7 @@ const ActiveJobPostings = () => {
     const [hasMore, setHasMore] = useState(false);
     const [error, setError] = useState("");
     const [displayFilter, setDisplayFilter] = useState("all");
-    const [showAdvanced, setShowAdvanced] = useState(Boolean(savedFilters.showAdvanced));
+    const [showAdvanced, setShowAdvanced] = useState(false);
     const [includeCompanies, setIncludeCompanies] = useState(Array.isArray(savedFilters.includeCompanies) ? savedFilters.includeCompanies : (savedFilters.company ? [savedFilters.company] : []));
     const [excludeCompanies, setExcludeCompanies] = useState(Array.isArray(savedFilters.excludeCompanies) ? savedFilters.excludeCompanies : String(savedFilters.excludeCompany || "").split(",").map(value => value.trim()).filter(Boolean));
     const [requiredSkills, setRequiredSkills] = useState(Array.isArray(savedFilters.requiredSkills) ? savedFilters.requiredSkills : String(savedFilters.keywords || "").split(",").map(value => value.trim()).filter(Boolean));
@@ -187,6 +187,15 @@ const ActiveJobPostings = () => {
     }, [displayFilter]);
 
     useEffect(() => {
+        const refreshAfterApplicationConfirmation = event => {
+            if (event.key !== "jobpilot.application.confirmed" || !event.newValue) return;
+            loadJobs({ targetPage: 1, silent: true });
+        };
+        window.addEventListener("storage", refreshAfterApplicationConfirmation);
+        return () => window.removeEventListener("storage", refreshAfterApplicationConfirmation);
+    }, [loadJobs]);
+
+    useEffect(() => {
         if (!isRefreshing) return undefined;
         const timer = window.setTimeout(() => {
             loadJobs({ targetPage: 1, silent: true });
@@ -224,12 +233,12 @@ const ActiveJobPostings = () => {
 
     useEffect(() => {
         localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
-            showAdvanced, includeCompanies, excludeCompanies, requiredSkills, remoteOnly,
+            includeCompanies, excludeCompanies, requiredSkills, remoteOnly,
             excludeFocuses, excludeEligibility, excludeJobTypes,
             postedWithin,
             locations, excludeLevels, includeLevels,
         }));
-    }, [showAdvanced, includeCompanies, excludeCompanies, requiredSkills, remoteOnly, excludeFocuses, excludeEligibility, excludeJobTypes, postedWithin, locations, excludeLevels, includeLevels]);
+    }, [includeCompanies, excludeCompanies, requiredSkills, remoteOnly, excludeFocuses, excludeEligibility, excludeJobTypes, postedWithin, locations, excludeLevels, includeLevels]);
 
     useEffect(() => {
         if (!routeLocation.state?.confirmedJobUrl) return undefined;
@@ -290,6 +299,9 @@ const ActiveJobPostings = () => {
                 employmentType: job.employmentType,
                 workplaceType: job.workplaceType,
                 jobPostedAt: job.postedAt,
+                salary: job.salary,
+                provider: job.provider,
+                tags: job.tags,
                 summary: job.summary,
                 requirements: job.requirements,
         };
@@ -303,7 +315,10 @@ const ActiveJobPostings = () => {
         try {
             await setJobPreference({ state, jobUrl:job.url, jobTitle:job.title,
                 company:job.company, location:job.location, source:job.source,
-                externalJobId:job.id });
+                externalJobId:job.id, employmentType:job.employmentType,
+                workplaceType:job.workplaceType, jobPostedAt:job.postedAt,
+                salary:job.salary, provider:job.provider, tags:job.tags,
+                summary:job.summary, requirements:job.requirements });
             setJobs(current => current.map(item => item.id === job.id
                 ? { ...item, currentUserSaved:state === "saved", currentUserBlocked:state === "blocked" }
                 : item));

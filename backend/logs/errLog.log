@@ -92,3 +92,14 @@
 20260830	22:10:20	790ec18c-d609-491a-a301-c3a57e727ea4	Error: No matching U.S. software-engineering jobs were found at this career source. The company was not saved.	POST	/api/job-postings/sources/preview	http://localhost:3000
 20260830	22:10:30	98690435-55eb-4fb7-bf0a-63bd0057da60	Error: JobPilot searched for linkedin, but could not validate an official career source containing matching U.S. software-engineering jobs. Try the company's official careers URL.	POST	/api/job-postings/sources/preview	http://localhost:3000
 20260830	22:11:35	36601885-3cfc-4469-b449-b5a5fa7fe576	Error: No matching U.S. software-engineering jobs were found at this career source. The company was not saved.	POST	/api/job-postings/sources/preview	http://localhost:3000
+20260831	10:39:31	f27abd14-68a0-41bb-8141-a59fc6796b55	Error: locator.evaluateAll: Execution context was destroyed, most likely because of a navigation	POST	/api/applications/start	http://localhost:3000
+20260831	10:41:01	c540f6eb-3f1d-424e-a538-0e68bf5c14a1	Error: page.waitForTimeout: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260831	11:50:03	a491074c-57e9-4149-a880-80a53a1ea5c2	Error: locator.count: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260831	12:15:47	8bfd2f5d-b7e8-4391-b5da-cba5d804dec4	Error: page.waitForTimeout: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260831	12:53:32	8d667a2a-29f5-487b-9195-58ac9ffbbdff	Error: No matching U.S. software-engineering jobs were found at this career source. The company was not saved.	POST	/api/job-postings/sources/preview	http://localhost:3000
+20260831	13:08:33	0c4facc1-a952-4a8d-a165-7b1dae5c7b38	Error: page.title: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260831	13:16:55	b18ed7c9-6914-4819-a92b-915b0bd70000	TypeError: Cannot read properties of null (reading 'exposeFunction')	POST	/api/applications/start	http://localhost:3000
+20260831	13:23:24	f77b0864-baa7-49b8-b800-fee70597a27e	TypeError: Cannot read properties of null (reading 'exposeFunction')	POST	/api/applications/start	http://localhost:3000
+20260831	13:32:03	c71b7864-7e6a-490b-a102-35a503f95ed1	TypeError: Cannot read properties of null (reading 'exposeFunction')	POST	/api/applications/start	http://localhost:3000
+20260831	13:43:01	67eec0d8-226c-4b0f-888c-e09de486d623	Error: page.exposeFunction: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260831	13:44:42	cf6ba640-3ab4-4637-bb29-5dc1595adfeb	Error: page.title: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000

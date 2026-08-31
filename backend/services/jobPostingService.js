@@ -146,12 +146,34 @@ const getJobSearchText = job => [
 ].filter(Boolean).join(" ");
 
 const extractJobDetails = html => {
-    if (!html) return { summary: "", requirements: [] };
+    if (!html) return { summary: "", requirements: [], salary: null };
     const $ = cheerio.load(String(html));
     const requirements = $("li").map((_, item) => $(item).text().replace(/\s+/g, " ").trim()).get()
         .filter(text => text.length >= 20 && text.length <= 260).slice(0, 8);
-    const summary = $.root().text().replace(/\s+/g, " ").trim().slice(0, 420);
-    return { summary, requirements };
+    const text = $.root().text().replace(/\s+/g, " ").trim();
+    const salary = (text.match(
+        /(?:USD\s*)?\$\s*\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*[kK]?(?:\s*(?:-|–|—|to)\s*(?:USD\s*)?\$?\s*\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*[kK]?)?(?:\s*(?:per year|a year|annually|\/\s*(?:year|yr)))?/i
+    ) || [])[0] || null;
+    const summary = text.slice(0, 420);
+    return { summary, requirements, salary };
+};
+
+const enrichJobDetails = job => {
+    const text = [job.title, job.location, ...(job.tags || []), job.summary]
+        .filter(Boolean).join(" ");
+    const employmentType = job.employmentType || (
+        /\b(?:intern|internship)\b/i.test(text) ? "Internship" :
+            /\b(?:co[ -]?op|cooperative education)\b/i.test(text) ? "Co-op" :
+                /\b(?:contract|contractor|temporary)\b/i.test(text) ? "Contract" :
+                    /\bpart[ -]?time\b/i.test(text) ? "Part-time" :
+                        /\bfull[ -]?time\b/i.test(text) ? "Full-time" : null
+    );
+    const workplaceType = job.workplaceType || (
+        /\bhybrid\b/i.test(text) ? "Hybrid" :
+            /\b(?:on[ -]?site|in office)\b/i.test(text) ? "On-site" :
+                job.remote || /\bremote\b/i.test(text) ? "Remote" : null
+    );
+    return { ...job, employmentType, workplaceType };
 };
 
 const normalizeAshbyJobs = (payload, source) => {
@@ -764,6 +786,10 @@ const getActiveJobPostings = async ({
             });
         }
     }
+    current = {
+        ...current,
+        jobs: (current.jobs || []).map(enrichJobDetails),
+    };
     const queryTerms = query
         .toLowerCase()
         .split(/\s+/)
@@ -867,8 +893,33 @@ const getActiveJobPostings = async ({
     };
 };
 
+const enrichJobPreferencesFromCache = async preferences => {
+    const current = await getCachedJobs({ allowStale: true });
+    if (!current?.jobs?.length) return preferences;
+
+    const byUrl = new Map(current.jobs.filter(job => job.url).map(job => [job.url, enrichJobDetails(job)]));
+    const byId = new Map(current.jobs.filter(job => job.id).map(job => [String(job.id), enrichJobDetails(job)]));
+
+    return preferences.map(preference => {
+        const job = byUrl.get(preference.job_url) || byId.get(String(preference.external_job_id || ""));
+        if (!job) return preference;
+        return {
+            ...preference,
+            employment_type: preference.employment_type || job.employmentType,
+            workplace_type: preference.workplace_type || job.workplaceType,
+            job_posted_at: preference.job_posted_at || job.postedAt,
+            salary: preference.salary || job.salary,
+            provider: preference.provider || job.provider,
+            tags: preference.tags?.length ? preference.tags : (job.tags || []),
+            summary: preference.summary || job.summary,
+            requirements: preference.requirements?.length ? preference.requirements : (job.requirements || []),
+        };
+    });
+};
+
 module.exports = {
     getActiveJobPostings,
+    enrichJobPreferencesFromCache,
     invalidateJobCache,
     addSourceJobsToCache,
     inspectCareerSource,

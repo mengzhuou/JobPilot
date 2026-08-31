@@ -13,13 +13,23 @@
     },
     "links": {
       "linkedin": "https://www.linkedin.com/in/mengzhuou/",
-      "github": "https://github.com/MengzhuOu"
+      "github": "https://github.com/MengzhuOu",
+      "portfolio": "https://github.com/MengzhuOu"
     }
   },
 
   "work_authorization": {
     "us_citizen_or_permanent_resident": true,
-    "authorized_to_work_without_sponsorship": true
+    "authorized_to_work_without_sponsorship": true,
+    "authorized_to_work_form_options": [
+      "I am authorized to work in the United States for any employer",
+      "Yes"
+    ],
+    "citizenship_status_form_options": [
+      "Lawful permanent resident",
+      "(b) U.S. lawful permanent resident",
+      "U.S. lawful permanent resident"
+    ]
   },
 
   "education": {
@@ -32,11 +42,11 @@
       "Bachelor's Degree"
     ],
     "currently_pursuing_further_education": false,
-    "undergraduate_gpa": "3.9 out of 4.0",
-    "graduate_gpa": "Not applicable/Do not recall",
-    "doctorate_gpa": "Not applicable/Do not recall",
-    "sat_score": "1180 out of 1600",
-    "act_score": "23 out of 36",
+    "undergraduate_gpa": "3.9",
+    "graduate_gpa": "Not applicable",
+    "doctorate_gpa": "Not applicable",
+    "sat_score": "1180",
+    "act_score": "23",
     "gre_score": "Did not take/Do not recall",
     "attended_graduate_school": false
   },
@@ -165,6 +175,17 @@
     "referral_category": "Careers site",
     "preferred_application_location": "Dallas, Texas, United States",
     "active_security_clearance": "Never held a clearance",
+    "can_perform_essential_functions": true,
+    "spacex_employment_history_form_options": [
+      "I have never worked for SpaceX, SpaceXAI, xAI, X, or Twitter"
+    ],
+    "retain_application_for_future_roles": true,
+    "currently_employed_by_uber_subsidiary": false,
+    "open_to_other_roles": true,
+    "uber_driver_or_delivery_partner": false,
+    "previously_employed_by_uber": false,
+    "currently_working_for_netflix_as_contractor": false,
+    "previously_worked_for_netflix": false,
     "givebutter": {
       "how_heard_about_company": "LinkedIn"
     }
@@ -182,9 +203,9 @@
     "race": {
       "answer": "Asian",
       "form_options": [
+        "Asian",
         "Asian (Not Hispanic or Latino)",
-        "Asian (United States of America)",
-        "Asian"
+        "Asian (United States of America)"
       ]
     },
 
@@ -194,7 +215,25 @@
         "I am not a protected veteran",
         "Not a protected veteran",
         "I am not a veteran",
-        "Not a veteran"
+        "Not a veteran",
+        "No, I have not served in the military",
+        "No",
+        "I am neither a protected or non-protected US veteran"
+      ]
+    },
+
+    "sexual_orientation": {
+      "answer": "Heterosexual",
+      "form_options": [
+        "Heterosexual"
+      ]
+    },
+
+    "transgender_status": {
+      "answer": "No",
+      "is_transgender": false,
+      "form_options": [
+        "No"
       ]
     },
 
@@ -216,6 +255,12 @@
   },
 
   "Q_and_A": {
+    "daily_ai_tools": {
+      "questions": [
+        "Which AI tools do you use to maximize your daily output?"
+      ],
+      "answer": "Codex, Copilot, CodePuppy, Wibey"
+    },
     "self_introduction": {
       "questions": [
         "Self-introduction",

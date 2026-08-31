@@ -13,32 +13,66 @@ const setPreference = async (userId, job) => {
     }
     const result = await pool.query(
         `INSERT INTO jobpilot.job_preferences
-            (user_id, external_job_id, job_url, job_title, company, location, source, state)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            (user_id, external_job_id, job_url, job_title, company, location, source, state,
+             employment_type, workplace_type, job_posted_at, salary, provider, tags, summary, requirements)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::JSONB,$15,$16::JSONB)
          ON CONFLICT (user_id, job_url) DO UPDATE SET
             external_job_id = COALESCE(EXCLUDED.external_job_id, jobpilot.job_preferences.external_job_id),
             job_title = COALESCE(EXCLUDED.job_title, jobpilot.job_preferences.job_title),
             company = COALESCE(EXCLUDED.company, jobpilot.job_preferences.company),
             location = COALESCE(EXCLUDED.location, jobpilot.job_preferences.location),
             source = COALESCE(EXCLUDED.source, jobpilot.job_preferences.source),
+            employment_type = COALESCE(EXCLUDED.employment_type, jobpilot.job_preferences.employment_type),
+            workplace_type = COALESCE(EXCLUDED.workplace_type, jobpilot.job_preferences.workplace_type),
+            job_posted_at = COALESCE(EXCLUDED.job_posted_at, jobpilot.job_preferences.job_posted_at),
+            salary = COALESCE(EXCLUDED.salary, jobpilot.job_preferences.salary),
+            provider = COALESCE(EXCLUDED.provider, jobpilot.job_preferences.provider),
+            tags = CASE
+                WHEN EXCLUDED.tags = '[]'::JSONB THEN jobpilot.job_preferences.tags
+                ELSE EXCLUDED.tags
+            END,
+            summary = COALESCE(EXCLUDED.summary, jobpilot.job_preferences.summary),
+            requirements = CASE
+                WHEN EXCLUDED.requirements = '[]'::JSONB THEN jobpilot.job_preferences.requirements
+                ELSE EXCLUDED.requirements
+            END,
             state = EXCLUDED.state,
             updated_at = NOW()
          RETURNING *`,
         [userId, job.externalJobId || null, job.jobUrl, job.jobTitle || null,
-            job.company || null, job.location || null, job.source || null, job.state]
+            job.company || null, job.location || null, job.source || null, job.state,
+            job.employmentType || null, job.workplaceType || null, job.jobPostedAt || null,
+            job.salary || null, job.provider || null, JSON.stringify(job.tags || []),
+            job.summary || null, JSON.stringify(job.requirements || [])]
     );
     return result.rows[0];
 };
 
 const listPreferences = async (userId, state) => {
     const values = [userId];
-    let condition = "user_id = $1";
+    let condition = "preferences.user_id = $1";
     if (["saved", "blocked"].includes(state)) {
         values.push(state);
-        condition += " AND state = $2";
+        condition += " AND preferences.state = $2";
     }
     const result = await pool.query(
-        `SELECT * FROM jobpilot.job_preferences WHERE ${condition} ORDER BY updated_at DESC`,
+        `SELECT preferences.*,
+                EXISTS (
+                    SELECT 1
+                    FROM jobpilot.job_applications applications
+                    WHERE applications.user_id = preferences.user_id
+                      AND (
+                          applications.job_url = preferences.job_url
+                          OR (
+                              applications.external_job_id IS NOT NULL
+                              AND preferences.external_job_id IS NOT NULL
+                              AND applications.external_job_id = preferences.external_job_id
+                          )
+                      )
+                ) AS current_user_applied
+         FROM jobpilot.job_preferences preferences
+         WHERE ${condition}
+         ORDER BY preferences.updated_at DESC`,
         values
     );
     return result.rows;
