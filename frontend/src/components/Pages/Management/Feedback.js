@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { submitFeedback } from "../../../connector";
-import "./ManagementPages.css";
+import "./ManagementPages.scss";
 
 const Feedback = () => {
     const [data, setData] = useState({ subject: "", message: "" });

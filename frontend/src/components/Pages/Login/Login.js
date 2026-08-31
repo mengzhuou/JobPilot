@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { setStudentInfo } from "../../redux/actions/studentActions";
 import { loginSuccess } from "../../redux/reducers/authSlice";
-import "./Login.css";
+import "./Login.scss";
 
 const GOOGLE_SCRIPT_ID = "google-identity-services";
 

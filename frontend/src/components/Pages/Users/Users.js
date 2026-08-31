@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import StudentTable from '../../Functions/StudentTable/StudentTable'; 
 import Button from '../../Button/Button';
-import './Users.css';
+import './Users.scss';
 import { useNavigate } from 'react-router-dom';
 
 const Users = () => {

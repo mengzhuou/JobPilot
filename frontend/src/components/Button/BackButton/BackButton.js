@@ -1,5 +1,5 @@
 import React from 'react';
-import './BackButton.css';
+import './BackButton.scss';
 import { withFuncProps } from '../../withFuncProps'; 
 
 

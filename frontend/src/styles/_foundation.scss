@@ -1,0 +1,44 @@
+$color-brand: #3361ae;
+$color-brand-dark: #27579f;
+$color-text: #172033;
+$color-muted: #667085;
+$color-border: #d6deea;
+$color-surface: #fff;
+$radius-control: 9px;
+$radius-panel: 16px;
+$z-dropdown: 8000;
+$z-modal: 9000;
+$z-navigation: 10000;
+
+@mixin control-surface($height: 42px) {
+  min-height: $height;
+  box-sizing: border-box;
+  border: 1px solid $color-border;
+  border-radius: $radius-control;
+  background: $color-surface;
+}
+
+@mixin focus-ring {
+  border-color: $color-brand;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba($color-brand, 0.12);
+}
+
+@mixin scrollable-menu($height: 260px) {
+  max-height: min($height, 42vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+@mixin modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: $z-modal;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}

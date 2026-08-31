@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import "./FillApplication.css";
+import "./FillApplication.scss";
 import Button from "../../Button/Button";
 import {
     confirmJobApplication,

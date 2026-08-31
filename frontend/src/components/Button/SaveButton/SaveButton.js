@@ -1,5 +1,5 @@
 import React from 'react';
-import './SaveButton.css';
+import './SaveButton.scss';
 
 const SaveButton = ({ onClick }) => {
   return (

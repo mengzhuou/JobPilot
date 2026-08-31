@@ -1,6 +1,6 @@
 
 import React from 'react';
-import './Button.css';
+import './Button.scss';
 
 const Button = ({ type = 'default', onClick, children, disabled }) => {
     return (

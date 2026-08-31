@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from "react";
 import {deleteJobPreference,getJobPreferences} from "../../../connector";
-import "./ManagementPages.css";
+import "./ManagementPages.scss";
 const JobPreferences=({state})=>{const[jobs,setJobs]=useState([]);const[error,setError]=useState("");
 useEffect(()=>{getJobPreferences(state).then(setJobs).catch(e=>setError(e.response?.data?.message||e.message));},[state]);
 const remove=async id=>{await deleteJobPreference(id);setJobs(current=>current.filter(job=>job.id!==id));};

@@ -1,5 +1,5 @@
 import React from 'react';
-import './ScanButton.css';
+import './ScanButton.scss';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExpand } from '@fortawesome/free-solid-svg-icons';
 

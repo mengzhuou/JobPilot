@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
 import { getActiveJobPostings, setJobPreference } from "../../../connector";
-import "./ActiveJobPostings.css";
+import "./ActiveJobPostings.scss";
 
 const FILTER_STORAGE_KEY = "jobpilot.activeJobAdvancedFilters.v1";
 const DEFAULT_LEVEL_OPTIONS = ["Principal", "Staff", "Senior", "Embedded", "Manager"];

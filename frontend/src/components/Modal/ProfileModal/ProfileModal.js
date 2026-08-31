@@ -1,5 +1,5 @@
 import React from 'react';
-import './ProfileModal.css';
+import './ProfileModal.scss';
 
 const ProfileModal = ({ show, onClose, studentData }) => {
   if (!show) return null;

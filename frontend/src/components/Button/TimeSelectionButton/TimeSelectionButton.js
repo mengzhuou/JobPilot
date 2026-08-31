@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import './TimeSelectionButton.css'
+import './TimeSelectionButton.scss'
 import calendarIcon from '../../../Image/calendar.svg'
 
 function TimeSelectionButton({ initialPickupDateTime, initialReturnDateTime, onPickupDateTimeChange, onReturnDateTimeChange }) {

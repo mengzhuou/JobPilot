@@ -1,5 +1,5 @@
 import React from 'react';
-import './DeletePopup.css'; // Ensure to style it appropriately'
+import './DeletePopup.scss'; // Ensure to style it appropriately'
 
 const DeletePopup = ({ show, handleClose, handleDelete }) => {
     if (!show) {

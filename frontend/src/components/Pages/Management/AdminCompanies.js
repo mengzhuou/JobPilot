@@ -5,7 +5,7 @@ import {
     getCareerSources,
     previewCareerSource,
 } from "../../../connector";
-import "./ManagementPages.css";
+import "./ManagementPages.scss";
 
 const discoveryMessage = discovery => {
     if (discovery.status === "complete") {

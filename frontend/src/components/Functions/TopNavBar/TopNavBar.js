@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import './TopNavBar.css';
+import './TopNavBar.scss';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import ProfileModal from "../../Modal/ProfileModal/ProfileModal";
 import { faBars, faTimes } from '@fortawesome/free-solid-svg-icons';
@@ -91,16 +91,6 @@ const TopNavBar = () => {
                     </div>
 
                     <div className="nav-links">
-                        <button
-                            className="nav-link nav-link-button"
-                            type="button"
-                            onClick={() => {
-                                setShowProfileModal(true);
-                                setIsSidebarOpen(false);
-                            }}
-                        >
-                            My Profile
-                        </button>
                         <NavLink
                             className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
                             to="/active-job-postings"

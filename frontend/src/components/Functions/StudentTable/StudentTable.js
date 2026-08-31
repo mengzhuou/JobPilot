@@ -5,7 +5,7 @@ import SearchBar from '../SearchBar/SearchBar';
 import RoleDropdown from '../../Dropdown/RoleDropdown/RoleDropdown';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrash } from '@fortawesome/free-solid-svg-icons';
-import './StudentTable.css';
+import './StudentTable.scss';
 import DeletePopup from "../../Modal/DeletePopupModal/DeletePopup";
 import UserClassCodeModal from "../../Modal/UserClassCodeModal/UserClassCodeModal";
 

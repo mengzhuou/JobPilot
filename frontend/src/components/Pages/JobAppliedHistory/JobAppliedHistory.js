@@ -5,7 +5,7 @@ import {
     getJobApplicationSummary,
     updateJobApplication,
 } from "../../../connector";
-import "./JobAppliedHistory.css";
+import "./JobAppliedHistory.scss";
 
 const STATUS_OPTIONS = [
     { value: "applied", label: "Applied" },

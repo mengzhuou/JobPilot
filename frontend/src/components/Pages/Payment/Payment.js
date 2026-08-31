@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import PayPal from "../../Functions/PayPal/PayPal";
-import './Payment.css';
+import './Payment.scss';
 import { createOrder } from '../../../connector.js';
 import { connect } from 'react-redux';
 import { sendEmail } from '../../../connector.js';

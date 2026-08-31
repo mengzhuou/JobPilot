@@ -1,5 +1,5 @@
 import React from 'react';
-import './RoleDropdown.css';
+import './RoleDropdown.scss';
 
 const RoleDropdown = (props) => {
   const handleChange = (event) => {

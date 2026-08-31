@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { deleteFeedback, getFeedback, updateFeedback } from "../../../connector";
-import "./ManagementPages.css";
+import "./ManagementPages.scss";
 
 const AdminFeedback = () => {
     const [items, setItems] = useState([]);
