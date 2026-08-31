@@ -42,15 +42,17 @@ const hasExactKeyword = (text, keyword) => new RegExp(
     `(^|[^a-z0-9])${escapeRegExp(keyword)}(?=$|[^a-z0-9])`, "i"
 ).test(text);
 
-const getRequiredExperienceYears = text => {
-    const values = [];
-    const pattern = /\b(\d{1,2})(?:\s*(?:-|–|to)\s*\d{1,2})?\+?\s*(?:years?|yrs?)\b/gi;
-    let match;
-    while ((match = pattern.exec(text)) !== null) values.push(Number(match[1]));
-    return values.length ? Math.max(...values) : null;
-};
+const DEFAULT_EXCLUDED_LEVEL_OPTIONS = ["Principal", "Staff", "Senior", "Embedded", "Manager"];
+const getLeadingTitleKeyword = title => String(title || "")
+    .replace(/[^a-z0-9+#.-]+/gi, " ")
+    .trim()
+    .split(/\s+/)
+    .find(word => !/^(?:software|engineering|engineer|developer|development|full|stack|web|mobile|application|applications|frontend|backend)$/i.test(word));
 
-const CITIZENSHIP_OR_CLEARANCE_RESTRICTION = /\b(?:u\.?s\.?\s*citizen(?:ship)?\s*(?:is\s*)?(?:required|only)|citizens?\s+only|must\s+be\s+(?:a\s+)?u\.?s\.?\s*citizen|active\s+(?:security\s+)?clearance|security\s+clearance\s+(?:is\s+)?required|top[- ]secret|ts\/?sci)\b/i;
+const CITIZENSHIP_RESTRICTION = /\b(?:u\.?s\.?\s*citizen(?:ship)?\s*(?:is\s*)?(?:required|only)|citizens?\s+only|must\s+be\s+(?:a\s+)?u\.?s\.?\s*citizen)\b/i;
+const CLEARANCE_RESTRICTION = /\b(?:active\s+(?:security\s+)?clearance|security\s+clearance\s+(?:is\s+)?required|top[- ]secret|ts\/?sci)\b/i;
+const SPONSORSHIP_AVAILABLE = /\b(?:visa\s+sponsorship\s+(?:is\s+)?available|(?:will|can|may)\s+(?:provide\s+)?sponsor|sponsorship\s+(?:is\s+)?provided|support\s+(?:for\s+)?(?:an?\s+)?(?:employment\s+)?visa|eligible\s+for\s+sponsorship|h-?1b\s+sponsorship|immigration\s+sponsorship)\b/i;
+const SPONSORSHIP_UNAVAILABLE = /\b(?:no\s+(?:visa\s+)?sponsorship|without\s+(?:current\s+or\s+future\s+)?sponsorship|(?:do(?:es)?\s+not|cannot|can't|unable\s+to|will\s+not)\s+(?:provide\s+)?sponsor)\b/i;
 
 const cacheJobs = async nextCache => {
     cache = nextCache;
@@ -536,6 +538,7 @@ const getCachedJobs = async ({ allowStale = false } = {}) => {
 
 const toCareerSource = source => ({
     ...source,
+    provider: String(source.provider || "").trim().replace(/^g+greenhouse$/, "greenhouse"),
     careerUrl: source.careerUrl || source.career_url,
 });
 
@@ -732,14 +735,15 @@ const getActiveJobPostings = async ({
     excludeCompany = "",
     remoteOnly = false,
     keywords = "",
-    specialization = "all",
-    eligibility = "all",
-    employmentType = "all",
+    excludeFocuses = "",
+    excludeEligibility = "",
+    excludeJobTypes = "",
     applicationState = "all",
     appliedJobKeys = new Set(),
     postedWithin = "all",
     locations = "",
-    experienceRange = "all",
+    excludeLevels = "",
+    includeLevels = "",
 } = {}) => {
     let current;
     if (refresh) {
@@ -770,8 +774,11 @@ const getActiveJobPostings = async ({
     const normalizedCompany = company.trim().toLowerCase();
     const excludedCompanies = excludeCompany.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
     const requirementTerms = keywords.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
-    const specializationPattern = SPECIALIZATION_PATTERNS[specialization] || null;
-    const employmentTypePattern = EMPLOYMENT_TYPE_PATTERNS[employmentType] || null;
+    const excludedFocusPatterns = excludeFocuses.split(",").map(value => SPECIALIZATION_PATTERNS[value.trim()]).filter(Boolean);
+    const excludedEligibilityTerms = new Set(excludeEligibility.split(",").map(value => value.trim()).filter(Boolean));
+    const excludedJobTypePatterns = excludeJobTypes.split(",")
+        .map(value => EMPLOYMENT_TYPE_PATTERNS[value.trim()])
+        .filter(Boolean);
     const postedWithinMs = {
         day: 24 * 60 * 60 * 1000,
         week: 7 * 24 * 60 * 60 * 1000,
@@ -780,13 +787,8 @@ const getActiveJobPostings = async ({
         six_months: 180 * 24 * 60 * 60 * 1000,
     }[postedWithin] || null;
     const requestedLocations = locations.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
-    const requestedExperience = {
-        "0_1": { min: 0, max: 1 },
-        "2_3": { min: 2, max: 3 },
-        "4_5": { min: 4, max: 5 },
-        "6_9": { min: 6, max: 9 },
-        "10_plus": { min: 10, max: Infinity },
-    }[experienceRange] || null;
+    const excludedLevelTerms = excludeLevels.split(",").map(value => value.trim()).filter(Boolean);
+    const includedLevelTerms = includeLevels.split(",").map(value => value.trim()).filter(Boolean);
 
     const filteredJobs = current.jobs.filter((job) => {
         const jobText = getJobSearchText(job);
@@ -800,19 +802,20 @@ const getActiveJobPostings = async ({
             job.location.toLowerCase().includes(normalizedLocation) ||
             (normalizedLocation === "remote" && job.remote);
 
-        const matchesCompany = !normalizedCompany || job.company.toLowerCase().includes(normalizedCompany);
+        const includedCompanies = normalizedCompany.split(",").map(value => value.trim()).filter(Boolean);
+        const matchesCompany = !includedCompanies.length || includedCompanies.some(value => job.company.toLowerCase().includes(value));
         const isExcluded = excludedCompanies.some(excluded => job.company.toLowerCase().includes(excluded));
         const requirementText = [job.summary, ...(job.requirements || [])].join(" ").toLowerCase();
         const matchesRequirements = !requirementTerms.length || requirementTerms.every(term => hasExactKeyword(requirementText, term));
         const matchesRemote = !remoteOnly || job.remote;
-        const matchesSpecialization = !specializationPattern || specializationPattern.test(jobText);
-        const isRestricted = CITIZENSHIP_OR_CLEARANCE_RESTRICTION.test(jobText);
-        const matchesEligibility = eligibility === "permanent_resident_eligible"
-            ? !isRestricted
-            : eligibility === "citizen_or_clearance_required"
-                ? isRestricted
-                : true;
-        const matchesEmploymentType = !employmentTypePattern || employmentTypePattern.test(jobText);
+        const matchesSpecialization = !excludedFocusPatterns.some(pattern => pattern.test(jobText));
+        const requiresCitizenship = CITIZENSHIP_RESTRICTION.test(jobText);
+        const requiresClearance = CLEARANCE_RESTRICTION.test(jobText);
+        const hasSponsorship = SPONSORSHIP_AVAILABLE.test(jobText) && !SPONSORSHIP_UNAVAILABLE.test(jobText);
+        const matchesEligibility = !((excludedEligibilityTerms.has("citizenship") && requiresCitizenship)
+            || (excludedEligibilityTerms.has("clearance") && requiresClearance)
+            || (excludedEligibilityTerms.has("no_sponsorship") && !hasSponsorship));
+        const matchesJobTypes = !excludedJobTypePatterns.some(pattern => pattern.test(jobText));
         const isApplied = appliedJobKeys.has(`url:${job.url}`) || appliedJobKeys.has(`id:${String(job.id || "")}`);
         const matchesApplicationState = applicationState === "applied"
             ? isApplied
@@ -822,11 +825,10 @@ const getActiveJobPostings = async ({
         const matchesLocations = !requestedLocations.length || requestedLocations.some(requestedLocation =>
             job.location.toLowerCase().includes(requestedLocation) || (requestedLocation === "remote" && job.remote)
         );
-        const requiredExperience = getRequiredExperienceYears(jobText);
-        const matchesExperience = !requestedExperience || (requiredExperience !== null &&
-            requiredExperience >= requestedExperience.min && requiredExperience <= requestedExperience.max);
+        const matchesExcludedLevels = !excludedLevelTerms.some(term => hasExactKeyword(job.title || "", term));
+        const matchesIncludedLevels = !includedLevelTerms.length || includedLevelTerms.some(term => hasExactKeyword(job.title || "", term));
 
-        return matchesQuery && matchesLocation && matchesCompany && !isExcluded && matchesRequirements && matchesRemote && matchesSpecialization && matchesEligibility && matchesEmploymentType && matchesApplicationState && matchesPostedDate && matchesLocations && matchesExperience;
+        return matchesQuery && matchesLocation && matchesCompany && !isExcluded && matchesRequirements && matchesRemote && matchesSpecialization && matchesEligibility && matchesJobTypes && matchesApplicationState && matchesPostedDate && matchesLocations && matchesExcludedLevels && matchesIncludedLevels;
     });
     const normalizedPage = Math.max(
         1,
@@ -858,6 +860,10 @@ const getActiveJobPostings = async ({
             (source) => source.status === "available"
         ).length,
         refreshing: Boolean(refreshInFlight || current.refreshing),
+        excludeLevelOptions: [...new Set([
+            ...DEFAULT_EXCLUDED_LEVEL_OPTIONS,
+            ...current.jobs.map(job => getLeadingTitleKeyword(job.title)).filter(Boolean),
+        ])].slice(0, 40),
     };
 };
 

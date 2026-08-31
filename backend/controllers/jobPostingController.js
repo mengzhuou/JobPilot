@@ -46,14 +46,15 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
         excludeCompany: req.query.excludeCompany,
         remoteOnly: req.query.remoteOnly === "true",
         keywords: req.query.keywords,
-        specialization: req.query.specialization,
-        eligibility: req.query.eligibility,
-        employmentType: req.query.employmentType,
+        excludeFocuses: req.query.excludeFocuses,
+        excludeEligibility: req.query.excludeEligibility,
+        excludeJobTypes: req.query.excludeJobTypes,
         applicationState,
         appliedJobKeys,
         postedWithin: req.query.postedWithin,
         locations: req.query.locations,
-        experienceRange: req.query.experienceRange,
+        excludeLevels: req.query.excludeLevels,
+        includeLevels: req.query.includeLevels,
     });
 
     const [signals, preferences] = await Promise.all([

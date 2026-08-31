@@ -101,7 +101,7 @@
     padding: 0 24px;
 }
 
-.advanced-filter-shell { max-width: 1180px; margin: 14px auto 0; border: 1px solid #e0e6ef; border-radius: 16px; background: #fff; overflow: hidden; }
+.advanced-filter-shell { position: relative; z-index: 5; max-width: 1180px; margin: 14px auto 0; border: 1px solid #e0e6ef; border-radius: 16px; background: #fff; overflow: visible; }
 .advanced-filter-heading { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; gap: 16px; }
 .advanced-filter-heading > div:first-child { display: grid; gap: 2px; }
 .advanced-filter-heading span { color: #667085; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
@@ -110,18 +110,25 @@
 .advanced-filter-toggle b { display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: #3361ae; color: #fff; font-size: 11px; }
 .advanced-filter-heading-actions { display: flex; align-items: center; gap: 8px; }
 .advanced-filter-heading-actions .clear-filters { min-height: 38px; padding: 8px 12px; border: 1px solid #d6deea; border-radius: 9px; background: #fff; color: #526174; cursor: pointer; font: inherit; font-size: 13px; font-weight: 800; }
-.advanced-filter-panel { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; padding: 22px; border-top: 1px solid #e5eaf2; background: #fbfcfe; }
-.advanced-filter-panel label { display: grid; grid-column: span 4; gap: 7px; color: #475467; font-size: 12px; font-weight: 800; }
+.advanced-filter-panel { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: start; gap: 16px; padding: 22px; border-top: 1px solid #e5eaf2; border-radius: 0 0 16px 16px; background: #fbfcfe; overflow: visible; }
+.advanced-filter-panel label { position: relative; z-index: 1; display: grid; grid-column: span 4; align-content: start; gap: 7px; color: #475467; font-size: 12px; font-weight: 800; }
+.advanced-filter-panel label:focus-within { z-index: 100; }
+.filter-field-label { display: flex; min-height: 18px; align-items: center; gap: 7px; }
+.filter-field-label b { display: inline-grid; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; place-items: center; border-radius: 999px; background: #e8eef9; color: #285ba8; font-size: 11px; }
+.multi-select-filter .location-chip-input { max-height: 50px; align-content: flex-start; overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; }
+.multi-select-filter .location-chip-input span { padding: 4px 8px; }
+.multi-select-filter .location-chip-input > input { min-width: 130px; }
 .advanced-filter-panel .advanced-filter-wide { grid-column: 1 / -1; padding: 16px 0; border-bottom: 1px solid #e5eaf2; }
 .advanced-filter-panel .remote-filter { max-width: 150px }
 .advanced-filter-panel label:nth-of-type(11) { grid-column: span 8; }
-.location-autocomplete { position: relative; }
+.location-autocomplete { position: relative; z-index: 1; }
+.location-autocomplete:focus-within { z-index: 100; }
 .location-chip-input { min-height: 42px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 6px 9px; box-sizing: border-box; border: 1px solid #d6deea; border-radius: 9px; background: #fff; }
 .location-chip-input:focus-within { border-color: #3361ae; box-shadow: 0 0 0 3px rgba(51, 97, 174, .12); }
 .location-chip-input span { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 999px; background: #eaf0fa; color: #27579f; font-size: 12px; }
 .location-chip-input span button { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #526174; cursor: pointer; font: inherit; line-height: 1; }
 .advanced-filter-panel .location-chip-input input { flex: 1; min-width: 180px; height: 28px; padding: 0 3px; border: 0; box-shadow: none; outline: none; }
-.location-suggestions { position: absolute; z-index: 20; top: calc(100% + 5px); right: 0; left: 0; display: grid; overflow: hidden; border: 1px solid #d6deea; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(31,48,78,.16); }
+.location-suggestions { position: absolute; z-index: 200; top: calc(100% + 5px); right: 0; left: 0; display: grid; max-height: min(260px, 42vh); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border: 1px solid #d6deea; border-radius: 10px; background: #fff; box-shadow: 0 12px 28px rgba(31,48,78,.2); scrollbar-gutter: stable; }
 .location-suggestions button { padding: 10px 12px; border: 0; border-bottom: 1px solid #edf0f5; background: #fff; color: #344054; cursor: pointer; font: inherit; text-align: left; }
 .location-suggestions button:last-child { border-bottom: 0; }
 .location-suggestions button:hover,.location-suggestions button:focus { background: #edf3ff; color: #27579f; outline: none; }

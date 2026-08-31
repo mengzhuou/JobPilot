@@ -1,8 +1,15 @@
 const { pool } = require("../config/postgres");
 
 const setPreference = async (userId, job) => {
+    if (job.state === "none") {
+        await pool.query(
+            "DELETE FROM jobpilot.job_preferences WHERE user_id=$1::UUID AND job_url=$2",
+            [userId, job.jobUrl]
+        );
+        return null;
+    }
     if (!["saved", "blocked"].includes(job.state)) {
-        throw Object.assign(new Error("Preference must be saved or blocked"), { statusCode: 400 });
+        throw Object.assign(new Error("Preference must be saved, blocked, or none"), { statusCode: 400 });
     }
     const result = await pool.query(
         `INSERT INTO jobpilot.job_preferences

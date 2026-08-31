@@ -4,6 +4,34 @@ import { getActiveJobPostings, setJobPreference } from "../../../connector";
 import "./ActiveJobPostings.css";
 
 const FILTER_STORAGE_KEY = "jobpilot.activeJobAdvancedFilters.v1";
+const DEFAULT_LEVEL_OPTIONS = ["Principal", "Staff", "Senior", "Embedded", "Manager"];
+const JOB_TYPE_OPTIONS = [
+    { value: "full_time", label: "Full-time" },
+    { value: "coop", label: "Co-op" },
+    { value: "intern", label: "Intern" },
+];
+const SKILL_OPTIONS = ["React", "Java", "JavaScript", "TypeScript", "Python", "Node.js", "C++", "Kubernetes", "AWS", "PostgreSQL"];
+const FOCUS_OPTIONS = [{ value: "web", label: "Web" }, { value: "mobile", label: "Mobile" }, { value: "embedded", label: "Embedded" }];
+const ELIGIBILITY_EXCLUSIONS = [{ value: "citizenship", label: "Requires U.S. citizenship" }, { value: "clearance", label: "Requires security clearance" }];
+
+const ChipMultiSelect = ({ label, values, onChange, options, placeholder, allowCustom = true }) => {
+    const [input, setInput] = useState("");
+    const [open, setOpen] = useState(false);
+    const normalizedOptions = options.map(option => typeof option === "string" ? { value: option, label: option } : option);
+    const suggestions = normalizedOptions.filter(option => !values.some(value => value.toLowerCase() === option.value.toLowerCase()))
+        .filter(option => option.label.toLowerCase().includes(input.trim().toLowerCase()));
+    const add = rawValue => {
+        const value = String(rawValue || "").trim().replace(/,$/, "");
+        if (value && !values.some(item => item.toLowerCase() === value.toLowerCase())) onChange([...values, value]);
+        setInput("");
+    };
+    return <label className="multi-select-filter"><span className="filter-field-label">{label}{values.length > 0 && <b>{values.length}</b>}</span>
+        <div className="location-autocomplete"><div className="location-chip-input">
+            {values.map(value => { const option = normalizedOptions.find(item => item.value.toLowerCase() === value.toLowerCase()); return <span key={value}>{option?.label || value}<button type="button" aria-label={`Remove ${option?.label || value}`} onClick={() => onChange(values.filter(item => item !== value))}>×</button></span>; })}
+            <input readOnly={!allowCustom} value={input} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (allowCustom && (event.key === "Enter" || event.key === ",") && input.trim()) { event.preventDefault(); add(input); } }} placeholder={values.length ? "Add another" : placeholder} role="combobox" aria-controls={`${label.replace(/\W+/g, "-").toLowerCase()}-suggestions`} aria-expanded={open && suggestions.length > 0} />
+        </div>{open && suggestions.length > 0 && <div className="location-suggestions" id={`${label.replace(/\W+/g, "-").toLowerCase()}-suggestions`} role="listbox">{suggestions.map(option => <button type="button" role="option" aria-selected="false" key={option.value} onMouseDown={event => event.preventDefault()} onClick={() => add(option.value)}>{option.label}</button>)}</div>}</div>
+    </label>;
+};
 const getSavedFilters = () => {
     try { return JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY)) || {}; }
     catch { return {}; }
@@ -40,23 +68,40 @@ const ActiveJobPostings = () => {
     const [error, setError] = useState("");
     const [displayFilter, setDisplayFilter] = useState("all");
     const [showAdvanced, setShowAdvanced] = useState(Boolean(savedFilters.showAdvanced));
-    const [company, setCompany] = useState(savedFilters.company || "");
-    const [excludeCompany, setExcludeCompany] = useState(savedFilters.excludeCompany || "");
-    const [keywords, setKeywords] = useState(savedFilters.keywords || "");
+    const [includeCompanies, setIncludeCompanies] = useState(Array.isArray(savedFilters.includeCompanies) ? savedFilters.includeCompanies : (savedFilters.company ? [savedFilters.company] : []));
+    const [excludeCompanies, setExcludeCompanies] = useState(Array.isArray(savedFilters.excludeCompanies) ? savedFilters.excludeCompanies : String(savedFilters.excludeCompany || "").split(",").map(value => value.trim()).filter(Boolean));
+    const [requiredSkills, setRequiredSkills] = useState(Array.isArray(savedFilters.requiredSkills) ? savedFilters.requiredSkills : String(savedFilters.keywords || "").split(",").map(value => value.trim()).filter(Boolean));
     const [remoteOnly, setRemoteOnly] = useState(Boolean(savedFilters.remoteOnly));
-    const [specialization, setSpecialization] = useState(savedFilters.specialization || "all");
-    const [eligibility, setEligibility] = useState(savedFilters.eligibility || "all");
-    const [employmentType, setEmploymentType] = useState(savedFilters.employmentType || "all");
+    const [excludeFocuses, setExcludeFocuses] = useState(Array.isArray(savedFilters.excludeFocuses) ? savedFilters.excludeFocuses : []);
+    const [excludeEligibility, setExcludeEligibility] = useState(Array.isArray(savedFilters.excludeEligibility) ? savedFilters.excludeEligibility : []);
+    const [excludeJobTypes, setExcludeJobTypes] = useState(Array.isArray(savedFilters.excludeJobTypes) ? savedFilters.excludeJobTypes : []);
+    const [showJobTypeSuggestions, setShowJobTypeSuggestions] = useState(false);
     const [postedWithin, setPostedWithin] = useState(savedFilters.postedWithin || "all");
     const [locations, setLocations] = useState(Array.isArray(savedFilters.locations) ? savedFilters.locations.filter(value => !/remote/i.test(value)) : []);
     const [locationChipInput, setLocationChipInput] = useState("");
-    const [experienceRange, setExperienceRange] = useState(savedFilters.experienceRange || "all");
+    const [excludeLevels, setExcludeLevels] = useState(Array.isArray(savedFilters.excludeLevels) ? savedFilters.excludeLevels : []);
+    const [excludeLevelInput, setExcludeLevelInput] = useState("");
+    const [excludeLevelOptions, setExcludeLevelOptions] = useState(DEFAULT_LEVEL_OPTIONS);
+    const [showExcludeLevelSuggestions, setShowExcludeLevelSuggestions] = useState(false);
+    const [includeLevels, setIncludeLevels] = useState(Array.isArray(savedFilters.includeLevels) ? savedFilters.includeLevels : []);
+    const [includeLevelInput, setIncludeLevelInput] = useState("");
+    const [showIncludeLevelSuggestions, setShowIncludeLevelSuggestions] = useState(false);
     const [applyClearedFilters, setApplyClearedFilters] = useState(false);
-    const activeAdvancedFilters = [company, excludeCompany, keywords, remoteOnly, specialization !== "all", eligibility !== "all", employmentType !== "all", postedWithin !== "all", locations.length > 0, experienceRange !== "all"]
+    const activeAdvancedFilters = [includeCompanies.length > 0, excludeCompanies.length > 0, requiredSkills.length > 0, remoteOnly, excludeFocuses.length > 0, excludeEligibility.length > 0, excludeJobTypes.length > 0, postedWithin !== "all", locations.length > 0, excludeLevels.length > 0, includeLevels.length > 0]
         .filter(Boolean).length;
     const locationSuggestions = useMemo(() => Array.from(new Set([
         ...jobs.flatMap(job => String(job.location || "").split(" · ").map(value => value.trim()).filter(Boolean)),
     ])).filter(value => !/remote/i.test(value) && !locations.includes(value) && value.toLowerCase().includes(locationChipInput.trim().toLowerCase())).slice(0, 8), [jobs, locationChipInput, locations]);
+    const companyOptions = useMemo(() => Array.from(new Set([
+        ...sources.map(source => source.name).filter(Boolean),
+        ...jobs.map(job => job.company).filter(Boolean),
+    ])).sort((first, second) => first.localeCompare(second)), [jobs, sources]);
+    const excludeLevelSuggestions = useMemo(() => excludeLevelOptions
+        .filter(value => !excludeLevels.some(selected => selected.toLowerCase() === value.toLowerCase()))
+        .filter(value => value.toLowerCase().includes(excludeLevelInput.trim().toLowerCase())), [excludeLevelInput, excludeLevelOptions, excludeLevels]);
+    const includeLevelSuggestions = useMemo(() => excludeLevelOptions
+        .filter(value => !includeLevels.some(selected => selected.toLowerCase() === value.toLowerCase()))
+        .filter(value => value.toLowerCase().includes(includeLevelInput.trim().toLowerCase())), [includeLevelInput, excludeLevelOptions, includeLevels]);
 
     const loadJobs = useCallback(async ({
         forceRefresh = false,
@@ -79,17 +124,18 @@ const ActiveJobPostings = () => {
                 refresh: forceRefresh,
                 page: targetPage,
                 limit: 30,
-                company,
-                excludeCompany,
-                keywords,
+                company: includeCompanies.join(","),
+                excludeCompany: excludeCompanies.join(","),
+                keywords: requiredSkills.join(","),
                 remoteOnly,
-                specialization,
-                eligibility,
-                employmentType,
+                excludeFocuses,
+                excludeEligibility,
+                excludeJobTypes,
                 applicationState: displayFilter,
                 postedWithin,
                 locations,
-                experienceRange,
+                excludeLevels,
+                includeLevels,
             });
 
             setJobs((currentJobs) => {
@@ -116,6 +162,7 @@ const ActiveJobPostings = () => {
             setTotal(result.total || 0);
             setHasMore(Boolean(result.hasMore));
             setIsRefreshing(Boolean(result.refreshing));
+            setExcludeLevelOptions(Array.from(new Set([...DEFAULT_LEVEL_OPTIONS, ...(result.excludeLevelOptions || [])])));
         } catch (requestError) {
             setError(
                 requestError.response?.data?.message ||
@@ -131,7 +178,7 @@ const ActiveJobPostings = () => {
                 setIsLoading(false);
             }
         }
-    }, [company, displayFilter, eligibility, employmentType, excludeCompany, experienceRange, keywords, locations, postedWithin, query, remoteOnly, specialization]);
+    }, [displayFilter, excludeCompanies, excludeEligibility, excludeFocuses, excludeJobTypes, excludeLevels, includeCompanies, includeLevels, locations, postedWithin, query, remoteOnly, requiredSkills]);
 
     useEffect(() => {
         loadJobs({ targetPage: 1 });
@@ -154,29 +201,35 @@ const ActiveJobPostings = () => {
     }, [applyClearedFilters, loadJobs]);
 
     const clearAdvancedFilters = () => {
-        setCompany("");
-        setExcludeCompany("");
-        setKeywords("");
+        setIncludeCompanies([]);
+        setExcludeCompanies([]);
+        setRequiredSkills([]);
         setRemoteOnly(false);
-        setSpecialization("all");
-        setEligibility("all");
-        setEmploymentType("all");
+        setExcludeFocuses([]);
+        setExcludeEligibility([]);
+        setExcludeJobTypes([]);
+        setShowJobTypeSuggestions(false);
         setPostedWithin("all");
         setLocations([]);
         setLocationChipInput("");
-        setExperienceRange("all");
+        setExcludeLevels([]);
+        setExcludeLevelInput("");
+        setShowExcludeLevelSuggestions(false);
+        setIncludeLevels([]);
+        setIncludeLevelInput("");
+        setShowIncludeLevelSuggestions(false);
         localStorage.removeItem(FILTER_STORAGE_KEY);
         setApplyClearedFilters(true);
     };
 
     useEffect(() => {
         localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
-            showAdvanced, company, excludeCompany, keywords, remoteOnly,
-            specialization, eligibility, employmentType,
+            showAdvanced, includeCompanies, excludeCompanies, requiredSkills, remoteOnly,
+            excludeFocuses, excludeEligibility, excludeJobTypes,
             postedWithin,
-            locations, experienceRange,
+            locations, excludeLevels, includeLevels,
         }));
-    }, [showAdvanced, company, excludeCompany, keywords, remoteOnly, specialization, eligibility, employmentType, postedWithin, locations, experienceRange]);
+    }, [showAdvanced, includeCompanies, excludeCompanies, requiredSkills, remoteOnly, excludeFocuses, excludeEligibility, excludeJobTypes, postedWithin, locations, excludeLevels, includeLevels]);
 
     useEffect(() => {
         if (!routeLocation.state?.confirmedJobUrl) return undefined;
@@ -202,6 +255,28 @@ const ActiveJobPostings = () => {
             setLocations(current => [...current, matchedLocation]);
         }
         setLocationChipInput("");
+    };
+
+    const addExcludeLevel = value => {
+        const normalizedValue = value.trim().replace(/,$/, "");
+        if (normalizedValue && !excludeLevels.some(item => item.toLowerCase() === normalizedValue.toLowerCase())) {
+            const suggestedValue = excludeLevelOptions.find(item => item.toLowerCase() === normalizedValue.toLowerCase());
+            setExcludeLevels(current => [...current, suggestedValue || normalizedValue]);
+        }
+        setExcludeLevelInput("");
+    };
+
+    const addIncludeLevel = value => {
+        const normalizedValue = value.trim().replace(/,$/, "");
+        if (normalizedValue && !includeLevels.some(item => item.toLowerCase() === normalizedValue.toLowerCase())) {
+            const suggestedValue = excludeLevelOptions.find(item => item.toLowerCase() === normalizedValue.toLowerCase());
+            setIncludeLevels(current => [...current, suggestedValue || normalizedValue]);
+        }
+        setIncludeLevelInput("");
+    };
+
+    const addExcludedJobType = value => {
+        setExcludeJobTypes(current => current.includes(value) ? current : [...current, value]);
     };
 
     const startAutofill = (job) => {
@@ -296,28 +371,40 @@ const ActiveJobPostings = () => {
                             </div>
                             {locationChipInput && locationSuggestions.length > 0 && <div className="location-suggestions" id="location-filter-suggestions" role="listbox">{locationSuggestions.map(item => <button type="button" role="option" aria-selected="false" key={item} onMouseDown={event => event.preventDefault()} onClick={() => addLocationChip(item)}>{item}</button>)}</div>}
                             <br/>
-                            <label className="remote-filter"><input type="checkbox" lassName="remote-filter" checked={remoteOnly} onChange={event => setRemoteOnly(event.target.checked)} /> Remote jobs only</label>
+                            <label className="remote-filter"><input type="checkbox" lassName="remote-filter" checked={remoteOnly} onChange={event => setRemoteOnly(event.target.checked)} /> Remote jobs</label>
                         </div>
                     </label>
-                    <label>Company<input value={company} onChange={event => setCompany(event.target.value)} placeholder="e.g. Google or Stripe" /></label>
-                    <label>Exclude companies<input value={excludeCompany} onChange={event => setExcludeCompany(event.target.value)} placeholder="e.g. Amazon, Meta" /></label>
-                    <label>Required skills / keywords<input value={keywords} onChange={event => setKeywords(event.target.value)} placeholder="e.g. React, Java, Kubernetes" /></label>
-                    <label>Engineering focus
-                        <select value={specialization} onChange={event => setSpecialization(event.target.value)}>
-                            <option value="all">All</option>
-                            <option value="embedded">Embedded / firmware</option>
-                            <option value="web">Web development</option>
-                            <option value="mobile">iOS / Android / mobile</option>
-                        </select>
+                    <ChipMultiSelect label="Exclude companies" values={excludeCompanies} onChange={setExcludeCompanies} options={companyOptions} placeholder="e.g. Amazon, Meta" />
+                    <label className="multi-select-filter"><span className="filter-field-label">Exclude titles / levels{excludeLevels.length > 0 && <b>{excludeLevels.length}</b>}</span>
+                        <div className="location-autocomplete">
+                            <div className="location-chip-input">
+                                {excludeLevels.map(item => <span key={item}>{item}<button type="button" aria-label={`Remove ${item}`} onClick={() => setExcludeLevels(current => current.filter(level => level !== item))}>×</button></span>)}
+                                <input value={excludeLevelInput} onFocus={() => setShowExcludeLevelSuggestions(true)} onBlur={() => setShowExcludeLevelSuggestions(false)} onChange={event => setExcludeLevelInput(event.target.value)} onKeyDown={event => { if ((event.key === "Enter" || event.key === ",") && excludeLevelInput.trim()) { event.preventDefault(); addExcludeLevel(excludeLevelInput); } }} placeholder="e.g. Senior, Staff" role="combobox" aria-controls="exclude-level-suggestions" aria-expanded={showExcludeLevelSuggestions && Boolean(excludeLevelSuggestions.length)} />
+                            </div>
+                            {showExcludeLevelSuggestions && excludeLevelSuggestions.length > 0 && <div className="location-suggestions" id="exclude-level-suggestions" role="listbox">{excludeLevelSuggestions.map(item => <button type="button" role="option" aria-selected="false" key={item} onMouseDown={event => event.preventDefault()} onClick={() => addExcludeLevel(item)}>{item}</button>)}</div>}
+                        </div>
                     </label>
-                    <label>Job type
-                        <select value={employmentType} onChange={event => setEmploymentType(event.target.value)}>
-                            <option value="all">All job types</option>
-                            <option value="full_time">Full-time</option>
-                            <option value="coop">Co-op</option>
-                            <option value="intern">Intern</option>
-                        </select>
+                    <label className="multi-select-filter"><span className="filter-field-label">Exclude job types{excludeJobTypes.length > 0 && <b>{excludeJobTypes.length}</b>}</span>
+                        <div className="location-autocomplete">
+                            <div className="location-chip-input">
+                                {excludeJobTypes.map(value => { const option = JOB_TYPE_OPTIONS.find(item => item.value === value); return <span key={value}>{option?.label || value}<button type="button" aria-label={`Remove ${option?.label || value}`} onClick={() => setExcludeJobTypes(current => current.filter(item => item !== value))}>×</button></span>; })}
+                                <input readOnly value="" onFocus={() => setShowJobTypeSuggestions(true)} onBlur={() => setShowJobTypeSuggestions(false)} placeholder={excludeJobTypes.length ? "Add another" : "Select job types"} role="combobox" aria-controls="exclude-job-type-suggestions" aria-expanded={showJobTypeSuggestions} />
+                            </div>
+                            {showJobTypeSuggestions && JOB_TYPE_OPTIONS.some(option => !excludeJobTypes.includes(option.value)) && <div className="location-suggestions" id="exclude-job-type-suggestions" role="listbox">{JOB_TYPE_OPTIONS.filter(option => !excludeJobTypes.includes(option.value)).map(option => <button type="button" role="option" aria-selected="false" key={option.value} onMouseDown={event => event.preventDefault()} onClick={() => addExcludedJobType(option.value)}>{option.label}</button>)}</div>}
+                        </div>
                     </label>
+                    <ChipMultiSelect label="Include companies" values={includeCompanies} onChange={setIncludeCompanies} options={companyOptions} placeholder="e.g. Google, Stripe" />
+                    <label className="multi-select-filter"><span className="filter-field-label">Include titles / levels{includeLevels.length > 0 && <b>{includeLevels.length}</b>}</span>
+                        <div className="location-autocomplete">
+                            <div className="location-chip-input">
+                                {includeLevels.map(item => <span key={item}>{item}<button type="button" aria-label={`Remove ${item}`} onClick={() => setIncludeLevels(current => current.filter(level => level !== item))}>×</button></span>)}
+                                <input value={includeLevelInput} onFocus={() => setShowIncludeLevelSuggestions(true)} onBlur={() => setShowIncludeLevelSuggestions(false)} onChange={event => setIncludeLevelInput(event.target.value)} onKeyDown={event => { if ((event.key === "Enter" || event.key === ",") && includeLevelInput.trim()) { event.preventDefault(); addIncludeLevel(includeLevelInput); } }} placeholder="e.g. Junior, Associate" role="combobox" aria-controls="include-level-suggestions" aria-expanded={showIncludeLevelSuggestions && Boolean(includeLevelSuggestions.length)} />
+                            </div>
+                            {showIncludeLevelSuggestions && includeLevelSuggestions.length > 0 && <div className="location-suggestions" id="include-level-suggestions" role="listbox">{includeLevelSuggestions.map(item => <button type="button" role="option" aria-selected="false" key={item} onMouseDown={event => event.preventDefault()} onClick={() => addIncludeLevel(item)}>{item}</button>)}</div>}
+                        </div>
+                    </label>
+                    <ChipMultiSelect label="Include skills" values={requiredSkills} onChange={setRequiredSkills} options={SKILL_OPTIONS} placeholder="e.g. React, Java" />
+                    <ChipMultiSelect label="Exclude engineering focus" values={excludeFocuses} onChange={setExcludeFocuses} options={FOCUS_OPTIONS} placeholder="Select focus areas" allowCustom={false} />
                     <label>Date posted
                         <select value={postedWithin} onChange={event => setPostedWithin(event.target.value)}>
                             <option value="all">Any posting date</option>
@@ -328,18 +415,7 @@ const ActiveJobPostings = () => {
                             <option value="six_months">Posted within 6 months</option>
                         </select>
                     </label>
-                    <label>Experience level
-                        <select value={experienceRange} onChange={event => setExperienceRange(event.target.value)}>
-                            <option value="all">Any experience level</option><option value="0_1">0–1 years</option><option value="2_3">2–3 years</option><option value="4_5">4–5 years</option><option value="6_9">6–9 years</option><option value="10_plus">10+ years</option>
-                        </select>
-                    </label>
-                    <label>Work authorization / clearance
-                        <select value={eligibility} onChange={event => setEligibility(event.target.value)}>
-                            <option value="all">All eligibility requirements</option>
-                            <option value="permanent_resident_eligible">Hide citizenship or clearance-restricted jobs</option>
-                            <option value="citizen_or_clearance_required">Only citizenship or clearance-restricted jobs</option>
-                        </select>
-                    </label>
+                    <ChipMultiSelect label="Exclude authorization requirements" values={excludeEligibility} onChange={setExcludeEligibility} options={ELIGIBILITY_EXCLUSIONS} placeholder="Select requirements" allowCustom={false} />
                     <div className="advanced-filter-actions"><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
                 </div>}
             </section>
@@ -438,7 +514,7 @@ const ActiveJobPostings = () => {
                                     </button>
                                 </div>
                                 <div className="job-card-secondary-actions">
-                                    <button type="button" onClick={() => updatePreference(job, "saved")}>{job.currentUserSaved ? "★ Saved" : "☆ Save"}</button>
+                                    <button type="button" onClick={() => updatePreference(job, job.currentUserSaved ? "none" : "saved")}>{job.currentUserSaved ? "★ Saved" : "☆ Save"}</button>
                                     <button type="button" onClick={() => updatePreference(job, "blocked")}>Block</button>
                                 </div>
                             </article>

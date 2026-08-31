@@ -9,6 +9,8 @@ const KNOWN_COMPANIES = {
     "omada health": ["Omada Health", "https://boards.greenhouse.io/omadahealth", "greenhouse", "omadahealth"],
     uber: ["Uber", "https://jobs.uber.com/en/jobs/", "oracle-uber", "UberCareers"],
     netflix: ["Netflix", "https://explore.jobs.netflix.net/careers", "eightfold", "netflix.com"],
+    bloomberg: ["Bloomberg", "https://bloomberg.avature.net/careers/SearchJobs/?search=software%20engineer", "generic"],
+    linkedin: ["LinkedIn", "https://www.linkedin.com/jobs/search/?f_C=1337&geoId=103644278&keywords=software%20engineer", "generic"],
 };
 
 const normalizeCompanyName = value => String(value || "")
@@ -107,7 +109,22 @@ const listCustomCareerSources = async () => {
         `SELECT company, provider, board, career_url AS "careerUrl", 'community' AS group
          FROM jobpilot.custom_career_sources WHERE status = 'active' ORDER BY company`
     );
-    return result.rows;
+    const supportedProviders = new Set(["ashby", "greenhouse", "lever", "google", "generic", "oracle-uber", "eightfold"]);
+    const seen = new Set();
+    return result.rows.map(source => ({
+        ...source,
+        provider: String(source.provider || "").trim().replace(/^g+greenhouse$/, "greenhouse"),
+    })).filter(source => {
+        if (!supportedProviders.has(source.provider)) return false;
+        try {
+            const hostname = new URL(source.careerUrl).hostname;
+            if (!hostname.includes(".")) return false;
+        } catch { return false; }
+        const key = `${normalizeCompanyName(source.company)}:${source.provider}:${source.board || source.careerUrl}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 };
 
 module.exports = { addCustomCareerSource, addResolvedCareerSource, listCustomCareerSources, resolveSource };
