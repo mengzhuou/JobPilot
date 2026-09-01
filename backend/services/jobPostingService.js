@@ -949,6 +949,10 @@ module.exports = {
     discoverCareerSource,
     enqueueSourceJobDiscovery,
     getSourceDiscoveryTask,
+    refreshJobsForAnalytics: async () => {
+        const snapshot = await refreshJobsWithLock();
+        return { ...snapshot, jobs:(snapshot.jobs || []).map(enrichJobDetails) };
+    },
     refreshJobsInBackground: () => {
         void refreshJobsWithLock().catch(error => {
             console.error("Background job cache refresh failed:", error.message);

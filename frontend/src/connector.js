@@ -117,6 +117,8 @@ const reportJob = async data => (await api.post("/api/job-moderation/reports",da
 const getJobReportStatus = async jobUrl => (await api.get("/api/job-moderation/reports/status",{params:{jobUrl}})).data.reported;
 const getJobModeration = async () => (await api.get("/api/job-moderation")).data.jobs;
 const updateJobModeration = async data => (await api.put("/api/job-moderation",data)).data.job;
+const getJobMarketAnalytics = async () => (await api.get("/api/job-analytics/market")).data.snapshot;
+const refreshJobMarketAnalytics = async () => (await api.post("/api/job-analytics/market/refresh")).data.snapshot;
 
 const getJobApplicationHistory = async ({
     status = "",
@@ -176,4 +178,6 @@ export {
     getJobReportStatus,
     getJobModeration,
     updateJobModeration,
+    getJobMarketAnalytics,
+    refreshJobMarketAnalytics,
 };

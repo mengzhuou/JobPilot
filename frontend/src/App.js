@@ -10,6 +10,7 @@ import AdminCompanies from "./components/Pages/Management/AdminCompanies";
 import Feedback from "./components/Pages/Management/Feedback";
 import AdminFeedback from "./components/Pages/Management/AdminFeedback";
 import AdminJobModeration from "./components/Pages/Management/AdminJobModeration";
+import AdminAnalytics from "./components/Pages/Management/AdminAnalytics";
 import ManualApplication from "./components/Pages/Management/ManualApplication";
 import ErrorPage from "./components/Pages/Management/ErrorPage";
 import ProtectedRoute from "./ProtectedRoute";
@@ -77,6 +78,7 @@ const AppRoutes = () => {
                 <Route path="/admin/companies" element={<ProtectedRoute requiredRole="admin" element={<AdminCompanies />} />} />
                 <Route path="/admin/feedback" element={<ProtectedRoute requiredRole="admin" element={<AdminFeedback />} />} />
                 <Route path="/admin/job-moderation" element={<ProtectedRoute requiredRole="admin" element={<AdminJobModeration />} />} />
+                <Route path="/admin/analytics" element={<ProtectedRoute requiredRole="admin" element={<AdminAnalytics />} />} />
                 <Route path="/forbidden" element={<ProtectedRoute element={<ErrorPage status={403} />} />} />
                 <Route path="/server-error" element={<ErrorPage status={500} />} />
                 <Route path="*" element={<ErrorPage status={404} />} />

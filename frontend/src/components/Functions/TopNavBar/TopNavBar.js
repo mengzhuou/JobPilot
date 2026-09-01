@@ -112,6 +112,7 @@ const TopNavBar = () => {
                         {studentData.role === "admin" && <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/admin/companies" onClick={()=>setIsSidebarOpen(false)}>Add Company</NavLink>}
                         {studentData.role === "admin" && <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/admin/feedback" onClick={()=>setIsSidebarOpen(false)}>Feedback Inbox</NavLink>}
                         {studentData.role === "admin" && <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/admin/job-moderation" onClick={()=>setIsSidebarOpen(false)}>Job Moderation</NavLink>}
+                        {studentData.role === "admin" && <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/admin/analytics" onClick={()=>setIsSidebarOpen(false)}>Analytics</NavLink>}
                         {(studentData.role === 'Admin' || studentData.role === 'SA' || studentData.role === 'Professor') && (
                             <div className="nav-link" onClick={goToAdminSite}>Admin Site</div>
                         )}
