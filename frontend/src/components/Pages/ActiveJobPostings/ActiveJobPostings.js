@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faHeart as farHeart } from "@fortawesome/free-regular-svg-icons";
+import { faBan, faHeart as fasHeart } from "@fortawesome/free-solid-svg-icons";
 import { getActiveJobPostings, setJobPreference } from "../../../connector";
 import "./ActiveJobPostings.scss";
 
@@ -48,6 +51,16 @@ const formatPostedDate = (date) => {
         day: "numeric",
         year: "numeric",
     }).format(new Date(date));
+};
+
+const getUniqueTags = tags => {
+    const seen = new Set();
+    return (tags || []).filter(tag => {
+        const key = String(tag || "").trim().toLocaleLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 };
 
 const ActiveJobPostings = () => {
@@ -502,14 +515,14 @@ const ActiveJobPostings = () => {
                                     <div className="job-card-source">{job.source}</div>
                                     {job.currentUserApplied && <span className="applied-mark">✓ Applied</span>}
                                 </div>
-                                <h2>{job.title}</h2>
+                                <h2><button className="job-title-autofill" type="button" onClick={() => startAutofill(job)} disabled={job.currentUserApplied}>{job.title}</button></h2>
                                 <p className="job-card-company">{job.company}</p>
                                 <div className="job-card-meta">
                                     <span>{job.location}</span>
                                     <span>{formatPostedDate(job.postedAt)}</span>
                                 </div>
                                 <div className="job-card-tags">
-                                    {(job.tags || []).slice(0, 4).map((tag) => (
+                                    {getUniqueTags(job.tags).slice(0, 4).map((tag) => (
                                         <span key={tag}>{tag}</span>
                                     ))}
                                 </div>
@@ -519,24 +532,20 @@ const ActiveJobPostings = () => {
                                     </p>
                                 )}
                                 <div className="job-card-actions">
-                                    <a
-                                        href={job.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                    >
-                                        View job
-                                    </a>
+                                    <button className="job-card-icon-action block" type="button" title="Block job" aria-label={`Block ${job.title}`} onClick={() => updatePreference(job, "blocked")}>
+                                        <FontAwesomeIcon icon={faBan} aria-hidden="true" />
+                                    </button>
+                                    <button className={`job-card-icon-action save${job.currentUserSaved ? " active" : ""}`} type="button" title={job.currentUserSaved ? "Remove from saved jobs" : "Save job"} aria-label={job.currentUserSaved ? `Unsave ${job.title}` : `Save ${job.title}`} aria-pressed={job.currentUserSaved} onClick={() => updatePreference(job, job.currentUserSaved ? "none" : "saved")}>
+                                        <FontAwesomeIcon icon={job.currentUserSaved ? fasHeart : farHeart} aria-hidden="true" />
+                                    </button>
                                     <button
+                                        className="job-card-autofill"
                                         type="button"
                                         onClick={() => startAutofill(job)}
                                         disabled={job.currentUserApplied}
                                     >
                                         {job.currentUserApplied ? "Applied" : "Autofill"}
                                     </button>
-                                </div>
-                                <div className="job-card-secondary-actions">
-                                    <button type="button" onClick={() => updatePreference(job, job.currentUserSaved ? "none" : "saved")}>{job.currentUserSaved ? "★ Saved" : "☆ Save"}</button>
-                                    <button type="button" onClick={() => updatePreference(job, "blocked")}>Block</button>
                                 </div>
                             </article>
                         ))}

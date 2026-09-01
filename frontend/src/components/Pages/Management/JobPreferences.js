@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faHeart as farHeart } from "@fortawesome/free-regular-svg-icons";
+import { faBan, faHeart as fasHeart } from "@fortawesome/free-solid-svg-icons";
 import { deleteJobPreference, getJobPreferences, setJobPreference } from "../../../connector";
 import "./ManagementPages.scss";
 
@@ -69,11 +72,16 @@ const JobPreferences = ({ state }) => {
             <article className={`management-item${job.current_user_applied ? " management-item-applied" : ""}`} key={job.id}>
                 <div className="management-item-copy"><div className="management-item-heading"><h2>{job.job_title || "Job posting"}</h2>{job.current_user_applied && <span className="management-applied-mark">✓ Applied</span>}</div><p>{job.company}{job.location ? ` · ${job.location}` : ""}</p></div>
                 <div className="management-actions">
+                    {state === "saved" ? <>
+                        <button className="preference-icon-action block" type="button" title="Block job" aria-label={`Block ${job.job_title || "job"}`} onClick={() => changeState(job, "blocked")}><FontAwesomeIcon icon={faBan} aria-hidden="true" /></button>
+                        <button className="preference-icon-action save active" type="button" title="Remove from saved jobs" aria-label={`Unsave ${job.job_title || "job"}`} onClick={() => remove(job.id)}><FontAwesomeIcon icon={fasHeart} aria-hidden="true" /></button>
+                    </> : <>
+                        <button className="preference-icon-action block active" type="button" title="Unblock job" aria-label={`Unblock ${job.job_title || "job"}`} onClick={() => remove(job.id)}><FontAwesomeIcon icon={faBan} aria-hidden="true" /></button>
+                        <button className="preference-icon-action save" type="button" title="Save job" aria-label={`Save ${job.job_title || "job"}`} onClick={() => changeState(job, "saved")}><FontAwesomeIcon icon={farHeart} aria-hidden="true" /></button>
+                    </>}
                     <button className="primary" type="button" onClick={() => autofill(job)} disabled={job.current_user_applied}>{job.current_user_applied ? "Applied" : "Autofill"}
                     </button>
-                    <a className="management-action-link secondary" href={job.job_url} target="_blank" rel="noreferrer">View job
-                    </a>
-                    {state === "saved" ? <><button type="button" onClick={() => changeState(job, "blocked")}>Block</button><button type="button" onClick={() => remove(job.id)}>Unsave</button></> : <><button type="button" onClick={() => changeState(job, "saved")}>Save</button><button type="button" onClick={() => remove(job.id)}>Unblock</button></>}</div>
+                </div>
             </article>) : <div className="management-panel">No {state} jobs yet.</div>}</section>
     </div></main>;
 };

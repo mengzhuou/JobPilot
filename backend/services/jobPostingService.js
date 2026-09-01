@@ -116,6 +116,17 @@ const flattenValues = (value) => {
     return value ? [String(value)] : [];
 };
 
+const uniqueTextValues = values => {
+    const seen = new Set();
+    return (values || []).map(value => String(value || "").trim()).filter(value => {
+        if (!value) return false;
+        const key = value.toLocaleLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
 const isUnitedStatesLocation = (location) => {
     return (
         US_LOCATION_PATTERN.test(location || "") ||
@@ -173,7 +184,7 @@ const enrichJobDetails = job => {
             /\b(?:on[ -]?site|in office)\b/i.test(text) ? "On-site" :
                 job.remote || /\bremote\b/i.test(text) ? "Remote" : null
     );
-    return { ...job, employmentType, workplaceType };
+    return { ...job, tags:uniqueTextValues(job.tags), employmentType, workplaceType };
 };
 
 const normalizeAshbyJobs = (payload, source) => {
@@ -922,7 +933,7 @@ const enrichJobPreferencesFromCache = async preferences => {
             job_posted_at: preference.job_posted_at || job.postedAt,
             salary: preference.salary || job.salary,
             provider: preference.provider || job.provider,
-            tags: preference.tags?.length ? preference.tags : (job.tags || []),
+            tags: uniqueTextValues(preference.tags?.length ? preference.tags : job.tags),
             summary: preference.summary || job.summary,
             requirements: preference.requirements?.length ? preference.requirements : (job.requirements || []),
         };

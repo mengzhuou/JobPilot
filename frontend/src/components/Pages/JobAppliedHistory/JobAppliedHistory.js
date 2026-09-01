@@ -250,7 +250,6 @@ const JobAppliedHistory = () => {
                                     {application.location && <span>{application.location}</span>}
                                     {application.source && <span>{application.source}</span>}
                                 </div>
-                                <a href={application.job_url} target="_blank" rel="noreferrer">View original posting ↗</a>
                             </div>
 
                             <div className="history-card-edit">

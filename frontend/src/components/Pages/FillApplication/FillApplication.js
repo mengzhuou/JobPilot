@@ -19,6 +19,7 @@ const REPORT_REASONS = [
     "Other",
 ];
 const MAX_INPUT_LENGTH = 199;
+const uniqueTags = tags => [...new Map((tags || []).filter(Boolean).map(tag => [String(tag).trim().toLocaleLowerCase(), String(tag).trim()])).values()];
 
 const formatJobDate = value => {
     if (!value) return "Not provided";
@@ -183,7 +184,10 @@ const FillApplication = () => {
                         <h1>{job.jobTitle || "Autofill an application"}</h1>
                         <p className="autofill-company">{job.company || "Job application"}</p>
                     </div>
-                    <span className={`autofill-status status-${status}`}>{status}</span>
+                    <div className="autofill-heading-actions">
+                        {jobUrl && <a className="open-original-job" href={jobUrl} target="_blank" rel="noreferrer">Open original job ↗</a>}
+                        <span className={`autofill-status status-${status}`}>{status}</span>
+                    </div>
                 </div>
 
                 <div className="job-detail-grid">
@@ -197,7 +201,7 @@ const FillApplication = () => {
 
                 {(job.provider || job.tags?.length > 0) && <div className="autofill-job-tags" aria-label="Job details">
                     {job.provider && <span>{job.provider}</span>}
-                    {(job.tags || []).slice(0, 5).map(tag => <span key={tag}>{tag}</span>)}
+                    {uniqueTags(job.tags).slice(0, 5).map(tag => <span key={tag.toLocaleLowerCase()}>{tag}</span>)}
                 </div>}
 
                 {(job.summary || job.requirements?.length > 0) && <section className="job-requirements-panel">
