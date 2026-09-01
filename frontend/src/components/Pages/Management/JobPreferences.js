@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { deleteJobPreference, getJobPreferences } from "../../../connector";
+import { deleteJobPreference, getJobPreferences, setJobPreference } from "../../../connector";
 import "./ManagementPages.scss";
 
 const matchesConfirmedApplication = (job, confirmation) => (
@@ -52,13 +52,28 @@ const JobPreferences = ({ state }) => {
         window.setTimeout(() => localStorage.removeItem(key), 60000);
     };
 
+    const changeState = async (job, nextState) => {
+        await setJobPreference({ state:nextState, jobUrl:job.job_url, jobTitle:job.job_title,
+            company:job.company, location:job.location, source:job.source,
+            externalJobId:job.external_job_id, employmentType:job.employment_type,
+            workplaceType:job.workplace_type, jobPostedAt:job.job_posted_at,
+            salary:job.salary, provider:job.provider, tags:job.tags,
+            summary:job.summary, requirements:job.requirements });
+        if (nextState !== state) setJobs(current => current.filter(item => item.id !== job.id));
+    };
+
     return <main className="management-page"><div className="management-shell">
         <header className="management-heading"><h1>{state === "saved" ? "Saved Jobs" : "Blocked Jobs"}</h1><p>{state === "saved" ? "Roles you want to revisit before applying." : "Jobs hidden from your active listings."}</p></header>
         {error && <p className="management-error">{error}</p>}
         <section className="management-list">{jobs.length ? jobs.map(job =>
             <article className={`management-item${job.current_user_applied ? " management-item-applied" : ""}`} key={job.id}>
                 <div className="management-item-copy"><div className="management-item-heading"><h2>{job.job_title || "Job posting"}</h2>{job.current_user_applied && <span className="management-applied-mark">✓ Applied</span>}</div><p>{job.company}{job.location ? ` · ${job.location}` : ""}</p></div>
-                <div className="management-actions"><button className="primary" type="button" onClick={() => autofill(job)} disabled={job.current_user_applied}>{job.current_user_applied ? "Applied" : "Autofill"}</button><a className="management-action-link secondary" href={job.job_url} target="_blank" rel="noreferrer">View job</a><button type="button" onClick={() => remove(job.id)}>{state === "blocked" ? "Unblock" : "Remove"}</button></div>
+                <div className="management-actions">
+                    <button className="primary" type="button" onClick={() => autofill(job)} disabled={job.current_user_applied}>{job.current_user_applied ? "Applied" : "Autofill"}
+                    </button>
+                    <a className="management-action-link secondary" href={job.job_url} target="_blank" rel="noreferrer">View job
+                    </a>
+                    {state === "saved" ? <><button type="button" onClick={() => changeState(job, "blocked")}>Block</button><button type="button" onClick={() => remove(job.id)}>Unsave</button></> : <><button type="button" onClick={() => changeState(job, "saved")}>Save</button><button type="button" onClick={() => remove(job.id)}>Unblock</button></>}</div>
             </article>) : <div className="management-panel">No {state} jobs yet.</div>}</section>
     </div></main>;
 };

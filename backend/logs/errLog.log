@@ -103,3 +103,8 @@
 20260831	13:32:03	c71b7864-7e6a-490b-a102-35a503f95ed1	TypeError: Cannot read properties of null (reading 'exposeFunction')	POST	/api/applications/start	http://localhost:3000
 20260831	13:43:01	67eec0d8-226c-4b0f-888c-e09de486d623	Error: page.exposeFunction: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
 20260831	13:44:42	cf6ba640-3ab4-4637-bb29-5dc1595adfeb	Error: page.title: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260831	16:18:55	ce7093a7-629e-44a7-bc20-f2a61373890d	Error: You have already reported this job	POST	/api/job-moderation/reports	http://localhost:3000
+20260831	16:28:14	5e93b5b8-3cd5-4a50-9eb8-b925f2007084	Error: You have already reported this job	POST	/api/job-moderation/reports	http://localhost:3000
+20260831	16:28:42	265816ce-53fd-4b9b-ac04-744246caeb77	Error: You have already reported this job	POST	/api/job-moderation/reports	http://localhost:3000
+20260831	16:30:28	b7942529-4ac5-4ecd-b72d-d04be547ca0d	Error: You have already reported this job	POST	/api/job-moderation/reports	http://localhost:3000
+20260831	19:18:49	2d164a0e-0d2e-4b1e-857a-2f5e0b5d4ccc	Error: This job has already been reported by you	POST	/api/job-moderation/reports	http://localhost:3000

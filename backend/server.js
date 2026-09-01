@@ -35,6 +35,7 @@ const authRoutes = require("./routes/authRoutes");
 const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
 const jobPreferenceRoutes = require("./routes/jobPreferenceRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
+const jobModerationRoutes = require("./routes/jobModerationRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const { verifyDatabaseConnection } = require("./config/postgres");
 const { migrateDatabase } = require("./scripts/migrateDatabase");
@@ -68,6 +69,7 @@ app.use("/api/job-preferences", jobPreferenceRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/job-postings", jobPostingRoutes);
+app.use("/api/job-moderation", jobModerationRoutes);
 
 
 // ====================

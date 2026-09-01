@@ -1,0 +1,10 @@
+const router=require("express").Router();
+const requireAuth=require("../middleware/requireAuth");
+const requireAdmin=require("../middleware/requireAdmin");
+const controller=require("../controllers/jobModerationController");
+router.use(requireAuth);
+router.post("/reports",requireAdmin,controller.report);
+router.get("/reports/status",requireAdmin,controller.reportStatus);
+router.get("/",requireAdmin,controller.list);
+router.put("/",requireAdmin,controller.update);
+module.exports=router;

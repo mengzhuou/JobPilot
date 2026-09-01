@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useSelector } from "react-redux";
 import "./FillApplication.scss";
 import Button from "../../Button/Button";
 import {
@@ -7,7 +8,17 @@ import {
     getApplicationStatus,
     openAndFillApplication,
     stopApplication as stopApplicationAgent,
+    reportJob,
+    getJobReportStatus,
 } from "../../../connector.js";
+
+const REPORT_REASONS = [
+    "website has bot protection that blocks submission",
+    "website is invalid or job no longer exists",
+    "It's a scam",
+    "Other",
+];
+const MAX_INPUT_LENGTH = 199;
 
 const formatJobDate = value => {
     if (!value) return "Not provided";
@@ -18,6 +29,7 @@ const formatJobDate = value => {
 };
 
 const FillApplication = () => {
+    const isAdmin = useSelector(state => state.studentData?.role === "admin");
     const routeLocation = useLocation();
     const job = React.useMemo(() => {
         if (routeLocation.state) return routeLocation.state;
@@ -33,9 +45,25 @@ const FillApplication = () => {
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [isConfirming, setIsConfirming] = useState(false);
     const [error, setError] = useState("");
+    const [reportStatus, setReportStatus] = useState("");
+    const [showReportDialog, setShowReportDialog] = useState(false);
+    const [reportReason, setReportReason] = useState("");
+    const [otherReportReason, setOtherReportReason] = useState("");
+    const [isReporting, setIsReporting] = useState(false);
+    const [hasReported, setHasReported] = useState(false);
     const wasRunning = useRef(false);
     const isStarting = status === "starting";
     const isRunning = status === "running";
+
+    useEffect(() => {
+        const persistedJobUrl = job.jobUrl;
+        if (!isAdmin || !persistedJobUrl) return;
+        let active = true;
+        getJobReportStatus(persistedJobUrl)
+            .then(reported => { if (active) setHasReported(reported); })
+            .catch(requestError => console.error("Failed to check report status:", requestError));
+        return () => { active = false; };
+    }, [isAdmin, job.jobUrl]);
 
     useEffect(() => {
         const syncStatus = async () => {
@@ -118,6 +146,34 @@ const FillApplication = () => {
         }
     };
 
+    const reportSelectedJob = async () => {
+        const reasonDetail = otherReportReason.trim();
+        if (!reportReason || (reportReason === "Other" && !reasonDetail)) return;
+        setIsReporting(true);
+        setReportStatus("");
+        try {
+            await reportJob({ ...applicationPayload, reason:reportReason, reasonDetail });
+            setReportStatus("Reported and hidden from users.");
+            setHasReported(true);
+            setShowReportDialog(false);
+        } catch (requestError) {
+            if (requestError.response?.status === 409) {
+                setHasReported(true);
+                setShowReportDialog(false);
+                setReportStatus("");
+            } else {
+                setReportStatus(requestError.response?.data?.message || "Unable to report this job.");
+            }
+        } finally {
+            setIsReporting(false);
+        }
+    };
+
+    const closeReportDialog = () => {
+        if (isReporting) return;
+        setShowReportDialog(false);
+    };
+
     return (
         <main className="autofill-page">
             <section className="autofill-card">
@@ -152,13 +208,16 @@ const FillApplication = () => {
 
                 <label className="application-url-label">
                     Application URL
-                    <div className="job-url-section">
-                        <input type="url" value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isStarting || isRunning} />
+                    <div className={`job-url-section${isAdmin ? "" : " no-report"}`}>
+                        <input type="url" maxLength={MAX_INPUT_LENGTH} value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isStarting || isRunning} />
                         {isStarting ? <Button disabled>Starting…</Button>
                             : isRunning ? <Button onClick={stopApplication}>Finish</Button>
                                 : <Button onClick={startApplication}>Start Autofill</Button>}
+                        {isAdmin && <button className="report-job-button" type="button" disabled={hasReported} onClick={()=>setShowReportDialog(true)}>{hasReported ? "Reported" : "Report job"}</button>}
                     </div>
                 </label>
+
+                {reportStatus && <div className="autofill-report-status" role="status">{reportStatus}</div>}
 
                 {error && <div className="autofill-error" role="alert">{error}</div>}
 
@@ -185,6 +244,26 @@ const FillApplication = () => {
                     </section>
                 </div>
             )}
+            {isAdmin && showReportDialog && <div className="confirmation-backdrop report-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)closeReportDialog();}}>
+                <section className="application-confirmation report-dialog" role="dialog" aria-modal="true" aria-labelledby="report-title">
+                    <button className="confirmation-close" type="button" onClick={closeReportDialog} aria-label="Close">×</button>
+                    <span className="report-dialog-eyebrow">Administrator action</span>
+                    <h2 id="report-title">Why are you reporting this job?</h2>
+                    <p className="report-dialog-intro">Choose a reason. Reporting immediately hides this job from every user.</p>
+                    <div className="report-reasons">{REPORT_REASONS.map(reason=><label className={reportReason===reason ? "selected" : ""} key={reason}>
+                        <input type="radio" name="report-reason" value={reason} checked={reportReason===reason} onChange={event=>setReportReason(event.target.value)}/>
+                        <span>{reason}</span><i aria-hidden="true">✓</i>
+                    </label>)}</div>
+                    {reportReason === "Other" && <label className="other-report-field">
+                        <textarea autoFocus maxLength={MAX_INPUT_LENGTH} value={otherReportReason} onChange={event=>setOtherReportReason(event.target.value)} placeholder="Tell the moderator what prevented you from applying" />
+                        <span>{otherReportReason.length}/{MAX_INPUT_LENGTH}</span>
+                    </label>}
+                    <div className="report-dialog-actions">
+                        <button className="confirm-not-applied" type="button" disabled={isReporting} onClick={closeReportDialog}>Cancel</button>
+                        <button className="confirm-applied" type="button" disabled={isReporting || !reportReason || (reportReason === "Other" && !otherReportReason.trim())} onClick={reportSelectedJob}>{isReporting ? "Hiding…" : "Report and hide job"}</button>
+                    </div>
+                </section>
+            </div>}
         </main>
     );
 };

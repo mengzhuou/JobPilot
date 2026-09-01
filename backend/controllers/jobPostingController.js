@@ -9,6 +9,7 @@ const {
 } = require("../services/jobPostingService");
 const { addResolvedCareerSource, listCustomCareerSources, resolveSource } = require("../repositories/customCareerSourceRepository");
 const { getPreferenceSignals } = require("../repositories/jobPreferenceRepository");
+const { listActiveModeration } = require("../repositories/jobModerationRepository");
 const companyCareerSources = require("../services/companyCareerSources");
 const {
     getAppliedJobKeys,
@@ -36,6 +37,13 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
     const appliedJobKeys = applicationState === "all"
         ? new Set()
         : await getAppliedJobKeys(req.auth.userId);
+    const moderationRows = await listActiveModeration();
+    const moderation = new Map();
+    moderationRows.forEach(row => {
+        const value = { permanentlyBlocked:row.permanently_blocked, adminTags:row.admin_tags || [] };
+        if (row.job_url) moderation.set(`url:${row.job_url}`,value);
+        if (row.external_job_id) moderation.set(`id:${row.external_job_id}`,value);
+    });
     const results = await getActiveJobPostings({
         query: req.query.query,
         location: req.query.location,
@@ -55,6 +63,8 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
         locations: req.query.locations,
         excludeLevels: req.query.excludeLevels,
         includeLevels: req.query.includeLevels,
+        excludePlatforms: req.query.excludePlatforms,
+        moderation,
     });
 
     const [signals, preferences] = await Promise.all([

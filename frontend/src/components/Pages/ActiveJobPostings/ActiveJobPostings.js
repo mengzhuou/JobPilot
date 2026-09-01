@@ -12,7 +12,8 @@ const JOB_TYPE_OPTIONS = [
 ];
 const SKILL_OPTIONS = ["React", "Java", "JavaScript", "TypeScript", "Python", "Node.js", "C++", "Kubernetes", "AWS", "PostgreSQL"];
 const FOCUS_OPTIONS = [{ value: "web", label: "Web" }, { value: "mobile", label: "Mobile" }, { value: "embedded", label: "Embedded" }];
-const ELIGIBILITY_EXCLUSIONS = [{ value: "citizenship", label: "Requires U.S. citizenship" }, { value: "clearance", label: "Requires security clearance" }];
+const ELIGIBILITY_EXCLUSIONS = [{ value: "citizenship", label: "Requires U.S. citizenship" }, { value: "clearance", label: "Requires security clearance" }, { value:"no_sponsorship", label:"Does not offer sponsorship" }];
+const PLATFORM_OPTIONS = ["Greenhouse", "Lever", "LinkedIn", "Ashby", "Oracle", "Eightfold"];
 
 const ChipMultiSelect = ({ label, values, onChange, options, placeholder, allowCustom = true }) => {
     const [input, setInput] = useState("");
@@ -84,10 +85,11 @@ const ActiveJobPostings = () => {
     const [excludeLevelOptions, setExcludeLevelOptions] = useState(DEFAULT_LEVEL_OPTIONS);
     const [showExcludeLevelSuggestions, setShowExcludeLevelSuggestions] = useState(false);
     const [includeLevels, setIncludeLevels] = useState(Array.isArray(savedFilters.includeLevels) ? savedFilters.includeLevels : []);
+    const [excludePlatforms, setExcludePlatforms] = useState(Array.isArray(savedFilters.excludePlatforms) ? savedFilters.excludePlatforms : []);
     const [includeLevelInput, setIncludeLevelInput] = useState("");
     const [showIncludeLevelSuggestions, setShowIncludeLevelSuggestions] = useState(false);
     const [applyClearedFilters, setApplyClearedFilters] = useState(false);
-    const activeAdvancedFilters = [includeCompanies.length > 0, excludeCompanies.length > 0, requiredSkills.length > 0, remoteOnly, excludeFocuses.length > 0, excludeEligibility.length > 0, excludeJobTypes.length > 0, postedWithin !== "all", locations.length > 0, excludeLevels.length > 0, includeLevels.length > 0]
+    const activeAdvancedFilters = [includeCompanies.length > 0, excludeCompanies.length > 0, requiredSkills.length > 0, remoteOnly, excludeFocuses.length > 0, excludeEligibility.length > 0, excludeJobTypes.length > 0, excludePlatforms.length > 0, postedWithin !== "all", locations.length > 0, excludeLevels.length > 0, includeLevels.length > 0]
         .filter(Boolean).length;
     const locationSuggestions = useMemo(() => Array.from(new Set([
         ...jobs.flatMap(job => String(job.location || "").split(" · ").map(value => value.trim()).filter(Boolean)),
@@ -136,6 +138,7 @@ const ActiveJobPostings = () => {
                 locations,
                 excludeLevels,
                 includeLevels,
+                excludePlatforms,
             });
 
             setJobs((currentJobs) => {
@@ -178,7 +181,7 @@ const ActiveJobPostings = () => {
                 setIsLoading(false);
             }
         }
-    }, [displayFilter, excludeCompanies, excludeEligibility, excludeFocuses, excludeJobTypes, excludeLevels, includeCompanies, includeLevels, locations, postedWithin, query, remoteOnly, requiredSkills]);
+    }, [displayFilter, excludeCompanies, excludeEligibility, excludeFocuses, excludeJobTypes, excludeLevels, excludePlatforms, includeCompanies, includeLevels, locations, postedWithin, query, remoteOnly, requiredSkills]);
 
     useEffect(() => {
         loadJobs({ targetPage: 1 });
@@ -225,6 +228,7 @@ const ActiveJobPostings = () => {
         setExcludeLevelInput("");
         setShowExcludeLevelSuggestions(false);
         setIncludeLevels([]);
+        setExcludePlatforms([]);
         setIncludeLevelInput("");
         setShowIncludeLevelSuggestions(false);
         localStorage.removeItem(FILTER_STORAGE_KEY);
@@ -237,8 +241,9 @@ const ActiveJobPostings = () => {
             excludeFocuses, excludeEligibility, excludeJobTypes,
             postedWithin,
             locations, excludeLevels, includeLevels,
+            excludePlatforms,
         }));
-    }, [includeCompanies, excludeCompanies, requiredSkills, remoteOnly, excludeFocuses, excludeEligibility, excludeJobTypes, postedWithin, locations, excludeLevels, includeLevels]);
+    }, [includeCompanies, excludeCompanies, requiredSkills, remoteOnly, excludeFocuses, excludeEligibility, excludeJobTypes, excludePlatforms, postedWithin, locations, excludeLevels, includeLevels]);
 
     useEffect(() => {
         if (!routeLocation.state?.confirmedJobUrl) return undefined;
@@ -431,6 +436,7 @@ const ActiveJobPostings = () => {
                         </select>
                     </label>
                     <ChipMultiSelect label="Exclude authorization requirements" values={excludeEligibility} onChange={setExcludeEligibility} options={ELIGIBILITY_EXCLUSIONS} placeholder="Select requirements" allowCustom={false} />
+                    <ChipMultiSelect label="Exclude application platforms" values={excludePlatforms} onChange={setExcludePlatforms} options={PLATFORM_OPTIONS} placeholder="Select platforms" allowCustom={false} />
                     <div className="advanced-filter-actions"><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
                 </div>}
             </section>

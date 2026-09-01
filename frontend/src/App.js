@@ -9,7 +9,9 @@ import JobPreferences from "./components/Pages/Management/JobPreferences";
 import AdminCompanies from "./components/Pages/Management/AdminCompanies";
 import Feedback from "./components/Pages/Management/Feedback";
 import AdminFeedback from "./components/Pages/Management/AdminFeedback";
+import AdminJobModeration from "./components/Pages/Management/AdminJobModeration";
 import ManualApplication from "./components/Pages/Management/ManualApplication";
+import ErrorPage from "./components/Pages/Management/ErrorPage";
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
 import store from "./components/redux/store";
@@ -51,6 +53,7 @@ const AppRoutes = () => {
     return (
         <>
             <TokenVerification />
+            <GlobalInputLimit />
             {!isLoginPage && <TopNavBar />}
             <Routes>
                 <Route path="/" element={<Navigate to="/login" replace />} />
@@ -71,12 +74,34 @@ const AppRoutes = () => {
                 <Route path="/blocked-jobs" element={<ProtectedRoute element={<JobPreferences state="blocked" />} />} />
                 <Route path="/feedback" element={<ProtectedRoute element={<Feedback />} />} />
                 <Route path="/add-application" element={<ProtectedRoute element={<ManualApplication />} />} />
-                <Route path="/admin/companies" element={<ProtectedRoute element={<AdminCompanies />} />} />
-                <Route path="/admin/feedback" element={<ProtectedRoute element={<AdminFeedback />} />} />
-                <Route path="*" element={<Navigate to="/login" replace />} />
+                <Route path="/admin/companies" element={<ProtectedRoute requiredRole="admin" element={<AdminCompanies />} />} />
+                <Route path="/admin/feedback" element={<ProtectedRoute requiredRole="admin" element={<AdminFeedback />} />} />
+                <Route path="/admin/job-moderation" element={<ProtectedRoute requiredRole="admin" element={<AdminJobModeration />} />} />
+                <Route path="/forbidden" element={<ProtectedRoute element={<ErrorPage status={403} />} />} />
+                <Route path="/server-error" element={<ErrorPage status={500} />} />
+                <Route path="*" element={<ErrorPage status={404} />} />
             </Routes>
         </>
     );
+};
+
+const GlobalInputLimit = () => {
+    useEffect(() => {
+        const limitedTypes = new Set(["text", "search", "email", "tel", "url", "password"]);
+        const limitInputs = root => {
+            const inputs = root.matches?.("input") ? [root] : root.querySelectorAll?.("input") || [];
+            inputs.forEach(input => {
+                if (limitedTypes.has((input.type || "text").toLowerCase())) input.maxLength = 199;
+            });
+        };
+        limitInputs(document);
+        const observer = new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
+            if (node.nodeType === Node.ELEMENT_NODE) limitInputs(node);
+        })));
+        observer.observe(document.body, { childList:true, subtree:true });
+        return () => observer.disconnect();
+    }, []);
+    return null;
 };
 
 const TokenVerification = () => {

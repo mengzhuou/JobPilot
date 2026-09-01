@@ -63,6 +63,7 @@ const getActiveJobPostings = async ({
     locations = [],
     excludeLevels = [],
     includeLevels = [],
+    excludePlatforms = [],
 } = {}) => {
     const res = await api.get(
         "/api/job-postings",
@@ -85,6 +86,7 @@ const getActiveJobPostings = async ({
                 locations: locations.join(","),
                 excludeLevels: excludeLevels.join(","),
                 includeLevels: includeLevels.join(","),
+                excludePlatforms: excludePlatforms.join(","),
             },
         }
     );
@@ -111,6 +113,10 @@ const getFeedback = async () => (await api.get("/api/feedback")).data.feedback;
 const updateFeedback = async (id,data) => (await api.patch(`/api/feedback/${id}`,data)).data.feedback;
 const deleteFeedback = async id => { await api.delete(`/api/feedback/${id}`); };
 const createManualApplication = async data => (await api.post("/api/job-applications/manual",data)).data.application;
+const reportJob = async data => (await api.post("/api/job-moderation/reports",data)).data.report;
+const getJobReportStatus = async jobUrl => (await api.get("/api/job-moderation/reports/status",{params:{jobUrl}})).data.reported;
+const getJobModeration = async () => (await api.get("/api/job-moderation")).data.jobs;
+const updateJobModeration = async data => (await api.put("/api/job-moderation",data)).data.job;
 
 const getJobApplicationHistory = async ({
     status = "",
@@ -166,4 +172,8 @@ export {
     updateJobApplication,
     confirmJobApplication,
     deleteJobApplication,
+    reportJob,
+    getJobReportStatus,
+    getJobModeration,
+    updateJobModeration,
 };

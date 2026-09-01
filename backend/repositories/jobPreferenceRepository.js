@@ -72,6 +72,14 @@ const listPreferences = async (userId, state) => {
                 ) AS current_user_applied
          FROM jobpilot.job_preferences preferences
          WHERE ${condition}
+           AND NOT EXISTS (
+               SELECT 1 FROM jobpilot.job_moderation moderation
+               WHERE moderation.permanently_blocked=TRUE
+                 AND (
+                     moderation.job_url=preferences.job_url
+                     OR (moderation.external_job_id IS NOT NULL AND moderation.external_job_id=preferences.external_job_id)
+                 )
+           )
          ORDER BY preferences.updated_at DESC`,
         values
     );

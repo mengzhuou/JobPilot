@@ -329,6 +329,16 @@ const getProfileValue = (field, siteAdapter = { type: SITE_TYPES.GENERIC }) => {
     }
 
     if (
+        question === "other website" ||
+        question.includes("other website")
+    ) {
+        return {
+            value: profile.candidate.links.portfolio,
+            source: "candidate.links.portfolio"
+        };
+    }
+
+    if (
         question.includes("linkedin")
     ) {
 
@@ -4104,7 +4114,10 @@ const startMultiPageMonitor = async (
                                     "application submitted",
                                     "application has been submitted",
                                     "thank you for applying",
-                                    "thanks for applying"
+                                    "thanks for applying",
+                                    "thank you for your interest",
+                                    "your application has been received",
+                                    "we have received your application"
                                 ].some(
                                     phrase => text.includes(phrase)
                                 );

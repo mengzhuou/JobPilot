@@ -766,6 +766,8 @@ const getActiveJobPostings = async ({
     locations = "",
     excludeLevels = "",
     includeLevels = "",
+    excludePlatforms = "",
+    moderation = new Map(),
 } = {}) => {
     let current;
     if (refresh) {
@@ -815,10 +817,15 @@ const getActiveJobPostings = async ({
     const requestedLocations = locations.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
     const excludedLevelTerms = excludeLevels.split(",").map(value => value.trim()).filter(Boolean);
     const includedLevelTerms = includeLevels.split(",").map(value => value.trim()).filter(Boolean);
+    const excludedPlatformTerms = excludePlatforms.toLowerCase().split(",").map(value => value.trim()).filter(Boolean);
 
-    const filteredJobs = current.jobs.filter((job) => {
+    const moderatedJobs = current.jobs.map(job => {
+        const rule = moderation.get(`url:${job.url}`) || moderation.get(`id:${String(job.id || "")}`);
+        return { ...job, adminTags:rule?.adminTags || [], permanentlyBlocked:Boolean(rule?.permanentlyBlocked) };
+    });
+    const filteredJobs = moderatedJobs.filter((job) => {
         const jobText = getJobSearchText(job);
-        const searchableText = jobText.toLowerCase();
+        const searchableText = [jobText,...(job.adminTags || [])].join(" ").toLowerCase();
         const matchesQuery =
             useDefaultSoftwareFilter ||
             !queryTerms.length ||
@@ -835,9 +842,12 @@ const getActiveJobPostings = async ({
         const matchesRequirements = !requirementTerms.length || requirementTerms.every(term => hasExactKeyword(requirementText, term));
         const matchesRemote = !remoteOnly || job.remote;
         const matchesSpecialization = !excludedFocusPatterns.some(pattern => pattern.test(jobText));
-        const requiresCitizenship = CITIZENSHIP_RESTRICTION.test(jobText);
-        const requiresClearance = CLEARANCE_RESTRICTION.test(jobText);
-        const hasSponsorship = SPONSORSHIP_AVAILABLE.test(jobText) && !SPONSORSHIP_UNAVAILABLE.test(jobText);
+        const eligibilityText = [jobText,...(job.adminTags || [])].join(" ");
+        const requiresCitizenship = CITIZENSHIP_RESTRICTION.test(eligibilityText) || job.adminTags.includes("requires_citizenship");
+        const requiresClearance = CLEARANCE_RESTRICTION.test(eligibilityText) || job.adminTags.includes("requires_clearance");
+        const hasSponsorship = SPONSORSHIP_AVAILABLE.test(jobText)
+            && !SPONSORSHIP_UNAVAILABLE.test(jobText)
+            && !job.adminTags.includes("no_sponsorship");
         const matchesEligibility = !((excludedEligibilityTerms.has("citizenship") && requiresCitizenship)
             || (excludedEligibilityTerms.has("clearance") && requiresClearance)
             || (excludedEligibilityTerms.has("no_sponsorship") && !hasSponsorship));
@@ -853,8 +863,10 @@ const getActiveJobPostings = async ({
         );
         const matchesExcludedLevels = !excludedLevelTerms.some(term => hasExactKeyword(job.title || "", term));
         const matchesIncludedLevels = !includedLevelTerms.length || includedLevelTerms.some(term => hasExactKeyword(job.title || "", term));
+        const platformText = [job.provider,job.source,job.url].filter(Boolean).join(" ").toLowerCase();
+        const matchesPlatform = !excludedPlatformTerms.some(term => platformText.includes(term));
 
-        return matchesQuery && matchesLocation && matchesCompany && !isExcluded && matchesRequirements && matchesRemote && matchesSpecialization && matchesEligibility && matchesJobTypes && matchesApplicationState && matchesPostedDate && matchesLocations && matchesExcludedLevels && matchesIncludedLevels;
+        return !job.permanentlyBlocked && matchesPlatform && matchesQuery && matchesLocation && matchesCompany && !isExcluded && matchesRequirements && matchesRemote && matchesSpecialization && matchesEligibility && matchesJobTypes && matchesApplicationState && matchesPostedDate && matchesLocations && matchesExcludedLevels && matchesIncludedLevels;
     });
     const normalizedPage = Math.max(
         1,
