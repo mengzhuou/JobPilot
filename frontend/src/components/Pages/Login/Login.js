@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { setStudentInfo } from "../../redux/actions/studentActions";
 import { loginSuccess } from "../../redux/reducers/authSlice";
 import "./Login.scss";
@@ -149,8 +149,8 @@ const Login = () => {
                     {isSigningIn && <p className="login-progress">Signing you in…</p>}
 
                     <p className="login-legal">
-                        By continuing, you agree to JobPilot&apos;s Terms and acknowledge
-                        its Privacy Policy.
+                        By continuing, you agree to JobPilot&apos;s <Link to="/terms">Terms</Link> and acknowledge
+                        its <Link to="/privacy">Privacy Policy</Link>.
                     </p>
                 </div>
             </section>

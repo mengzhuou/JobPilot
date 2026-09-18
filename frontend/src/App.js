@@ -5,6 +5,7 @@ import FillApplication from "./components/Pages/FillApplication/FillApplication"
 import ActiveJobPostings from "./components/Pages/ActiveJobPostings/ActiveJobPostings";
 import JobAppliedHistory from "./components/Pages/JobAppliedHistory/JobAppliedHistory";
 import Login from "./components/Pages/Login/Login";
+import LegalPage from "./components/Pages/Legal/LegalPage";
 import JobPreferences from "./components/Pages/Management/JobPreferences";
 import AdminCompanies from "./components/Pages/Management/AdminCompanies";
 import Feedback from "./components/Pages/Management/Feedback";
@@ -50,7 +51,7 @@ class App extends Component {
 
 const AppRoutes = () => {
     const location = useLocation();
-    const isLoginPage = location.pathname === "/login";
+    const isLoginPage = ["/login", "/terms", "/privacy"].includes(location.pathname.replace(/\/$/, ""));
 
     return (
         <>
@@ -60,6 +61,8 @@ const AppRoutes = () => {
             <Routes>
                 <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/terms" element={<LegalPage type="terms" />} />
+                <Route path="/privacy" element={<LegalPage type="privacy" />} />
                 <Route
                     path="/autofill"
                     element={<ProtectedRoute element={<FillApplication />} />}

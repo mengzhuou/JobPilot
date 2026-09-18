@@ -20,5 +20,8 @@
 .login-error { margin: 0 0 18px; padding: 12px 14px; border: 1px solid #f0b9b9; border-radius: 10px; color: #8f2424; background: #fff3f3; font-size: 13px; line-height: 1.45; }
 .login-progress { margin: 14px 0 0; color: #4b6487; font-size: 13px; text-align: center; }
 .login-legal { margin: 26px 0 0; color: #8993a3; font-size: 12px; line-height: 1.55; text-align: center; }
+.login-legal a, .login-legal a:visited { color: #2459a6; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
+.login-legal a:hover { color: #18376f; }
+.login-legal a:focus-visible { outline: 2px solid #2459a6; outline-offset: 3px; border-radius: 2px; }
 @media (max-width: 900px) { .login-page { grid-template-columns: 1fr; } .login-brand-panel { display: none; } .login-form-panel { padding: 28px; } .login-mobile-logo { display: block; margin: 0 0 42px; color: #3168bb; font-size: 25px; font-weight: 800; } }
 @media (max-width: 520px) { .login-form-panel { padding: 0; align-items: stretch; } .login-card { width: auto; min-height: 100vh; padding: 36px 24px; border: 0; border-radius: 0; box-shadow: none; } }
