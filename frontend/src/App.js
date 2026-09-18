@@ -13,6 +13,7 @@ import AdminJobModeration from "./components/Pages/Management/AdminJobModeration
 import AdminAnalytics from "./components/Pages/Management/AdminAnalytics";
 import ManualApplication from "./components/Pages/Management/ManualApplication";
 import ErrorPage from "./components/Pages/Management/ErrorPage";
+import Profile from "./components/Pages/Profile/Profile";
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
 import store from "./components/redux/store";
@@ -75,6 +76,7 @@ const AppRoutes = () => {
                 <Route path="/blocked-jobs" element={<ProtectedRoute element={<JobPreferences state="blocked" />} />} />
                 <Route path="/feedback" element={<ProtectedRoute element={<Feedback />} />} />
                 <Route path="/add-application" element={<ProtectedRoute element={<ManualApplication />} />} />
+                <Route path="/profile" element={<ProtectedRoute element={<Profile />} />} />
                 <Route path="/admin/companies" element={<ProtectedRoute requiredRole="admin" element={<AdminCompanies />} />} />
                 <Route path="/admin/feedback" element={<ProtectedRoute requiredRole="admin" element={<AdminFeedback />} />} />
                 <Route path="/admin/job-moderation" element={<ProtectedRoute requiredRole="admin" element={<AdminJobModeration />} />} />

@@ -107,6 +107,7 @@ const TopNavBar = () => {
                         </NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/saved-jobs" onClick={()=>setIsSidebarOpen(false)}>Saved Jobs</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/blocked-jobs" onClick={()=>setIsSidebarOpen(false)}>Blocked Jobs</NavLink>
+                        <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/profile" onClick={()=>setIsSidebarOpen(false)}>Profile</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/add-application" onClick={()=>setIsSidebarOpen(false)}>Add Custom Application</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/feedback" onClick={()=>setIsSidebarOpen(false)}>Send Feedback</NavLink>
                         {studentData.role === "admin" && <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/admin/companies" onClick={()=>setIsSidebarOpen(false)}>Add Company</NavLink>}

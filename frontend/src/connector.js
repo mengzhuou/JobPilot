@@ -119,6 +119,8 @@ const getJobModeration = async () => (await api.get("/api/job-moderation")).data
 const updateJobModeration = async data => (await api.put("/api/job-moderation",data)).data.job;
 const getJobMarketAnalytics = async () => (await api.get("/api/job-analytics/market")).data.snapshot;
 const refreshJobMarketAnalytics = async () => (await api.post("/api/job-analytics/market/refresh")).data.snapshot;
+const getUserProfile = async () => (await api.get("/api/profile")).data.profile;
+const updateUserProfileSection = async (section, value) => (await api.patch("/api/profile", { section, value })).data.profile;
 
 const getJobApplicationHistory = async ({
     status = "",
@@ -180,4 +182,6 @@ export {
     updateJobModeration,
     getJobMarketAnalytics,
     refreshJobMarketAnalytics,
+    getUserProfile,
+    updateUserProfileSection,
 };

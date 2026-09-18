@@ -8,7 +8,8 @@
     "dev": "nodemon server",
     "db:check": "node scripts/checkDatabase.js",
     "db:migrate": "node scripts/migrateDatabase.js",
-    "db:seed:applications": "node scripts/seedApplicationHistory.js"
+    "db:seed:applications": "node scripts/seedApplicationHistory.js",
+    "db:seed:profile": "node scripts/seedUserProfile.js"
   },
   "keywords": [],
   "author": "",
