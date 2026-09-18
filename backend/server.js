@@ -68,6 +68,7 @@ app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 app.use("/api/job-applications", jobApplicationRoutes);
 app.use("/api/job-preferences", jobPreferenceRoutes);
+app.use("/api/filter-presets", require("./routes/filterPresetRoutes"));
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/job-postings", jobPostingRoutes);

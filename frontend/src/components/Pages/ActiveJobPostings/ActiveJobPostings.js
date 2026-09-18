@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faHeart as farHeart } from "@fortawesome/free-regular-svg-icons";
-import { faBan, faHeart as fasHeart } from "@fortawesome/free-solid-svg-icons";
-import { getActiveJobPostings, setJobPreference } from "../../../connector";
+import { faBan, faBookmark, faHeart as fasHeart } from "@fortawesome/free-solid-svg-icons";
+import { getActiveJobPostings, setJobPreference, getFilterPresets, saveFilterPreset, getJobPlatforms } from "../../../connector";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Snackbar, Alert } from '@mui/material';
 import "./ActiveJobPostings.scss";
 
-const FILTER_STORAGE_KEY = "jobpilot.activeJobAdvancedFilters.v1";
 const DEFAULT_LEVEL_OPTIONS = ["Principal", "Staff", "Senior", "Embedded", "Manager"];
 const JOB_TYPE_OPTIONS = [
     { value: "full_time", label: "Full-time" },
@@ -16,7 +16,6 @@ const JOB_TYPE_OPTIONS = [
 const SKILL_OPTIONS = ["React", "Java", "JavaScript", "TypeScript", "Python", "Node.js", "C++", "Kubernetes", "AWS", "PostgreSQL"];
 const FOCUS_OPTIONS = [{ value: "web", label: "Web" }, { value: "mobile", label: "Mobile" }, { value: "embedded", label: "Embedded" }];
 const ELIGIBILITY_EXCLUSIONS = [{ value: "citizenship", label: "Requires U.S. citizenship" }, { value: "clearance", label: "Requires security clearance" }, { value:"no_sponsorship", label:"Does not offer sponsorship" }];
-const PLATFORM_OPTIONS = ["Greenhouse", "Lever", "LinkedIn", "Ashby", "Oracle", "Eightfold"];
 
 const ChipMultiSelect = ({ label, values, onChange, options, placeholder, allowCustom = true }) => {
     const [input, setInput] = useState("");
@@ -35,10 +34,6 @@ const ChipMultiSelect = ({ label, values, onChange, options, placeholder, allowC
             <input readOnly={!allowCustom} value={input} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (allowCustom && (event.key === "Enter" || event.key === ",") && input.trim()) { event.preventDefault(); add(input); } }} placeholder={values.length ? "Add another" : placeholder} role="combobox" aria-controls={`${label.replace(/\W+/g, "-").toLowerCase()}-suggestions`} aria-expanded={open && suggestions.length > 0} />
         </div>{open && suggestions.length > 0 && <div className="location-suggestions" id={`${label.replace(/\W+/g, "-").toLowerCase()}-suggestions`} role="listbox">{suggestions.map(option => <button type="button" role="option" aria-selected="false" key={option.value} onMouseDown={event => event.preventDefault()} onClick={() => add(option.value)}>{option.label}</button>)}</div>}</div>
     </label>;
-};
-const getSavedFilters = () => {
-    try { return JSON.parse(localStorage.getItem(FILTER_STORAGE_KEY)) || {}; }
-    catch { return {}; }
 };
 
 const formatPostedDate = (date) => {
@@ -64,7 +59,30 @@ const getUniqueTags = tags => {
 };
 
 const ActiveJobPostings = () => {
-    const savedFilters = React.useMemo(getSavedFilters, []);
+    const savedFilters = React.useMemo(() => ({}), []);
+    const [presets, setPresets] = useState([]);
+    const [platformOptions, setPlatformOptions] = useState([]);
+    const [presetError, setPresetError] = useState('');
+    const [presetNotice, setPresetNotice] = useState('');
+    useEffect(() => {
+        if (!presetNotice) return undefined;
+        const timer = window.setTimeout(() => setPresetNotice(''), 3000);
+        return () => window.clearTimeout(timer);
+    }, [presetNotice]);
+    const [presetLoading, setPresetLoading] = useState(true);
+    const [saveDialog, setSaveDialog] = useState(false);
+    const [presetName, setPresetName] = useState('');
+    const [savingPreset, setSavingPreset] = useState(false);
+    const [saveError, setSaveError] = useState('');
+
+    useEffect(() => {
+        let active = true;
+        Promise.all([getFilterPresets(), getJobPlatforms()]).then(([saved, platforms]) => {
+            if (active) { setPresets(saved); setPlatformOptions(platforms); }
+        }).catch(() => { if (active) setPresetError('Unable to load saved preferences or platforms. Please reload to retry.'); })
+            .finally(() => { if (active) setPresetLoading(false); });
+        return () => { active = false; };
+    }, []);
     const navigate = useNavigate();
     const routeLocation = useRouteLocation();
     const [query, setQuery] = useState("software engineer");
@@ -244,19 +262,45 @@ const ActiveJobPostings = () => {
         setExcludePlatforms([]);
         setIncludeLevelInput("");
         setShowIncludeLevelSuggestions(false);
-        localStorage.removeItem(FILTER_STORAGE_KEY);
+        setPresetNotice('');
         setApplyClearedFilters(true);
     };
 
-    useEffect(() => {
-        localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
-            includeCompanies, excludeCompanies, requiredSkills, remoteOnly,
-            excludeFocuses, excludeEligibility, excludeJobTypes,
-            postedWithin,
-            locations, excludeLevels, includeLevels,
-            excludePlatforms,
-        }));
-    }, [includeCompanies, excludeCompanies, requiredSkills, remoteOnly, excludeFocuses, excludeEligibility, excludeJobTypes, excludePlatforms, postedWithin, locations, excludeLevels, includeLevels]);
+    const currentFilters = { includeCompanies, excludeCompanies, requiredSkills, remoteOnly,
+        excludeFocuses, excludeEligibility, excludeJobTypes, postedWithin,
+        locations, excludeLevels, includeLevels, excludePlatforms };
+    const selectedPresetId = presets.find(preset => Object.keys(currentFilters).every(key =>
+        JSON.stringify(preset.filters[key]) === JSON.stringify(currentFilters[key])))?.id || '';
+    const loadPreset = id => {
+        const preset = presets.find(item => item.id === id);
+        if (!preset) return;
+        const f = preset.filters;
+        setIncludeCompanies(f.includeCompanies || []); setExcludeCompanies(f.excludeCompanies || []);
+        setRequiredSkills(f.requiredSkills || []); setRemoteOnly(Boolean(f.remoteOnly));
+        setExcludeFocuses(f.excludeFocuses || []); setExcludeEligibility(f.excludeEligibility || []);
+        setExcludeJobTypes(f.excludeJobTypes || []); setPostedWithin(f.postedWithin || 'all');
+        setLocations(f.locations || []); setExcludeLevels(f.excludeLevels || []);
+        setIncludeLevels(f.includeLevels || []); setExcludePlatforms(f.excludePlatforms || []);
+        setLocationChipInput(''); setExcludeLevelInput(''); setIncludeLevelInput('');
+        setPresetNotice({ message: `“${preset.name}” filters applied.` });
+        setApplyClearedFilters(true);
+    };
+    const savePreset = async event => {
+        event.preventDefault();
+        if (savingPreset) return;
+        const name = presetName.trim().replace(/\s+/g, ' ');
+        if (!name) { setSaveError('Enter a preference name.'); return; }
+        if (presets.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+            setSaveError('You already have a preference with this name. Choose another name.'); return;
+        }
+        setSavingPreset(true); setSaveError('');
+        try {
+            const preset = await saveFilterPreset(name, currentFilters);
+            setPresets(current => [...current, preset].sort((a,b) => a.name.localeCompare(b.name)));
+            setSaveDialog(false); setPresetNotice({ message: `“${preset.name}” saved to your preferences.` });
+        } catch (error) { setSaveError(error.response?.data?.message || 'Unable to save preferences. Please try again.'); }
+        finally { setSavingPreset(false); }
+    };
 
     useEffect(() => {
         if (!routeLocation.state?.confirmedJobUrl) return undefined;
@@ -396,6 +440,28 @@ const ActiveJobPostings = () => {
                     </div>
                 </div>
                 {showAdvanced && <div className="advanced-filter-panel">
+                    <div className="preset-toolbar">
+                        <div className="preset-toolbar-copy">
+                            <span className="preset-toolbar-icon"><FontAwesomeIcon icon={faBookmark} aria-hidden="true" /></span>
+                            <div><label htmlFor="saved-filter-preset">Saved preferences <span className="preset-count">{presets.length}</span></label>
+                                <p>Pick up where you left off.</p></div>
+                        </div>
+                        <select id="saved-filter-preset" value={selectedPresetId} onChange={event => loadPreset(event.target.value)} disabled={presetLoading || !presets.length}>
+                            <option value="">{presetLoading ? 'Loading preferences…' : presets.length ? 'Select a saved preference to load' : 'No saved preferences yet'}</option>
+                            {presets.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+                        </select>
+                    </div>
+                    {presetError && <p className="advanced-filter-wide" role="alert">{presetError}</p>}
+                    <label>Date posted
+                        <select value={postedWithin} onChange={event => setPostedWithin(event.target.value)}>
+                            <option value="all">Any posting date</option>
+                            <option value="day">New in the last 24 hours</option>
+                            <option value="week">Posted within 1 week</option>
+                            <option value="month">Posted within 1 month</option>
+                            <option value="three_months">Posted within 3 months</option>
+                            <option value="six_months">Posted within 6 months</option>
+                        </select>
+                    </label>
                     <label className="advanced-filter-wide">Available Locations
                         <div className="location-autocomplete">
                             <div className="location-chip-input">
@@ -426,6 +492,10 @@ const ActiveJobPostings = () => {
                             {showJobTypeSuggestions && JOB_TYPE_OPTIONS.some(option => !excludeJobTypes.includes(option.value)) && <div className="location-suggestions" id="exclude-job-type-suggestions" role="listbox">{JOB_TYPE_OPTIONS.filter(option => !excludeJobTypes.includes(option.value)).map(option => <button type="button" role="option" aria-selected="false" key={option.value} onMouseDown={event => event.preventDefault()} onClick={() => addExcludedJobType(option.value)}>{option.label}</button>)}</div>}
                         </div>
                     </label>
+                    <ChipMultiSelect label="Exclude engineering focus" values={excludeFocuses} onChange={setExcludeFocuses} options={FOCUS_OPTIONS} placeholder="Select focus areas" allowCustom={false} />
+                    <ChipMultiSelect label="Exclude authorization requirements" values={excludeEligibility} onChange={setExcludeEligibility} options={ELIGIBILITY_EXCLUSIONS} placeholder="Select requirements" allowCustom={false} />
+                    <ChipMultiSelect label="Exclude application platforms" values={excludePlatforms} onChange={setExcludePlatforms} options={platformOptions} placeholder={presetLoading ? 'Loading platforms…' : 'Select platforms'} allowCustom={false} />
+
                     <ChipMultiSelect label="Include companies" values={includeCompanies} onChange={setIncludeCompanies} options={companyOptions} placeholder="e.g. Google, Stripe" />
                     <label className="multi-select-filter"><span className="filter-field-label">Include titles / levels{includeLevels.length > 0 && <b>{includeLevels.length}</b>}</span>
                         <div className="location-autocomplete">
@@ -437,22 +507,26 @@ const ActiveJobPostings = () => {
                         </div>
                     </label>
                     <ChipMultiSelect label="Include skills" values={requiredSkills} onChange={setRequiredSkills} options={SKILL_OPTIONS} placeholder="e.g. React, Java" />
-                    <ChipMultiSelect label="Exclude engineering focus" values={excludeFocuses} onChange={setExcludeFocuses} options={FOCUS_OPTIONS} placeholder="Select focus areas" allowCustom={false} />
-                    <label>Date posted
-                        <select value={postedWithin} onChange={event => setPostedWithin(event.target.value)}>
-                            <option value="all">Any posting date</option>
-                            <option value="day">New in the last 24 hours</option>
-                            <option value="week">Posted within 1 week</option>
-                            <option value="month">Posted within 1 month</option>
-                            <option value="three_months">Posted within 3 months</option>
-                            <option value="six_months">Posted within 6 months</option>
-                        </select>
-                    </label>
-                    <ChipMultiSelect label="Exclude authorization requirements" values={excludeEligibility} onChange={setExcludeEligibility} options={ELIGIBILITY_EXCLUSIONS} placeholder="Select requirements" allowCustom={false} />
-                    <ChipMultiSelect label="Exclude application platforms" values={excludePlatforms} onChange={setExcludePlatforms} options={PLATFORM_OPTIONS} placeholder="Select platforms" allowCustom={false} />
-                    <div className="advanced-filter-actions"><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
+                    <div className="advanced-filter-actions"><button type="button" onClick={() => { setPresetName(''); setSaveError(''); setSaveDialog(true); }}>Save Preferences</button><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
                 </div>}
             </section>
+
+            <Snackbar open={Boolean(presetNotice)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} onClose={() => setPresetNotice('')}>
+                <Alert severity="success" variant="filled" role="status" onClose={() => setPresetNotice('')}
+                    sx={{ bgcolor: '#176b51', color: '#fff', borderRadius: '12px', boxShadow: '0 8px 32px rgba(16, 50, 38, .2)', alignItems: 'center', maxWidth: 'min(520px, calc(100vw - 32px))', overflowWrap: 'anywhere' }}>
+                    {presetNotice.message || ''}
+                </Alert>
+            </Snackbar>
+            <Dialog open={saveDialog} onClose={() => { if (!savingPreset) setSaveDialog(false); }} fullWidth maxWidth="xs" aria-labelledby="save-filter-title">
+                <form onSubmit={savePreset}>
+                    <DialogTitle id="save-filter-title">Save filter preferences</DialogTitle>
+                    <DialogContent>
+                        <p>Save these advanced filters to your account so you can load them again.</p>
+                        <TextField autoFocus fullWidth label="Preference name" value={presetName} onChange={event => { setPresetName(event.target.value); setSaveError(''); }} inputProps={{ maxLength: 199 }} disabled={savingPreset} error={Boolean(saveError)} helperText={saveError || 'Enter a unique name for saved filters.'} />
+                    </DialogContent>
+                    <DialogActions><Button onClick={() => setSaveDialog(false)} disabled={savingPreset}>Cancel</Button><Button type="submit" variant="contained" disabled={savingPreset || !presetName.trim()}>{savingPreset ? 'Saving…' : 'Save Preferences'}</Button></DialogActions>
+                </form>
+            </Dialog>
 
             {routeLocation.state?.confirmedJobUrl && (
                 <div className="application-saved-banner" role="status">

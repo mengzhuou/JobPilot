@@ -13,6 +13,15 @@ const requireAdmin = require("../middleware/requireAdmin");
 
 router.use(requireAuth);
 router.get("/", listActiveJobPostings);
+router.get('/platforms', async (req, res, next) => {
+    try {
+        const sources = [...require('../services/companyCareerSources'), ...await require('../repositories/customCareerSourceRepository').listCustomCareerSources()];
+        const names = { ashby:'Ashby', greenhouse:'Greenhouse', lever:'Lever', google:'Google Careers', generic:'Company career page', 'oracle-uber':'Oracle', eightfold:'Eightfold' };
+        const platforms = new Set(sources.map(source => names[source.provider] || source.provider).filter(Boolean));
+        if (sources.some(source => /linkedin\.com/i.test(source.careerUrl || ''))) platforms.add('LinkedIn');
+        res.json({ platforms: [...platforms].sort() });
+    } catch (error) { next(error); }
+});
 router.get("/sources", requireAdmin, listCareerSources);
 router.post("/sources", requireAdmin, createCareerSource);
 router.post("/sources/preview", requireAdmin, previewCareerSource);

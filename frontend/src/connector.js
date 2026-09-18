@@ -1,4 +1,7 @@
 import axios from "axios";
+export const getFilterPresets = async () => (await api.get('/api/filter-presets')).data.presets;
+export const saveFilterPreset = async (name, filters) => (await api.post('/api/filter-presets', { name, filters })).data.preset;
+export const getJobPlatforms = async () => (await api.get('/api/job-postings/platforms')).data.platforms;
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const api = axios.create({
