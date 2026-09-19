@@ -16,6 +16,7 @@ import ManualApplication from "./components/Pages/Management/ManualApplication";
 import ErrorPage from "./components/Pages/Management/ErrorPage";
 import Profile from "./components/Pages/Profile/Profile";
 import Loops from "./components/Pages/Loops/Loops";
+import Resumes from "./components/Pages/Resumes/Resumes";
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
 import store from "./components/redux/store";
@@ -82,6 +83,7 @@ const AppRoutes = () => {
                 <Route path="/add-application" element={<ProtectedRoute element={<ManualApplication />} />} />
                 <Route path="/profile" element={<ProtectedRoute element={<Profile />} />} />
                 <Route path="/loops" element={<ProtectedRoute element={<Loops />} />} />
+                <Route path="/resumes" element={<ProtectedRoute element={<Resumes />} />} />
                 <Route path="/admin/companies" element={<ProtectedRoute requiredRole="admin" element={<AdminCompanies />} />} />
                 <Route path="/admin/feedback" element={<ProtectedRoute requiredRole="admin" element={<AdminFeedback />} />} />
                 <Route path="/admin/job-moderation" element={<ProtectedRoute requiredRole="admin" element={<AdminJobModeration />} />} />

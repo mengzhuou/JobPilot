@@ -1,6 +1,8 @@
 const { chromium } = require("playwright");
 const profile = require("./profile.json");
 const path = require("path");
+const os = require("os");
+const fs = require("fs/promises");
 const {
     normalizeText,
     getAvailableFormOption,
@@ -23,16 +25,46 @@ let monitorBusy = false;
 let lastFormSignature = null;
 let resumeUploaded = false;
 let externalProfileImported = false;
-
-const resumePath = path.resolve(
-    __dirname,
-    "./Mengzhu Ou_Resume.pdf"
-);
+let resumePath = null;
+let resumeDirectory = null;
 
 const userDataDir = path.resolve(
     __dirname,
     "./playwright-profile"
 );
+
+const resumeExtension = fileName => {
+    const extension = path.extname(fileName || "").toLowerCase();
+    return [".pdf", ".doc", ".docx"].includes(extension) ? extension : ".pdf";
+};
+
+const safeResumeFileName = resume => {
+    const savedName = String(resume.display_name || "primary-resume")
+        .replace(/[\\/:*?"<>|\r\n]+/g, "_")
+        .trim()
+        .slice(0, 180) || "primary-resume";
+    return `${savedName}${resumeExtension(resume.file_name)}`;
+};
+
+const clearSelectedResume = async () => {
+    resumePath = null;
+    if (!resumeDirectory) return;
+    const directory = resumeDirectory;
+    resumeDirectory = null;
+    await fs.rm(directory, { recursive: true, force: true }).catch(error => {
+        console.log("Temporary résumé cleanup:", error.message);
+    });
+};
+
+const prepareSelectedResume = async resume => {
+    if (!resume?.file_data) {
+        throw Object.assign(new Error("Choose a primary résumé in Resumes before starting Autofill."), { statusCode: 400 });
+    }
+    await clearSelectedResume();
+    resumeDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "jobpilot-resume-"));
+    resumePath = path.join(resumeDirectory, safeResumeFileName(resume));
+    await fs.writeFile(resumePath, resume.file_data);
+};
 
 const QUESTION_STOP_WORDS = new Set(["a", "an", "and", "are", "do", "have", "how", "is", "of", "or", "the", "to", "us", "what", "where", "you", "your"]);
 const QUESTION_TOKEN_ALIASES = {
@@ -2058,6 +2090,15 @@ const uploadResume = async (page) => {
 
         resumeUploaded = true;
         return true;
+    }
+
+    if (!resumePath) {
+
+        console.log(
+            "No primary résumé is selected for this Autofill session."
+        );
+
+        return false;
     }
 
 
@@ -4256,6 +4297,7 @@ const closeApplicationSession = async (
 
     if (!targetContext) {
         page = null;
+        await clearSelectedResume();
         return;
     }
 
@@ -4273,6 +4315,8 @@ const closeApplicationSession = async (
                 error.message
             );
         });
+
+    await clearSelectedResume();
 };
 
 const startApplicationAgent = async (
@@ -4289,13 +4333,13 @@ const startApplicationAgent = async (
         `Opening: ${jobUrl}`
     );
 
-
     // ==================================================
     // 1. BROWSER
     // ==================================================
     // A closed tab can leave its persistent context alive.
     // Always release it before reusing the same profile.
     await closeApplicationSession();
+    await prepareSelectedResume(options.resume);
 
 
     const launchedContext =

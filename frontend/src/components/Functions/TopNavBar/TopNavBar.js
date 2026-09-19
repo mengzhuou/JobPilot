@@ -108,6 +108,7 @@ const TopNavBar = () => {
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/saved-jobs" onClick={()=>setIsSidebarOpen(false)}>Saved Jobs</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/blocked-jobs" onClick={()=>setIsSidebarOpen(false)}>Blocked Jobs</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/profile" onClick={()=>setIsSidebarOpen(false)}>Profile</NavLink>
+                        <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/resumes" onClick={()=>setIsSidebarOpen(false)}>Resumes</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/loops" onClick={()=>setIsSidebarOpen(false)}>Loops</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/add-application" onClick={()=>setIsSidebarOpen(false)}>Add Custom Application</NavLink>
                         <NavLink className={({isActive})=>`nav-link${isActive?" active":""}`} to="/feedback" onClick={()=>setIsSidebarOpen(false)}>Send Feedback</NavLink>

@@ -6,6 +6,7 @@ const {
     stopApplicationAgent,
     isApplicationAgentRunning
 } = require("../services/applicationAgent");
+const resumeRepository = require("../repositories/resumeRepository");
 
 const startApplication = asyncHandler(async (req, res, next) => {
     try {
@@ -17,7 +18,14 @@ const startApplication = asyncHandler(async (req, res, next) => {
             });
         }
 
-        await startApplicationAgent(jobUrl);
+        const primaryResume = await resumeRepository.findPrimaryFile(req.auth.userId);
+        if (!primaryResume) {
+            return res.status(400).json({
+                message: "Choose a primary résumé in Resumes before starting Autofill."
+            });
+        }
+
+        await startApplicationAgent(jobUrl, { resume: primaryResume });
 
         res.status(200).json({
             message: "Application agent started"

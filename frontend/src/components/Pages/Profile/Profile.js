@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBriefcase, faCircleQuestion, faCode, faEnvelope, faGlobe, faGraduationCap, faLocationDot, faLock, faPen, faPhone, faSliders, faUser } from "@fortawesome/free-solid-svg-icons";
 import { getUserProfile, updateUserProfileSection } from "../../../connector";
@@ -24,6 +25,7 @@ const Timeline = ({ items }) => <div className="profile-timeline">{items.map((it
 const DetailCards = ({ rows, className="" }) => <div className={`profile-detail-grid ${className}`}>{rows.map(([question,answer])=><article key={question}><span>{question}</span><strong>{Array.isArray(answer) ? answer.join(" · ") : answer}</strong></article>)}</div>;
 
 const Profile = () => {
+    const location = useLocation();
     const [profile, setProfile] = useState(() => normalizeProfile(profileFixture));
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -31,6 +33,15 @@ const Profile = () => {
     const editorValue = useMemo(() => editing ? profile[editing] : null, [editing, profile]);
 
     useEffect(() => { let active=true; getUserProfile().then(data => active && setProfile(normalizeProfile(data))).catch(error => { if(error.response?.status !== 404) setNotice("Profile data could not be loaded. Showing the local preview."); }); return () => { active=false; }; }, []);
+    useEffect(() => {
+        const rawHandoff = sessionStorage.getItem("jobpilot.profileResumeHandoff");
+        if (!rawHandoff) return;
+        try {
+            const handoff = JSON.parse(rawHandoff);
+            setNotice(`“${handoff.name}” is selected for your applications${handoff.targetJobTitle ? ` (${handoff.targetJobTitle})` : ""}. Review your Profile fields to keep Autofill accurate.`);
+        } catch { /* Ignore an invalid local handoff. */ }
+        sessionStorage.removeItem("jobpilot.profileResumeHandoff");
+    }, [location.key]);
     const saveSection = async value => {
         setSaving(true); setNotice("");
         const nextValue = editing === "personal" ? { ...value, name:[value.firstName,value.middleName,value.lastName].filter(Boolean).join(" "), address:[value.addressLine,value.city,value.state,value.country,value.postalCode].filter(Boolean).join(", ") } : value;

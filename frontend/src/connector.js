@@ -127,6 +127,12 @@ const getJobMarketAnalytics = async () => (await api.get("/api/job-analytics/mar
 const refreshJobMarketAnalytics = async () => (await api.post("/api/job-analytics/market/refresh")).data.snapshot;
 const getUserProfile = async () => (await api.get("/api/profile")).data.profile;
 const updateUserProfileSection = async (section, value) => (await api.patch("/api/profile", { section, value })).data.profile;
+const getResumes = async () => (await api.get("/api/resumes")).data.resumes;
+const createResume = async formData => (await api.post("/api/resumes", formData)).data.resume;
+const updateResume = async (id, values) => (await api.patch(`/api/resumes/${id}`, values)).data.resume;
+const setPrimaryResume = async id => (await api.post(`/api/resumes/${id}/primary`)).data.resume;
+const exportResume = async id => api.get(`/api/resumes/${id}/download`, { responseType: "blob" });
+const deleteResume = async id => { await api.delete(`/api/resumes/${id}`); };
 
 const getJobApplicationHistory = async ({
     status = "",
@@ -190,4 +196,10 @@ export {
     refreshJobMarketAnalytics,
     getUserProfile,
     updateUserProfileSection,
+    getResumes,
+    createResume,
+    updateResume,
+    setPrimaryResume,
+    exportResume,
+    deleteResume,
 };
