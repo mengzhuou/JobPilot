@@ -371,11 +371,11 @@ const ActiveJobPostings = () => {
                 tags: job.tags,
                 summary: job.summary,
                 requirements: job.requirements,
+                profileMatch: job.profileMatch,
         };
-        const storageKey = `jobpilot.autofill.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+        const storageKey = `jobpilot.autofill.${job.id}`;
         localStorage.setItem(storageKey, JSON.stringify(autofillJob));
-        window.open(`/autofill?job=${encodeURIComponent(storageKey)}`, "_blank", "noopener,noreferrer");
-        window.setTimeout(() => localStorage.removeItem(storageKey), 60_000);
+        window.open(`/autofill?jobId=${encodeURIComponent(job.id)}`, "_blank", "noopener,noreferrer");
     };
 
     const updatePreference = async (job, state) => {

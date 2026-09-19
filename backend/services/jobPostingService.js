@@ -1,9 +1,10 @@
 const companyCareerSources = require("./companyCareerSources");
 const cheerio = require("cheerio");
-const { randomUUID } = require("crypto");
+const { createHash, randomUUID } = require("crypto");
 const { listCustomCareerSources, resolveSource } = require("../repositories/customCareerSourceRepository");
 const { getCachedJson, setCachedJson, deleteCachedValue } = require("../config/redis");
-const { rankJobsForProfile } = require("./profileMatchService");
+const { rankJobsForProfile, scoreJobForProfile } = require("./profileMatchService");
+const jobDetailSnapshots = require("../repositories/jobDetailSnapshotRepository");
 
 const SOFTWARE_JOB_PATTERN =
     /\b(software|frontend|front-end|backend|back-end|full[ -]?stack|web|mobile|ios|android|java|react|node(?:\.js)?|python|devops|cloud|platform|application|site reliability|data engineer|hardware|firmware|embedded|electrical|semiconductor|network|cybersecurity|cyber security|security|architect(?:ure)?)\b/i;
@@ -42,6 +43,7 @@ const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const hasExactKeyword = (text, keyword) => new RegExp(
     `(^|[^a-z0-9])${escapeRegExp(keyword)}(?=$|[^a-z0-9])`, "i"
 ).test(text);
+const stableJobId = (prefix, value) => `${prefix}-${createHash("sha256").update(String(value)).digest("hex").slice(0, 20)}`;
 
 const DEFAULT_EXCLUDED_LEVEL_OPTIONS = ["Principal", "Staff", "Senior", "Embedded", "Manager"];
 const getLeadingTitleKeyword = title => String(title || "")
@@ -157,16 +159,39 @@ const getJobSearchText = job => [
     ...(job.requirements || []),
 ].filter(Boolean).join(" ");
 
+const cleanExtractedSummary = value => {
+    let summary = cheerio.load(String(value || "")).root().text().replace(/\s+/g, " ").trim()
+        .replace(/([.!?])(?=[A-Z])/g, "$1 ")
+        .replace(/^About\s+/i, "")
+        .replace(/^([A-Za-z][A-Za-z0-9&.'-]{2,35})\1\b/i, "$1");
+    if (summary.length > 650) summary = summary.slice(0, 650);
+    if (!/[.!?]$/.test(summary)) {
+        const lastSentence = Math.max(summary.lastIndexOf("."), summary.lastIndexOf("!"), summary.lastIndexOf("?"));
+        if (lastSentence >= 100) summary = summary.slice(0, lastSentence + 1);
+    }
+    return summary;
+};
+
 const extractJobDetails = html => {
     if (!html) return { summary: "", requirements: [], salary: null };
     const $ = cheerio.load(String(html));
     const requirements = $("li").map((_, item) => $(item).text().replace(/\s+/g, " ").trim()).get()
-        .filter(text => text.length >= 20 && text.length <= 260).slice(0, 8);
+        .filter(text => text.length >= 20 && text.length <= 260).slice(0, 30);
     const text = $.root().text().replace(/\s+/g, " ").trim();
-    const salary = (text.match(
-        /(?:USD\s*)?\$\s*\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*[kK]?(?:\s*(?:-|–|—|to)\s*(?:USD\s*)?\$?\s*\d{2,3}(?:,\d{3})?(?:\.\d+)?\s*[kK]?)?(?:\s*(?:per year|a year|annually|\/\s*(?:year|yr)))?/i
-    ) || [])[0] || null;
-    const summary = text.slice(0, 420);
+    // A dollar amount alone can be funding or valuation, not compensation.
+    // Keep it only when the post supplies a pay label or an hourly/annual period.
+    const money = "\\$\\s*\\d{1,3}(?:,\\d{3})?(?:\\.\\d{1,2})?\\s*[kK]?";
+    const payPeriod = "(?:per\\s*(?:hour|hr|year|yr)|/\\s*(?:hour|hr|year|yr)|hourly|annually|annual(?:ized)?|a\\s+year)";
+    const amount = `${money}(?:\\s*${payPeriod})?`;
+    const range = `${amount}(?:\\s*(?:-|–|—|to)\\s*(?:USD\\s*)?${amount})?`;
+    const compensationContext = "(?:salary|compensation|base pay|base salary|pay range|hourly rate|wage)";
+    const contextualSalary = (text.match(new RegExp(`${compensationContext}[^.]{0,110}?(${range})`, "i")) || [])[1];
+    const periodicCandidates = text.match(new RegExp(range, "gi")) || [];
+    const salary = contextualSalary || periodicCandidates.find(candidate => new RegExp(payPeriod, "i").test(candidate)) || null;
+    const paragraphs = $("p").map((_, item) => $(item).text().replace(/\s+/g, " ").trim()).get()
+        .filter(paragraph => paragraph.length >= 80 && paragraph.length <= 1400)
+        .filter(paragraph => !/cookie|privacy policy|equal opportunity|sign up|log in/i.test(paragraph));
+    const summary = cleanExtractedSummary(paragraphs[0] || text);
     return { summary, requirements, salary };
 };
 
@@ -326,7 +351,7 @@ const normalizeGenericCareerPage = (html, source) => {
         const surroundingText = link.closest("li, article, section, div").first().text().replace(/\s+/g, " ");
         const location = (surroundingText.match(/(?:[A-Z][a-z .'-]+,\s*)?(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)(?:,?\s*USA)?/i) || [])[0] || "United States";
         const url = new URL(link.attr("href"), source.careerUrl).toString();
-        jobs.push({ id: `generic-${source.company}-${index}`, title, company: source.company, location, remote: /remote/i.test(surroundingText), url, source: "Official career site", provider: "Company career page", tags: [], postedAt: null });
+        jobs.push({ id: stableJobId("generic", url), title, company: source.company, location, remote: /remote/i.test(surroundingText), url, source: "Official career site", provider: "Company career page", tags: [], postedAt: null });
     });
     return jobs;
 };
@@ -946,8 +971,20 @@ const enrichJobPreferencesFromCache = async preferences => {
     });
 };
 
+const getJobPostingById = async (jobId, profile = null) => {
+    let current = await getCachedJobs({ allowStale: true });
+    if (!current) current = await startRefreshAndWaitForFirstBatch();
+    let job = (current?.jobs || []).find(item => String(item.id) === String(jobId));
+    if (!job) job = await jobDetailSnapshots.getById(String(jobId));
+    if (!job) return null;
+    const detailedJob = enrichJobDetails(job);
+    await jobDetailSnapshots.upsert(detailedJob);
+    return { ...detailedJob, profileMatch: scoreJobForProfile(detailedJob, profile) };
+};
+
 module.exports = {
     getActiveJobPostings,
+    getJobPostingById,
     enrichJobPreferencesFromCache,
     invalidateJobCache,
     addSourceJobsToCache,

@@ -100,6 +100,8 @@ const getActiveJobPostings = async ({
     return res.data;
 };
 
+const getJobPosting = async id => (await api.get(`/api/job-postings/detail/${encodeURIComponent(id)}`)).data.job;
+
 const addCareerSource = async input => {
     const res = await api.post("/api/job-postings/sources", { input });
     return res.data;
@@ -171,6 +173,7 @@ export {
     stopApplication,
     getApplicationStatus,
     getActiveJobPostings,
+    getJobPosting,
     addCareerSource,
     previewCareerSource,
     getCareerSourceDiscovery,

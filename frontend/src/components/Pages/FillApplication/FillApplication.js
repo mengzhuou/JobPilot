@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faBriefcase, faBuilding, faCircleCheck, faCircleInfo, faClock, faListCheck, faLocationDot, faMoneyBillWave, faThumbsUp } from "@fortawesome/free-solid-svg-icons";
 import "./FillApplication.scss";
 import Button from "../../Button/Button";
 import {
@@ -10,6 +12,9 @@ import {
     stopApplication as stopApplicationAgent,
     reportJob,
     getJobReportStatus,
+    getJobPosting,
+    getUserProfile,
+    updateUserProfileSection,
 } from "../../../connector.js";
 
 const REPORT_REASONS = [
@@ -20,27 +25,94 @@ const REPORT_REASONS = [
 ];
 const MAX_INPUT_LENGTH = 199;
 const uniqueTags = tags => [...new Map((tags || []).filter(Boolean).map(tag => [String(tag).trim().toLocaleLowerCase(), String(tag).trim()])).values()];
+const normalizedSkill = skill => String(skill || "").toLocaleLowerCase().replace(/[^a-z0-9+#.]+/g, " ").trim();
+const SKILL_EQUIVALENTS = new Map([
+    ["ai", "artificial intelligence"],
+    ["gcp", "google cloud platform"],
+    ["azure", "microsoft azure"],
+    ["vue", "vue.js"],
+    ["vue js", "vue.js"],
+]);
+const canonicalSkill = skill => {
+    const normalized = normalizedSkill(skill);
+    return SKILL_EQUIVALENTS.get(normalized) || normalized;
+};
+const equivalentSkill = (left, right) => {
+    const first = canonicalSkill(left);
+    const second = canonicalSkill(right);
+    return first === second || (first.length > 2 && second.length > 2 && (first.includes(second) || second.includes(first)));
+};
+const companyInitials = company => String(company || "Job").split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join("").toUpperCase();
+const companyLogo = job => {
+    if (job.companyLogo || job.logoUrl) return job.companyLogo || job.logoUrl;
+    const genericHosts = /(?:ashbyhq|greenhouse|lever|workday|oraclecloud|smartrecruiters|jobvite)\./i;
+    let domain = "";
+    try {
+        const host = new URL(job.jobUrl || job.url || "").hostname.replace(/^www\./, "");
+        if (!genericHosts.test(host)) domain = host;
+    } catch { /* Fall back to the company-name domain. */ }
+    if (!domain) {
+        const brand = String(job.company || "").toLowerCase()
+            .replace(/\b(?:incorporated|corporation|company|technologies|technology|holdings|inc|corp|llc|ltd)\b/g, "")
+            .replace(/[^a-z0-9]+/g, "");
+        if (brand) domain = `${brand}.com`;
+    }
+    return domain ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128` : "";
+};
+const companyHue = company => [...String(company || "")].reduce((total, character) => total + character.charCodeAt(0), 0) % 360;
 
-const formatJobDate = value => {
-    if (!value) return "Not provided";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime())
-        ? String(value)
-        : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+const displayValue = value => value || "N/A";
+const formatCompensation = value => {
+    const salary = String(value || "").trim();
+    if (!salary || /\b(?:million|billion|funding|valuation)\b/i.test(salary)) return "N/A";
+    const hasPeriod = /(?:\/|per\s+)(?:hour|hr|year|yr)|\b(?:hourly|annual|annually)\b/i.test(salary);
+    const hasThousandsMarker = /\d\s*[kK]\b/.test(salary) || /\d{1,3},\d{3}/.test(salary);
+    return hasPeriod || hasThousandsMarker ? salary : "N/A";
+};
+const cleanSummary = value => {
+    let summary = String(value || "")
+        .replace(/<\/?[a-z][^>]*>/gi, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, "\"")
+        .replace(/&#(?:39|x27);/gi, "'")
+        .replace(/\s+/g, " ").trim()
+        .replace(/([.!?])(?=[A-Z])/g, "$1 ")
+        .replace(/^About\s+/i, "")
+        .replace(/^([A-Za-z][A-Za-z0-9&.'-]{2,35})\1\b/i, "$1");
+    if (!/[.!?]$/.test(summary)) {
+        const lastSentence = Math.max(summary.lastIndexOf("."), summary.lastIndexOf("!"), summary.lastIndexOf("?"));
+        if (lastSentence >= 100) summary = summary.slice(0, lastSentence + 1);
+    }
+    return summary;
+};
+const splitRequirements = requirements => {
+    const qualificationPattern = /\b(required|qualification|must|minimum|degree|bachelor|master|ph\.?d|graduat(?:e|ing|ion)|class of|new grad|years? (?:of )?experience|experience with|proficien|knowledge|skill|ability|eligible|gpa|authorization|authorized)\b/i;
+    const rows = (requirements || []).filter(Boolean);
+    const qualifications = rows.filter(row => qualificationPattern.test(row));
+    const responsibilities = rows.filter(row => !qualificationPattern.test(row));
+    return {
+        qualifications: qualifications.length ? qualifications : rows,
+        responsibilities: responsibilities.length ? responsibilities : [],
+    };
 };
 
 const FillApplication = () => {
     const isAdmin = useSelector(state => state.studentData?.role === "admin");
     const routeLocation = useLocation();
-    const job = React.useMemo(() => {
+    const jobId = new URLSearchParams(routeLocation.search).get("jobId");
+    const [job, setJob] = useState(() => {
         if (routeLocation.state) return routeLocation.state;
-        const storageKey = new URLSearchParams(routeLocation.search).get("job");
+        const legacyStorageKey = new URLSearchParams(routeLocation.search).get("job");
+        const storageKey = jobId ? `jobpilot.autofill.${jobId}` : legacyStorageKey;
         if (!storageKey) return {};
         try {
             return JSON.parse(localStorage.getItem(storageKey)) || {};
         }
         catch { return {}; }
-    }, [routeLocation.search, routeLocation.state]);
+    });
     const [jobUrl, setJobUrl] = useState(job.jobUrl || "");
     const [status, setStatus] = useState("idle");
     const [showConfirmation, setShowConfirmation] = useState(false);
@@ -52,9 +124,58 @@ const FillApplication = () => {
     const [otherReportReason, setOtherReportReason] = useState("");
     const [isReporting, setIsReporting] = useState(false);
     const [hasReported, setHasReported] = useState(false);
+    const [skillSaving, setSkillSaving] = useState("");
+    const [skillNotice, setSkillNotice] = useState("");
+    const [logoFailed, setLogoFailed] = useState(false);
     const wasRunning = useRef(false);
     const isStarting = status === "starting";
     const isRunning = status === "running";
+    const { qualifications, responsibilities } = splitRequirements(job.requirements);
+    const matchedSkills = uniqueTags(job.profileMatch?.matchedSkills || []);
+    const isMatchedSkill = skill => matchedSkills.some(profileSkill => equivalentSkill(profileSkill, skill));
+    const qualificationSkills = uniqueTags(job.profileMatch?.jobSkills || matchedSkills);
+    const scoreBreakdown = Array.isArray(job.profileMatch?.breakdown) ? job.profileMatch.breakdown : [];
+    const summary = cleanSummary(job.summary);
+    const logoUrl = companyLogo(job);
+    const logoHue = companyHue(job.company);
+    const jobDetails = [
+        ["Location", faLocationDot, displayValue(job.location)],
+        ["Workplace", faBuilding, displayValue(job.workplaceType)],
+        ["Employment type", faClock, displayValue(job.employmentType)],
+        ["Salary or compensation", faMoneyBillWave, formatCompensation(job.salary)],
+        ["Career source", faBriefcase, displayValue(job.source)],
+    ].filter(([, , value]) => value !== "N/A");
+
+    useEffect(() => {
+        if (!jobId) return;
+        let active = true;
+        getJobPosting(jobId).then(fetchedJob => {
+            if (!active) return;
+            const normalizedJob = {
+                ...fetchedJob,
+                jobUrl: fetchedJob.url,
+                jobTitle: fetchedJob.title,
+                externalJobId: fetchedJob.id,
+                jobPostedAt: fetchedJob.postedAt,
+            };
+            setJob(normalizedJob);
+            setJobUrl(normalizedJob.jobUrl || "");
+            localStorage.setItem(`jobpilot.autofill.${jobId}`, JSON.stringify(normalizedJob));
+        }).catch(requestError => {
+            if (active && !job.jobUrl) setError(requestError.response?.data?.message || "Unable to load this job.");
+        });
+        return () => { active = false; };
+    // The local fallback is intentionally read only when the stable ID changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [jobId]);
+
+    useEffect(() => {
+        if (!skillNotice) return undefined;
+        const timeout = window.setTimeout(() => setSkillNotice(""), 3000);
+        return () => window.clearTimeout(timeout);
+    }, [skillNotice]);
+
+    useEffect(() => setLogoFailed(false), [job.company, job.jobUrl, job.url]);
 
     useEffect(() => {
         const persistedJobUrl = job.jobUrl;
@@ -175,14 +296,60 @@ const FillApplication = () => {
         setShowReportDialog(false);
     };
 
+    const toggleQualificationSkill = async skill => {
+        if (skillSaving) return;
+        const wasMatched = isMatchedSkill(skill);
+        setSkillSaving(skill);
+        setSkillNotice("");
+        setError("");
+        try {
+            const profile = await getUserProfile();
+            const profileSkills = Array.isArray(profile.skills) ? profile.skills : [];
+            const nextSkills = wasMatched
+                ? profileSkills.filter(profileSkill => !equivalentSkill(profileSkill, skill))
+                : uniqueTags([...profileSkills, skill]);
+            await updateUserProfileSection("skills", nextSkills);
+
+            if (jobId) {
+                const fetchedJob = await getJobPosting(jobId);
+                const normalizedJob = {
+                    ...fetchedJob,
+                    jobUrl: fetchedJob.url,
+                    jobTitle: fetchedJob.title,
+                    externalJobId: fetchedJob.id,
+                    jobPostedAt: fetchedJob.postedAt,
+                };
+                setJob(normalizedJob);
+                localStorage.setItem(`jobpilot.autofill.${jobId}`, JSON.stringify(normalizedJob));
+            } else {
+                setJob(current => ({ ...current, profileMatch: {
+                    ...current.profileMatch,
+                    matchedSkills: wasMatched
+                        ? (current.profileMatch?.matchedSkills || []).filter(profileSkill => !equivalentSkill(profileSkill, skill))
+                        : uniqueTags([...(current.profileMatch?.matchedSkills || []), skill]),
+                } }));
+            }
+            setSkillNotice(`“${skill}” ${wasMatched ? "unselected" : "selected"}. This choice will apply to future job matches.`);
+        } catch (requestError) {
+            setError(requestError.response?.data?.message || `Unable to update ${skill}.`);
+        } finally {
+            setSkillSaving("");
+        }
+    };
+
     return (
         <main className="autofill-page">
             <section className="autofill-card">
                 <div className="autofill-heading">
                     <div>
                         <span className="autofill-eyebrow">Application assistant</span>
+                        <div className="autofill-company-identity">
+                            <div className="autofill-company-logo" style={{ "--company-hue": logoHue }}>
+                                {!logoFailed && logoUrl && <img src={logoUrl} alt="" onError={() => setLogoFailed(true)}/>}<span>{companyInitials(job.company)}</span>
+                            </div>
+                            <strong>{job.company || "Job application"}</strong>
+                        </div>
                         <h1>{job.jobTitle || "Autofill an application"}</h1>
-                        <p className="autofill-company">{job.company || "Job application"}</p>
                     </div>
                     <div className="autofill-heading-actions">
                         {jobUrl && <a className="open-original-job" href={jobUrl} target="_blank" rel="noreferrer">Open original job ↗</a>}
@@ -190,28 +357,29 @@ const FillApplication = () => {
                     </div>
                 </div>
 
-                <div className="job-detail-grid">
-                    <div><span>Location</span><strong>{job.location || "Not provided"}</strong></div>
-                    <div><span>Workplace</span><strong>{job.workplaceType || "Not provided"}</strong></div>
-                    <div><span>Employment</span><strong>{job.employmentType || "Not provided"}</strong></div>
-                    <div><span>Salary</span><strong>{job.salary || "Not listed"}</strong></div>
-                    <div><span>Date posted</span><strong>{formatJobDate(job.jobPostedAt)}</strong></div>
-                    <div><span>Career source</span><strong>{job.source || "Official career site"}</strong></div>
-                </div>
+                {(jobDetails.length > 0 || job.profileMatch) && <div className="job-overview-row">
+                    {jobDetails.length > 0 && <div className="job-detail-grid">{jobDetails.map(([label, icon, value]) => <div title={label} key={label}><FontAwesomeIcon icon={icon}/><strong>{value}</strong></div>)}</div>}
+                    {job.profileMatch && <aside className={`job-detail-match ${job.profileMatch.level}`} aria-label="Profile match score">
+                        <div className="job-match-summary"><strong>{job.profileMatch.score}%</strong><span>{job.profileMatch.level} match</span></div>
+                        {scoreBreakdown.length > 0 && <div className="job-match-breakdown">{scoreBreakdown.map(item => <div className="job-match-breakdown-row" title={item.detail} key={item.key || item.label}>
+                            <div><span>{item.label}</span><strong>{item.percentage}%</strong></div>
+                        </div>)}</div>}
+                    </aside>}
+                </div>}
 
                 {(job.provider || job.tags?.length > 0) && <div className="autofill-job-tags" aria-label="Job details">
                     {job.provider && <span>{job.provider}</span>}
                     {uniqueTags(job.tags).slice(0, 5).map(tag => <span key={tag.toLocaleLowerCase()}>{tag}</span>)}
                 </div>}
 
-                {(job.summary || job.requirements?.length > 0) && <section className="job-requirements-panel">
-                    <h2>What this role is looking for</h2>
-                    {job.summary && <p>{job.summary}</p>}
-                    {job.requirements?.length > 0 && <ul>{job.requirements.slice(0, 8).map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul>}
+                {(summary || job.requirements?.length > 0) && <section className="job-description-panel">
+                    {summary && <p className="job-summary">{summary}</p>}
+                    {(qualifications.length > 0 || qualificationSkills.length > 0) && <section className="qualification-panel"><div className="qualification-heading"><div><span>Key criteria</span><h3>Qualifications</h3><p>You can <strong>click on the tags</strong> to select or unselect skills that reflect your actual expertise. Your choices are private to your account and apply anywhere those skills appear in future job applications.</p></div>{matchedSkills.length > 0 && <em><FontAwesomeIcon icon={faThumbsUp}/> Represents the skills you have</em>}</div>{qualificationSkills.length > 0 && <div className="qualification-skill-tags" aria-label="Skills mentioned in this job">{qualificationSkills.map(skill => { const matched = isMatchedSkill(skill); return <button type="button" className={matched ? "matched" : ""} aria-pressed={matched} disabled={Boolean(skillSaving)} onClick={() => toggleQualificationSkill(skill)} key={skill}>{matched && <FontAwesomeIcon icon={faThumbsUp}/>} {skill}{skillSaving === skill && <span className="skill-saving">…</span>}</button>; })}</div>}<ul>{qualifications.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
+                    {responsibilities.length > 0 && <section className="job-detail-section"><h3><FontAwesomeIcon icon={faListCheck}/> Responsibilities</h3><ul>{responsibilities.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                 </section>}
 
                 <label className="application-url-label">
-                    Application URL
+                    <span className="application-url-heading">Application URL <span className="autofill-help-icon" tabIndex="0" aria-label="How Autofill works"><FontAwesomeIcon icon={faCircleInfo}/><span className="autofill-help-tooltip" role="tooltip"><b>How Autofill works</b><span>JobPilot opens the official application in a controlled browser. Review every filled field and complete any verification yourself, then return here to confirm your application.</span></span></span></span>
                     <div className={`job-url-section${isAdmin ? "" : " no-report"}`}>
                         <input type="url" maxLength={MAX_INPUT_LENGTH} value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isStarting || isRunning} />
                         {isStarting ? <Button disabled>Starting…</Button>
@@ -225,16 +393,10 @@ const FillApplication = () => {
 
                 {error && <div className="autofill-error" role="alert">{error}</div>}
 
-                <section className="autofill-progress" aria-label="Autofill workflow">
-                    <h2>What happens next</h2>
-                    <ol>
-                        <li className={status !== "idle" ? "complete" : ""}>JobPilot opens the official application in a controlled browser.</li>
-                        <li className={isRunning ? "active" : ""}>Review the filled fields and complete any verification manually.</li>
-                        <li>Return here and confirm whether you submitted the application.</li>
-                    </ol>
-                    {isRunning && <button className="finished-link" type="button" onClick={() => setShowConfirmation(true)}>I finished applying</button>}
-                </section>
+                {isRunning && <button className="finished-link" type="button" onClick={() => setShowConfirmation(true)}>I finished applying</button>}
             </section>
+
+            {skillNotice && <div className="skill-snackbar" role="status" aria-live="polite"><FontAwesomeIcon icon={faCircleCheck}/><span>{skillNotice}</span></div>}
 
             {showConfirmation && (
                 <div className="confirmation-backdrop">

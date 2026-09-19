@@ -1,6 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const {
     getActiveJobPostings,
+    getJobPostingById,
     addSourceJobsToCache,
     enqueueSourceJobDiscovery,
     getSourceDiscoveryTask,
@@ -90,6 +91,13 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
     res.json(results);
 });
 
+const getActiveJobPosting = asyncHandler(async (req, res) => {
+    const profile = await getUserProfile(req.auth.userId);
+    const job = await getJobPostingById(req.params.jobId, profile);
+    if (!job) return res.status(404).json({ message: "This job is no longer available in the active catalogue." });
+    return res.json({ job });
+});
+
 const resolveAndInspectCareerSource = async input => {
     try {
         const source = resolveSource(input);
@@ -146,6 +154,7 @@ const listCareerSources = asyncHandler(async (req, res) => {
 
 module.exports = {
     listActiveJobPostings,
+    getActiveJobPosting,
     createCareerSource,
     previewCareerSource,
     getCareerSourceDiscovery,

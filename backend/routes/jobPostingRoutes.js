@@ -4,6 +4,7 @@ const {
     getCareerSourceDiscovery,
     listCareerSources,
     listActiveJobPostings,
+    getActiveJobPosting,
     previewCareerSource,
 } = require("../controllers/jobPostingController");
 
@@ -13,6 +14,7 @@ const requireAdmin = require("../middleware/requireAdmin");
 
 router.use(requireAuth);
 router.get("/", listActiveJobPostings);
+router.get("/detail/:jobId", getActiveJobPosting);
 router.get('/platforms', async (req, res, next) => {
     try {
         const sources = [...require('../services/companyCareerSources'), ...await require('../repositories/customCareerSourceRepository').listCustomCareerSources()];
