@@ -308,3 +308,6 @@
 @media(max-width:700px) { .education-edit-card { padding: 16px; } .education-location-row { grid-template-columns: 1fr; } }
 
 @media(max-width:700px){.editor-grid,.editor-grid.three,.editor-grid.phone{grid-template-columns:1fr}.profile-editor header{padding:0 14px}.profile-editor header .header-update{min-width:88px;padding:9px 13px}.profile-links a{width:auto;height:auto;max-width:100%}}
+
+// Keep the profile page aligned with the app-wide content gutters.
+.profile-page { padding: var(--app-page-top) var(--app-page-gutter) var(--app-page-bottom); }

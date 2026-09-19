@@ -2,7 +2,7 @@
 
 .active-jobs-page {
     min-height: 100vh;
-    padding: 124px max(24px, 6vw) 64px;
+    padding: var(--app-page-top) var(--app-page-gutter) var(--app-page-bottom);
     box-sizing: border-box;
     background: #f5f7fb;
     color: #172033;
@@ -10,7 +10,7 @@
 
 .active-jobs-header {
     display: flex;
-    max-width: 1180px;
+    max-width: var(--app-content-width);
     margin: 0 auto 28px;
     align-items: flex-end;
     justify-content: space-between;
@@ -63,8 +63,9 @@
 .job-search-panel {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    max-width: 1180px;
+    max-width: var(--app-content-width);
     margin: 0 auto;
+    box-sizing: border-box;
     padding: 22px;
     gap: 16px;
     border: 1px solid #e0e6ef;
@@ -103,7 +104,7 @@
     padding: 0 24px;
 }
 
-.advanced-filter-shell { position: relative; z-index: 5; max-width: 1180px; margin: 14px auto 0; border: 1px solid #e0e6ef; border-radius: 16px; background: #fff; overflow: visible; }
+.advanced-filter-shell { position: relative; z-index: 5; max-width: var(--app-content-width); margin: 14px auto 0; border: 1px solid #e0e6ef; border-radius: 16px; background: #fff; overflow: visible; }
 .advanced-filter-heading { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; gap: 16px; }
 .advanced-filter-heading > div:first-child { display: grid; gap: 2px; }
 .advanced-filter-heading span { color: #667085; font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
@@ -434,7 +435,7 @@
 
 @media (max-width: 680px) {
     .active-jobs-page {
-        padding: 104px 16px 40px;
+        padding: var(--app-page-top) var(--app-page-gutter) var(--app-page-bottom);
     }
 
     .active-jobs-header {

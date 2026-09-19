@@ -7,6 +7,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root {
+  --app-content-width: 1180px;
+  --app-page-gutter: clamp(20px, 5vw, 80px);
+  --app-page-top: 124px;
+  --app-page-bottom: 64px;
+}
+
+@media (max-width: 700px) {
+  :root {
+    --app-page-gutter: 16px;
+    --app-page-top: 104px;
+    --app-page-bottom: 40px;
+  }
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

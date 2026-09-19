@@ -1,4 +1,4 @@
-.history-page { min-height: 100vh; padding: 124px max(24px, 6vw) 64px; box-sizing: border-box; background: #f5f7fb; color: #172033; }
+.history-page { min-height: 100vh; padding: var(--app-page-top) var(--app-page-gutter) var(--app-page-bottom); box-sizing: border-box; background: #f5f7fb; color: #172033; }
 .history-heading { max-width: 1180px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin: 0 auto 26px; }
 .history-eyebrow { color: #3361ae; font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .history-heading h1 { margin: 8px 0; font-size: clamp(34px, 5vw, 52px); letter-spacing: -.04em; }
@@ -46,3 +46,5 @@
 .history-pagination button { min-width: 94px; padding: 10px 16px; }
 @media (max-width: 900px) { .history-summary { grid-template-columns: repeat(2, 1fr); } .history-card { grid-template-columns: 1fr; } .history-card-edit { padding: 20px 0 0; border-top: 1px solid #e7ebf1; border-left: 0; } }
 @media (max-width: 620px) { .history-page { padding: 104px 16px 40px; } .history-heading { align-items: stretch; flex-direction: column; } .history-rate { text-align: left; } .history-summary { grid-template-columns: 1fr 1fr; } .history-controls { flex-direction: column; } .history-controls form { width: 100%; } .outcome-copy { align-items: flex-start; flex-direction: column; } }
+
+@media (max-width: 620px) { .history-page { padding: var(--app-page-top) var(--app-page-gutter) var(--app-page-bottom); } }
