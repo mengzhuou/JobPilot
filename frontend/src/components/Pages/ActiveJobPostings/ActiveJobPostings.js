@@ -3,7 +3,7 @@ import { useLocation as useRouteLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faHeart as farHeart } from "@fortawesome/free-regular-svg-icons";
 import { faBan, faBookmark, faHeart as fasHeart } from "@fortawesome/free-solid-svg-icons";
-import { getActiveJobPostings, setJobPreference, getFilterPresets, saveFilterPreset, getJobPlatforms } from "../../../connector";
+import { getActiveJobPostings, setJobPreference, getFilterPresets, saveFilterPreset, updateFilterPreset, deleteFilterPreset, getJobPlatforms } from "../../../connector";
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Snackbar, Alert } from '@mui/material';
 import "./ActiveJobPostings.scss";
 
@@ -12,6 +12,7 @@ const JOB_TYPE_OPTIONS = [
     { value: "full_time", label: "Full-time" },
     { value: "coop", label: "Co-op" },
     { value: "intern", label: "Intern" },
+    { value: "new_grad", label: "New Grad" },
 ];
 const SKILL_OPTIONS = ["React", "Java", "JavaScript", "TypeScript", "Python", "Node.js", "C++", "Kubernetes", "AWS", "PostgreSQL"];
 const FOCUS_OPTIONS = [{ value: "web", label: "Web" }, { value: "mobile", label: "Mobile" }, { value: "embedded", label: "Embedded" }];
@@ -73,8 +74,12 @@ const ActiveJobPostings = () => {
     }, [presetNotice]);
     const [presetLoading, setPresetLoading] = useState(true);
     const [saveDialog, setSaveDialog] = useState(false);
+    const [deleteDialog, setDeleteDialog] = useState(false);
     const [presetName, setPresetName] = useState('');
+    const [presetMode, setPresetMode] = useState('new');
+    const [selectedPresetId, setSelectedPresetId] = useState('');
     const [savingPreset, setSavingPreset] = useState(false);
+    const [deletingPreset, setDeletingPreset] = useState(false);
     const [saveError, setSaveError] = useState('');
 
     useEffect(() => {
@@ -267,6 +272,7 @@ const ActiveJobPostings = () => {
         setIncludeLevelInput("");
         setShowIncludeLevelSuggestions(false);
         setMatchLevel("all");
+        setSelectedPresetId("");
         setPresetNotice('');
         setApplyClearedFilters(true);
     };
@@ -274,10 +280,10 @@ const ActiveJobPostings = () => {
     const currentFilters = { includeCompanies, excludeCompanies, requiredSkills, remoteOnly, matchLevel,
         excludeFocuses, excludeEligibility, excludeJobTypes, postedWithin,
         locations, excludeLevels, includeLevels, excludePlatforms };
-    const selectedPresetId = presets.find(preset => Object.keys(currentFilters).every(key =>
-        JSON.stringify(preset.filters[key]) === JSON.stringify(currentFilters[key])))?.id || '';
+    const selectedPreset = presets.find(preset => preset.id === selectedPresetId) || null;
     const loadPreset = id => {
         const preset = presets.find(item => item.id === id);
+        setSelectedPresetId(id);
         if (!preset) return;
         const f = preset.filters;
         setIncludeCompanies(f.includeCompanies || []); setExcludeCompanies(f.excludeCompanies || []);
@@ -296,16 +302,32 @@ const ActiveJobPostings = () => {
         if (savingPreset) return;
         const name = presetName.trim().replace(/\s+/g, ' ');
         if (!name) { setSaveError('Enter a preference name.'); return; }
-        if (presets.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+        if (presetMode === 'new' && presets.some(item => item.name.toLowerCase() === name.toLowerCase())) {
             setSaveError('You already have a preference with this name. Choose another name.'); return;
         }
         setSavingPreset(true); setSaveError('');
         try {
-            const preset = await saveFilterPreset(name, currentFilters);
-            setPresets(current => [...current, preset].sort((a,b) => a.name.localeCompare(b.name)));
-            setSaveDialog(false); setPresetNotice({ message: `“${preset.name}” saved to your preferences.` });
+            const preset = presetMode === 'update' && selectedPreset
+                ? await updateFilterPreset(selectedPreset.id, name, currentFilters)
+                : await saveFilterPreset(name, currentFilters);
+            setPresets(current => (presetMode === 'update'
+                ? current.map(item => item.id === preset.id ? preset : item)
+                : [...current, preset]).sort((a,b) => a.name.localeCompare(b.name)));
+            setSelectedPresetId(preset.id);
+            setSaveDialog(false); setPresetNotice({ message: `“${preset.name}” ${presetMode === 'update' ? 'updated' : 'saved'} to your preferences.` });
         } catch (error) { setSaveError(error.response?.data?.message || 'Unable to save preferences. Please try again.'); }
         finally { setSavingPreset(false); }
+    };
+    const removePreset = async () => {
+        if (!selectedPreset || deletingPreset) return;
+        setDeletingPreset(true); setPresetError('');
+        try {
+            const removed = await deleteFilterPreset(selectedPreset.id);
+            setPresets(current => current.filter(item => item.id !== removed.id));
+            setSelectedPresetId(''); setDeleteDialog(false);
+            setPresetNotice({ message: `“${removed.name}” deleted.` });
+        } catch (error) { setPresetError(error.response?.data?.message || 'Unable to delete this preference. Please try again.'); }
+        finally { setDeletingPreset(false); }
     };
 
     useEffect(() => {
@@ -516,7 +538,7 @@ const ActiveJobPostings = () => {
                         </div>
                     </label>
                     <ChipMultiSelect label="Include skills" values={requiredSkills} onChange={setRequiredSkills} options={SKILL_OPTIONS} placeholder="e.g. React, Java" />
-                    <div className="advanced-filter-actions"><button type="button" onClick={() => { setPresetName(''); setSaveError(''); setSaveDialog(true); }}>Save Preferences</button><button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
+                    <div className="advanced-filter-actions"><button type="button" onClick={() => { setPresetMode(selectedPreset ? 'update' : 'new'); setPresetName(selectedPreset?.name || ''); setSaveError(''); setSaveDialog(true); }}>Save Preferences</button>{selectedPreset && <button className="delete-preference" type="button" onClick={() => setDeleteDialog(true)}>Delete preference</button>}<button type="button" onClick={() => loadJobs()}>Apply filters</button></div>
                 </div>}
             </section>
 
@@ -531,10 +553,16 @@ const ActiveJobPostings = () => {
                     <DialogTitle id="save-filter-title">Save filter preferences</DialogTitle>
                     <DialogContent>
                         <p>Save these advanced filters to your account so you can load them again.</p>
+                        {selectedPreset && <label className="preset-save-mode"><span>Save action</span><select value={presetMode} onChange={event => { const mode = event.target.value; setPresetMode(mode); setPresetName(mode === 'update' ? selectedPreset.name : ''); setSaveError(''); }} disabled={savingPreset}><option value="new">Create a new preference</option><option value="update">Update “{selectedPreset.name}”</option></select></label>}
                         <TextField autoFocus fullWidth label="Preference name" value={presetName} onChange={event => { setPresetName(event.target.value); setSaveError(''); }} inputProps={{ maxLength: 199 }} disabled={savingPreset} error={Boolean(saveError)} helperText={saveError || 'Enter a unique name for saved filters.'} />
                     </DialogContent>
-                    <DialogActions><Button onClick={() => setSaveDialog(false)} disabled={savingPreset}>Cancel</Button><Button type="submit" variant="contained" disabled={savingPreset || !presetName.trim()}>{savingPreset ? 'Saving…' : 'Save Preferences'}</Button></DialogActions>
+                    <DialogActions><Button onClick={() => setSaveDialog(false)} disabled={savingPreset}>Cancel</Button><Button type="submit" variant="contained" disabled={savingPreset || !presetName.trim()}>{savingPreset ? 'Saving…' : presetMode === 'update' ? 'Update preference' : 'Create preference'}</Button></DialogActions>
                 </form>
+            </Dialog>
+            <Dialog open={deleteDialog} onClose={() => { if (!deletingPreset) setDeleteDialog(false); }} fullWidth maxWidth="xs" aria-labelledby="delete-filter-title">
+                <DialogTitle id="delete-filter-title">Delete preference?</DialogTitle>
+                <DialogContent><p>Delete “{selectedPreset?.name}”? This cannot be undone.</p></DialogContent>
+                <DialogActions><Button onClick={() => setDeleteDialog(false)} disabled={deletingPreset}>Cancel</Button><Button color="error" variant="contained" onClick={removePreset} disabled={deletingPreset}>{deletingPreset ? 'Deleting…' : 'Delete preference'}</Button></DialogActions>
             </Dialog>
 
             {routeLocation.state?.confirmedJobUrl && (

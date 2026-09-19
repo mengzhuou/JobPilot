@@ -13,8 +13,10 @@ function validateFilters(input) {
     }
     if (typeof input.remoteOnly !== 'boolean') throw new Error('Invalid remote filter');
     if (!['all','day','week','month','three_months','six_months'].includes(input.postedWithin)) throw new Error('Invalid posting date');
+    if (!['all','strong','good','fair','bad'].includes(input.matchLevel || 'all')) throw new Error('Invalid profile match filter');
     filters.remoteOnly = input.remoteOnly;
     filters.postedWithin = input.postedWithin;
+    filters.matchLevel = input.matchLevel || 'all';
     return filters;
 }
 
@@ -39,5 +41,31 @@ router.post('/', async (req, res, next) => {
         if (error.code === '23505') return res.status(409).json({ message: 'You already have a preference with this name. Choose another name.' });
         next(error);
     }
+});
+router.put('/:id', async (req, res, next) => {
+    let filters;
+    const name = typeof req.body.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+    try {
+        if (!name || name.length > 199) throw new Error('Enter a preference name under 200 characters.');
+        filters = validateFilters(req.body.filters);
+    } catch (error) { return res.status(400).json({ message: error.message }); }
+    try {
+        const result = await pool.query(
+            'UPDATE jobpilot.filter_presets SET name=$1,filters=$2::jsonb WHERE id=$3::uuid AND user_id=$4 RETURNING id,name,filters',
+            [name, JSON.stringify(filters), req.params.id, req.auth.userId]
+        );
+        if (!result.rows[0]) return res.status(404).json({ message: 'This saved preference no longer exists.' });
+        return res.json({ preset: result.rows[0] });
+    } catch (error) {
+        if (error.code === '23505') return res.status(409).json({ message: 'You already have a preference with this name. Choose another name.' });
+        return next(error);
+    }
+});
+router.delete('/:id', async (req, res, next) => {
+    try {
+        const result = await pool.query('DELETE FROM jobpilot.filter_presets WHERE id=$1::uuid AND user_id=$2 RETURNING id,name', [req.params.id, req.auth.userId]);
+        if (!result.rows[0]) return res.status(404).json({ message: 'This saved preference no longer exists.' });
+        return res.json({ preset: result.rows[0] });
+    } catch (error) { return next(error); }
 });
 module.exports = router;

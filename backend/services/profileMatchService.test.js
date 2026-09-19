@@ -22,6 +22,20 @@ const aliasMatch = scoreJobForProfile({
 assert.deepEqual(aliasMatch.matchedSkills.slice().sort(), ["Artificial Intelligence", "Google Cloud Platform", "Microsoft Azure", "Vue.js"].sort());
 assert.equal(aliasMatch.breakdown.length, 3);
 assert(aliasMatch.breakdown.every(item => item.percentage >= 0 && item.percentage <= 100));
+const jobSpecificSkills = scoreJobForProfile({
+    title: "Network Infrastructure Engineer",
+    summary: "Operate VAST storage and automate BGP, OSPF, ECMP, and MLAG fabrics with Prometheus and Grafana.",
+    requirements: ["Perform RCA for incidents and maintain 400G Ethernet links."],
+}, { ...profile, skills: ["BGP", "Prometheus"] });
+assert(jobSpecificSkills.jobSkills.includes("VAST Data"));
+assert(jobSpecificSkills.jobSkills.includes("BGP"));
+assert(jobSpecificSkills.jobSkills.includes("OSPF"));
+assert(jobSpecificSkills.jobSkills.includes("Prometheus"));
+assert(jobSpecificSkills.jobSkills.includes("Grafana"));
+assert(jobSpecificSkills.jobSkills.includes("Root Cause Analysis"));
+assert(!jobSpecificSkills.jobSkills.includes("Vast"));
+assert(jobSpecificSkills.matchedSkills.includes("BGP"));
+assert(jobSpecificSkills.matchedSkills.includes("Prometheus"));
 const newGradMismatch = scoreJobForProfile({
     title: "Software Engineer, New Grad 2027",
     summary: "Build software with React, TypeScript, Java, Kubernetes, and AWS.",

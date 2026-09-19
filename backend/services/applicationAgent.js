@@ -7,6 +7,7 @@ const fs = require("fs/promises");
 const {
     normalizeText,
     getAvailableFormOption,
+    findEquivalentFormOption,
     getBooleanFormAnswer
 } = require("./applicationAgentUtils");
 const {
@@ -34,43 +35,55 @@ let aiAutofillPlan = [];
 let aiPlanCreated = false;
 let onAiPlanChanged = null;
 let onAutofillEvent = null;
+let lastApplicationOutcome = null;
 
-const profileEntries = value => Array.isArray(value) ? value : [];
-const labelMap = rows => Object.fromEntries(profileEntries(rows).filter(Array.isArray).map(([key, value]) => [normalizeText(key), value]));
-const getProfileLink = (links, label) => profileEntries(links).find(link => normalizeText(link.label) === label)?.href || "";
-const toAutofillProfile = current => {
-    const personal = current?.personal || {};
-    const education = profileEntries(current?.education);
-    const experience = profileEntries(current?.experience);
-    const preferences = labelMap(current?.preferences);
-    const equalEmployment = labelMap(current?.equalEmployment);
-    const [firstName = "", ...remainingNames] = String(personal.name || "").split(/\s+/).filter(Boolean);
-    const skills = Array.isArray(current?.skills) ? current.skills : Object.values(current?.skills || {}).flat();
-    return {
-        candidate: {
-            name: personal.name || "",
-            first_name: personal.firstName || firstName,
-            last_name: personal.lastName || remainingNames.at(-1) || "",
-            email: personal.email || "",
-            phone: personal.phone || "",
-            location: { address_line_1: personal.addressLine || "", city: personal.city || "", state: personal.state || "", country: personal.country || "" },
-            links: { linkedin: getProfileLink(personal.links, "linkedin"), github: getProfileLink(personal.links, "github"), portfolio: getProfileLink(personal.links, "portfolio") },
-        },
-        education: {
-            school: education[0]?.school || "",
-            highest_level: education[0]?.degree || "",
-            field_of_study: education[0]?.degree || "",
-            undergraduate_gpa: education[0]?.gpa || "",
-        },
-        career: { current_company: experience[0]?.company || "", current_title: experience[0]?.title || "", work_history: experience.map(item => ({ job_title: item.title, company: item.company, from: item.from, to: item.to, current: /present|current/i.test(String(item.to || "")) })) },
-        experience: { total_professional_software_engineering_years: experience.length ? experience.length : 0 },
-        skills,
-        job_preferences: { applying_for_full_time: /full.?time/i.test(String(preferences.seeking || "")), earliest_start_date: preferences["earliest start date"] || "", office_days_per_week_form_option: preferences["office preference"] || "" },
-        work_authorization: { authorized_to_work_without_sponsorship: /^no$/i.test(String(equalEmployment["requires employment sponsorship"] || "")), authorized_to_work_form_options: [equalEmployment["authorized to work in the united states"], "Yes"].filter(Boolean), citizenship_status_form_options: [equalEmployment["citizenship status"]].filter(Boolean) },
-        eeoc: {},
-        application_answers: { preferred_application_location: preferences["preferred application location"] || "" },
-    };
+const INVALID_APPLICATION_PAGE = /\b(?:page not found|404(?:\s+not found)?|(?:this|the) (?:job|page|position).{0,24}(?:not found|unavailable)|job (?:is )?no longer available|job posting (?:is )?closed|position (?:is )?closed|application (?:is )?closed|no longer accepting applications)\b/i;
+const findInvalidApplicationPage = async targetPage => {
+    for (const frame of targetPage.frames()) {
+        const pageState = await frame.evaluate(() => ({
+            title: document.title || "",
+            text: document.body?.innerText?.slice(0, 12000) || "",
+            controls: document.querySelectorAll('input:not([type="hidden"]), textarea, select, [role="combobox"]').length,
+        })).catch(() => null);
+        const pageText = `${pageState?.title || ""}\n${pageState?.text || ""}`;
+        if (!pageState || !INVALID_APPLICATION_PAGE.test(pageText)) continue;
+        // Exact 404/not-found pages are definitive even if the career site
+        // leaves a search box in its header. Softer closed-job language needs
+        // the additional signal that no application form is present.
+        const hardNotFound = /\b(?:page not found|404(?:\s+not found)?)\b/i.test(pageText);
+        if (!hardNotFound && pageState.controls >= 2) continue;
+        return { reason: "website is invalid or job no longer exists", detail: pageState.title || "Page not found" };
+    }
+    return null;
 };
+
+const showAutofillOverlay = target => target.evaluate(() => {
+    document.getElementById("jobpilot-autofill-overlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "jobpilot-autofill-overlay";
+    overlay.setAttribute("role", "status");
+    overlay.setAttribute("aria-live", "assertive");
+    overlay.innerHTML = '<div class="jobpilot-autofill-card"><div class="jobpilot-autofill-brand"><span class="jobpilot-autofill-mark"><i></i><i></i><i></i></span><span>JobPilot</span><em>Working</em></div><div class="jobpilot-autofill-progress"><div class="jobpilot-autofill-spinner"><i></i></div><div><strong>Autofilling your application</strong><span id="jobpilot-autofill-stage">Opening the application</span></div></div><div class="jobpilot-autofill-meter"><i></i></div><div class="jobpilot-autofill-status"><b></b><span id="jobpilot-autofill-time">0s elapsed</span><small>Keep this tab open</small></div></div>';
+    const style = document.createElement("style");
+    style.textContent = '#jobpilot-autofill-overlay{position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:rgba(20,32,55,.22);backdrop-filter:blur(5px);cursor:wait}#jobpilot-autofill-overlay .jobpilot-autofill-card{display:grid;width:min(380px,calc(100vw - 40px));box-sizing:border-box;gap:18px;padding:22px 24px 18px;border:1px solid rgba(255,255,255,.8);border-radius:16px;background:rgba(255,255,255,.97);color:#172033;box-shadow:0 24px 64px rgba(19,37,70,.23);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}.jobpilot-autofill-brand{display:flex;align-items:center;gap:8px;color:#315fa9;font-size:12px;font-weight:800;letter-spacing:.04em}.jobpilot-autofill-brand em{margin-left:auto;padding:4px 7px;border-radius:999px;background:#e8f7f0;color:#087a55;font-size:10px;font-style:normal}.jobpilot-autofill-mark{display:grid;width:22px;height:22px;place-items:center;border-radius:7px;background:#3361ae;transform:rotate(-8deg)}.jobpilot-autofill-mark i{position:absolute;width:10px;height:3px;border-radius:8px;background:#fff;transform:rotate(-36deg)}.jobpilot-autofill-mark i:nth-child(2){width:7px;transform:translate(-4px,3px) rotate(47deg)}.jobpilot-autofill-mark i:nth-child(3){display:none}.jobpilot-autofill-progress{display:flex;align-items:center;gap:15px}.jobpilot-autofill-progress>div:last-child{display:grid;gap:5px}.jobpilot-autofill-progress strong{font-size:17px;letter-spacing:-.02em}.jobpilot-autofill-progress span{color:#667085;font-size:12px;line-height:1.35}.jobpilot-autofill-spinner{display:grid;width:37px;height:37px;box-sizing:border-box;place-items:center;border:3px solid #e5edf9;border-right-color:#20bdc5;border-top-color:#3361ae;border-radius:50%;animation:jobpilot-autofill-spin .8s linear infinite}.jobpilot-autofill-spinner i{width:7px;height:7px;border-radius:50%;background:#3361ae}.jobpilot-autofill-meter{height:5px;overflow:hidden;border-radius:9px;background:#edf1f6}.jobpilot-autofill-meter i{display:block;width:42%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#3361ae,#20bdc5);animation:jobpilot-autofill-meter 1.7s ease-in-out infinite}.jobpilot-autofill-status{display:flex;align-items:center;gap:7px;padding-top:2px;color:#667085;font-size:11px;font-weight:650}.jobpilot-autofill-status b{width:7px;height:7px;border-radius:50%;background:#20bd93;box-shadow:0 0 0 4px rgba(32,189,147,.12)}.jobpilot-autofill-status small{margin-left:auto;color:#98a2b3;font-size:10px;font-weight:650}@keyframes jobpilot-autofill-spin{to{transform:rotate(360deg)}}@keyframes jobpilot-autofill-meter{0%{transform:translateX(-120%)}55%,100%{transform:translateX(250%)}}';
+    style.textContent += '.jobpilot-autofill-mark{position:relative}';
+    overlay.append(style);
+    document.documentElement.append(overlay);
+    const startedAt = Date.now();
+    const stage = document.getElementById("jobpilot-autofill-stage");
+    const elapsed = document.getElementById("jobpilot-autofill-time");
+    const update = () => {
+        const seconds = Math.floor((Date.now() - startedAt) / 1000);
+        elapsed.textContent = `${seconds}s elapsed`;
+        stage.textContent = seconds < 8 ? "Opening the application" : seconds < 25 ? "Finding application fields" : seconds < 50 ? "Matching your saved details" : "Checking for additional form fields";
+    };
+    overlay.__jobPilotAutofillTimer = window.setInterval(update, 1000);
+}).catch(() => {});
+
+const hideAutofillOverlay = target => target.evaluate(() => {
+    const overlay = document.getElementById("jobpilot-autofill-overlay");
+    if (overlay) { window.clearInterval(overlay.__jobPilotAutofillTimer); overlay.style.opacity = "0"; overlay.style.transition = "opacity .2s ease"; setTimeout(() => overlay.remove(), 220); }
+}).catch(() => {});
 
 const blockedAiQuestion = question => /password|signature|certif(?:y|ication)|consent|voluntary|demographic|race|ethnicity|gender|disability|veteran|equal opportunity|self.?identification/i.test(question || "");
 
@@ -367,11 +380,13 @@ const getProfileValue = (field, siteAdapter = { type: SITE_TYPES.GENERIC }) => {
         };
     }
 
+    const locationFieldHint = normalizeText([question, name, id, field.label].filter(Boolean).join(" "));
     if (
         question === "city" ||
         question === "current city" ||
         question === "city of residence" ||
-        question === "location city"
+        question === "location city" ||
+        (locationFieldHint.includes("location") && locationFieldHint.includes("city"))
     ) {
 
         return {
@@ -611,15 +626,7 @@ const getProfileValue = (field, siteAdapter = { type: SITE_TYPES.GENERIC }) => {
         };
     }
 
-    if (
-        question.includes("require sponsorship") ||
-        question.includes("immigration sponsorship") ||
-        question.includes("employment visa sponsorship") ||
-        (
-            question.includes("sponsorship") &&
-            question.includes("immigration support")
-        )
-    ) {
+    if (question.includes("sponsorship")) {
 
         return {
             value:
@@ -1238,6 +1245,9 @@ const waitForApplicationUI = async (page) => {
         2000
     );
 
+    const invalidPage = await findInvalidApplicationPage(page);
+    if (invalidPage) return { invalidPage };
+
 
     // Try waiting for common application elements.
     try {
@@ -1277,6 +1287,7 @@ const waitForApplicationUI = async (page) => {
     console.log(
         "================================================"
     );
+    return { invalidPage: await findInvalidApplicationPage(page) };
 };
 
 
@@ -2231,9 +2242,9 @@ const uploadResume = async (page) => {
         resumeUploaded = true;
 
 
-        await page.waitForTimeout(
-            5000
-        );
+        // The following field-extraction pass also waits for the form. A
+        // short settle avoids a fixed five-second pause on every application.
+        await page.waitForTimeout(1200);
 
 
         console.log(
@@ -2265,30 +2276,15 @@ const getFieldLocator = (
     field
 ) => {
 
-    if (field.locatorKey) {
-
-        return page.locator(
-            `[data-jobpilot-field-key="${field.locatorKey}"]`
-        );
-    }
-
-    if (field.id) {
-
-        return page.locator(
-            `[id="${field.id}"]`
-        );
-    }
-
-
-    if (field.name) {
-
-        return page.locator(
-            `[name="${field.name}"]`
-        );
-    }
-
-
-    return null;
+    // Resume parsers and React forms can replace inputs after extraction.
+    // Try the temporary key first, then stable id/name attributes instead of
+    // waiting 30 seconds for a detached element that will never return.
+    const selectors = [
+        field.locatorKey && `[data-jobpilot-field-key="${field.locatorKey}"]`,
+        field.id && `[id="${field.id}"]`,
+        field.name && `[name="${field.name}"]`,
+    ].filter(Boolean);
+    return selectors.length ? page.locator(selectors.join(", ")) : null;
 };
 
 
@@ -2331,9 +2327,7 @@ const fillTextField = async (
                 ? String(answerValue).slice(0, 7)
                 : String(answerValue);
 
-        await locator
-            .first()
-            .scrollIntoViewIfNeeded();
+        await locator.first().scrollIntoViewIfNeeded({ timeout: 1800 });
 
         if (field.role === "combobox" || field.ariaAutocomplete === "list") {
             await locator.first().click({ force: true });
@@ -2354,10 +2348,9 @@ const fillTextField = async (
                 if (!(await option.isVisible().catch(() => false))) continue;
                 const optionText = await option.innerText().catch(() => "");
                 const normalizedOption = normalizeText(optionText);
-                if (
-                    normalizedOption === expected ||
-                    (allowPartialOptionMatch && normalizedOption.includes(expected))
-                ) {
+                if (normalizedOption === expected ||
+                    findEquivalentFormOption([optionText], formValue) ||
+                    (allowPartialOptionMatch && normalizedOption.includes(expected))) {
                     await option.click({ force: true });
                     console.log("COMBOBOX SELECTED:", optionText.trim());
                     return true;
@@ -2379,11 +2372,17 @@ const fillTextField = async (
             );
             await locator.first().press("Tab");
         } else {
-            await locator
-                .first()
-                .fill(
-                    formValue
-                );
+            const input = locator.first();
+            // Some controlled React inputs append when a browser autofill
+            // event races with Playwright. Clear explicitly, then repair the
+            // very specific duplicated-value case before continuing.
+            await input.fill("");
+            await input.fill(formValue);
+            const actualValue = await input.inputValue().catch(() => "");
+            if (actualValue === `${formValue}${formValue}`) {
+                await input.fill("");
+                await input.fill(formValue);
+            }
         }
 
 
@@ -2667,7 +2666,6 @@ const fillAutocompleteSelect = async (
 
 
     const selectVisibleCanonicalOption = async () => {
-        const expected = canonicalizeOptionText(value);
         const options = page.locator(
             `
             [role="option"],
@@ -2680,28 +2678,16 @@ const fillAutocompleteSelect = async (
         const count = await options.count();
 
 
+        const visibleOptions = [];
         for (let i = 0; i < count; i++) {
             const option = options.nth(i);
-
-
-            if (
-                !(await option.isVisible()
-                    .catch(() => false))
-            ) {
-                continue;
-            }
-
-
-            const text =
-                await option.innerText()
-                    .catch(() => "");
-
-
-            if (
-                canonicalizeOptionText(text) !== expected
-            ) {
-                continue;
-            }
+            if (!(await option.isVisible().catch(() => false))) continue;
+            const text = await option.innerText().catch(() => "");
+            if (text.trim()) visibleOptions.push({ option, text });
+        }
+        const expectedText = findEquivalentFormOption(visibleOptions.map(item => item.text), value);
+        for (const { option, text } of visibleOptions) {
+            if (text !== expectedText && canonicalizeOptionText(text) !== canonicalizeOptionText(value)) continue;
 
 
             await option.click({
@@ -2927,6 +2913,7 @@ const fillAutocompleteSelect = async (
         const normalizedValue = normalizeText(value);
         if (
             normalizedText === normalizedValue ||
+            findEquivalentFormOption([text], value) ||
             (
                 autocompleteIsAddress &&
                 normalizedText.includes(normalizedValue)
@@ -2996,16 +2983,7 @@ const fillSelect = async (
             );
 
 
-        const normalizedValue =
-            normalizeText(answer);
-
-
-        const matchingOption =
-            options.find(
-                option =>
-                    normalizeText(option) ===
-                    normalizedValue
-            );
+        const matchingOption = findEquivalentFormOption(options, answer);
 
 
         if (!matchingOption) {
@@ -3071,10 +3049,8 @@ const fillRadio = async (
         );
 
 
-    const normalizedAnswer =
-        normalizeText(answer);
-
-
+    const matchingOptionLabel = findEquivalentFormOption(field.options || [], answer) || answer;
+    const normalizedAnswer = normalizeText(matchingOptionLabel);
     const matchingField =
         fields.find(
             candidate => {
@@ -3095,7 +3071,7 @@ const fillRadio = async (
 
         const labelledOptions =
             page.getByLabel(
-                String(answer),
+                String(matchingOptionLabel),
                 { exact: true }
             );
         const labelledCount =
@@ -3119,7 +3095,7 @@ const fillRadio = async (
 
                 console.log(
                     "CHECKED RADIO BY LABEL:",
-                    answer
+                    matchingOptionLabel
                 );
 
                 return true;
@@ -3128,7 +3104,7 @@ const fillRadio = async (
 
         console.log(
             "RADIO OPTION NOT FOUND:",
-            answer
+            matchingOptionLabel
         );
 
         return false;
@@ -3511,19 +3487,20 @@ const fillApplicationFields = async (
             hasValidDateValue;
 
 
+        // Use the live control value, not the extraction snapshot. Greenhouse
+        // and similar importers often populate selects after we read fields.
+        const liveSelectValue = String(liveState?.value ?? field.value ?? "").trim();
+        const normalizedLiveSelectValue = normalizeText(liveSelectValue);
         const hasSelectValue =
             field.type === "select" &&
-            String(field.value || "").trim() !== "" &&
+            liveSelectValue !== "" &&
             ![
                 "please select",
                 "select",
                 "choose",
                 "make a selection"
-            ].includes(
-                normalizeText(field.value)
-            ) &&
-            !normalizeText(field.value)
-                .includes("make a selection");
+            ].includes(normalizedLiveSelectValue) &&
+            !normalizedLiveSelectValue.includes("make a selection");
 
 
         const groupHasSelection =
@@ -3906,8 +3883,8 @@ const fillProviderCustomSelects = async (
         }
 
         const answer = getBooleanFormAnswer(profileValue.value, visibleOptions.map(({ text }) => text));
-        const expected = normalizeText(answer);
-        const match = visibleOptions.find(({ text }) => normalizeText(text) === expected);
+        const matchingText = findEquivalentFormOption(visibleOptions.map(({ text }) => text), answer);
+        const match = visibleOptions.find(({ text }) => text === matchingText);
         if (!match) {
             console.log(`${siteAdapter.type.toUpperCase()} CUSTOM OPTION NOT FOUND: ${metadata.question} -> ${answer}`);
             continue;
@@ -3990,7 +3967,8 @@ const acceptAgreementCheckboxes = async (
                 ].join(" ").replace(/\s+/g, " ").trim();
 
                 return /^i agree\b/i.test(text)
-                    || /\bi agree (?:with|to)\b/i.test(text);
+                    || /\bi agree (?:with|to)\b/i.test(text)
+                    || /\b(?:acknowledge|confirm)\b/i.test(text);
             }).catch(() => false);
 
             if (!agreement
@@ -4015,11 +3993,9 @@ const acknowledgePrivacyDialogs = async (
     targetPage,
     siteAdapter = { type: SITE_TYPES.GENERIC }
 ) => {
-    if (!siteAdapter.acknowledgePrivacy) return false;
-
     for (const frame of targetPage.frames()) {
         const acknowledgeButtons = frame.getByRole("button", {
-            name: /^(?:i\s+)?acknowledge$/i,
+            name: /^(?:i\s+)?(?:acknowledge|confirm)(?:\s+and\s+continue)?$/i,
         });
         const count = await acknowledgeButtons.count().catch(() => 0);
 
@@ -4034,7 +4010,7 @@ const acknowledgePrivacyDialogs = async (
                 .then(() => true)
                 .catch(() => false);
             if (clicked) {
-                console.log("Acknowledged the Netflix candidate privacy dialog.");
+                console.log("Acknowledged an application confirmation dialog.");
                 await targetPage.waitForTimeout(300);
                 return true;
             }
@@ -4425,15 +4401,17 @@ const startApplicationAgent = async (
     // A closed tab can leave its persistent context alive.
     // Always release it before reusing the same profile.
     await closeApplicationSession();
+    lastApplicationOutcome = null;
     await prepareSelectedResume(options.resume);
     aiAutofillContext = options.aiContext
         ? { ...options.aiContext, resume: options.resume, onAiPlan: options.onAiPlan }
         : null;
     onAiPlanChanged = options.onAiPlanChanged || null;
     onAutofillEvent = options.onAutofillEvent || null;
-    // Playwright continues to use the curated static profile. AI, when it is
-    // explicitly enabled later, receives the signed-in Profile separately.
-    profile = staticProfile;
+    // The account Profile is mapped and validated by the controller. The
+    // static profile only remains a compatibility fallback for site-option
+    // phrasing and answers without an editable Profile field yet.
+    profile = options.autofillProfile || staticProfile;
 
 
     const launchedContext =
@@ -4441,7 +4419,7 @@ const startApplicationAgent = async (
             userDataDir,
             {
                 headless: false,
-                slowMo: 300
+                slowMo: Math.max(0, Number(process.env.PLAYWRIGHT_SLOW_MO_MS) || 50)
             }
         );
 
@@ -4504,6 +4482,25 @@ const startApplicationAgent = async (
     );
 
     page = await openApplicationForm(page, launchedContext);
+
+    const stopForInvalidJob = async invalidPage => {
+        console.log(`Invalid application page detected: ${invalidPage.detail}`);
+        let reportSubmitted = false;
+        try {
+            await options.onInvalidJob?.(invalidPage);
+            reportSubmitted = true;
+        } catch (error) {
+            console.log("Could not automatically report invalid job:", error.message);
+        }
+        lastApplicationOutcome = { type: "invalid_job", jobUrl, reportSubmitted, reason: invalidPage.reason };
+        await closeApplicationSession(launchedContext);
+        return { invalidJob: true, ...lastApplicationOutcome };
+    };
+
+    const invalidPage = await findInvalidApplicationPage(page);
+    if (invalidPage) {
+        return stopForInvalidJob(invalidPage);
+    }
 
     let siteAdapter = await detectApplicationSite(page);
     console.log(`Application site adapter: ${siteAdapter.type}`);
@@ -4572,9 +4569,10 @@ const startApplicationAgent = async (
     // 4. WAIT FOR APPLICATION
     // ==================================================
 
-    await waitForApplicationUI(
-        page
-    );
+    await showAutofillOverlay(page);
+
+    const applicationUi = await waitForApplicationUI(page);
+    if (applicationUi.invalidPage) return stopForInvalidJob(applicationUi.invalidPage);
 
 
     const resolvedSiteAdapter = await detectApplicationSite(page);
@@ -4686,6 +4684,7 @@ const startApplicationAgent = async (
     await fillProviderCustomSelects(applicationScope, siteAdapter);
     await acceptAgreementCheckboxes(page, siteAdapter);
     await clickNextApplicationStep(page);
+    await hideAutofillOverlay(page);
 
 
     // ==================================================
@@ -4723,6 +4722,8 @@ const isApplicationAgentRunning = () => {
     );
 };
 
+const getApplicationAgentOutcome = () => lastApplicationOutcome;
+
 // ==================================================
 // EXPORT
 // ==================================================
@@ -4730,5 +4731,6 @@ const isApplicationAgentRunning = () => {
 module.exports = {
     startApplicationAgent,
     stopApplicationAgent,
-    isApplicationAgentRunning
+    isApplicationAgentRunning,
+    getApplicationAgentOutcome
 };

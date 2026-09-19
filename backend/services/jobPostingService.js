@@ -38,6 +38,10 @@ const EMPLOYMENT_TYPE_PATTERNS = {
     full_time: /\b(full[ -]?time|permanent)\b/i,
     coop: /\b(co[ -]?op|cooperative education)\b/i,
     intern: /\b(intern|internship)\b/i,
+    // This is deliberately more specific than "entry level": an entry-level
+    // role can still be appropriate for an experienced applicant, while a
+    // new-grad program normally has a graduation-window requirement.
+    new_grad: /\b(new grad(?:uate)?|university grad(?:uate)?|recent grad(?:uate)?|campus hire|campus recruiting|class of 20\d{2}|graduat(?:e|ing) (?:in|by) 20\d{2})\b/i,
 };
 const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const hasExactKeyword = (text, keyword) => new RegExp(

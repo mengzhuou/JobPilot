@@ -110,3 +110,8 @@
 20260831	19:18:49	2d164a0e-0d2e-4b1e-857a-2f5e0b5d4ccc	Error: This job has already been reported by you	POST	/api/job-moderation/reports	http://localhost:3000
 20260919	13:39:49	c231146f-84e3-458a-9aa6-5abbd2583769	Error: page.exposeFunction: Function "__jobPilotNotifySubmitClick" has been already registered	POST	/api/applications/start	http://localhost:3000
 20260919	13:51:21	04a58ce4-2209-4f94-a1f3-65154bbfe359	Error: page.exposeFunction: Function "__jobPilotNotifySubmitClick" has been already registered	POST	/api/applications/start	http://localhost:3000
+20260919	16:27:37	a26c1e7f-7996-4c50-809f-ab9341e2e5ec	Error: Connection terminated due to connection timeout	GET	/api/job-postings/platforms	http://localhost:3000
+20260919	17:24:04	277a289f-fc33-4c66-97a3-de949c1d3bcf	Error: page.waitForTimeout: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260919	17:53:31	d14db788-aec8-47cf-8568-0b1c65389f0c	Error: page.title: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260919	17:53:58	91228d18-bd75-485a-bb94-d364dc580958	Error: page.title: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
+20260919	17:54:33	1d04606a-d137-46f7-8a34-9cf029c34717	Error: page.waitForTimeout: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000

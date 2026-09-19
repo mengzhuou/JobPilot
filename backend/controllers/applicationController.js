@@ -4,15 +4,18 @@ const asyncHandler = require("express-async-handler");
 const {
     startApplicationAgent,
     stopApplicationAgent,
-    isApplicationAgentRunning
+    isApplicationAgentRunning,
+    getApplicationAgentOutcome
 } = require("../services/applicationAgent");
 const resumeRepository = require("../repositories/resumeRepository");
 const userProfileRepository = require("../repositories/userProfileRepository");
 const reviewRepository = require("../repositories/aiAutofillReviewRepository");
+const { mapProfileForAutofill } = require("../services/autofillProfileMapper");
+const jobModerationRepository = require("../repositories/jobModerationRepository");
 
 const startApplication = asyncHandler(async (req, res, next) => {
     try {
-        const { jobUrl, jobTitle, company, location, summary, requirements, aiAmbiguityMode, useAi = false } = req.body;
+        const { jobUrl, jobTitle, company, location, summary, requirements, provider, externalJobId, aiAmbiguityMode, useAi = false } = req.body;
 
         if (!jobUrl) {
             return res.status(400).json({
@@ -28,6 +31,16 @@ const startApplication = asyncHandler(async (req, res, next) => {
         }
 
         const candidateProfile = await userProfileRepository.getByUserId(req.auth.userId);
+        if (!candidateProfile) {
+            return res.status(400).json({ message: "Complete your Profile before starting Autofill." });
+        }
+        const mappedProfile = mapProfileForAutofill(candidateProfile);
+        if (mappedProfile.missing.length) {
+            return res.status(400).json({
+                message: `Complete these Profile fields before Autofill: ${mappedProfile.missing.join(", ")}.`,
+                missingProfileFields: mappedProfile.missing,
+            });
+        }
         let review = null;
         let plannedAnswers = [];
         let reviewEvents = [];
@@ -53,6 +66,7 @@ const startApplication = asyncHandler(async (req, res, next) => {
 
         await startApplicationAgent(jobUrl, {
             resume: primaryResume,
+            autofillProfile: mappedProfile.profile,
             aiContext: useAi ? { job, profile: candidateProfile, ambiguityMode } : null,
             onAiPlan: async plan => {
                 plannedAnswers = plan;
@@ -66,6 +80,17 @@ const startApplication = asyncHandler(async (req, res, next) => {
                 if (event.type === "field_not_filled") reviewEvents = [...reviewEvents, event.field];
                 if (event.type === "ai_error") reviewEvents = [...reviewEvents, { question: "AI answer plan", type: "system", source: event.message }];
                 await saveReview();
+            },
+            onInvalidJob: async () => {
+                try {
+                    await jobModerationRepository.reportJob(req.auth.userId, {
+                        jobUrl, jobTitle, company, provider, externalJobId,
+                        reason: "website is invalid or job no longer exists",
+                    });
+                } catch (error) {
+                    // A duplicate report still means the invalid job was handled.
+                    if (error.statusCode !== 409) throw error;
+                }
             },
         });
 
@@ -98,7 +123,8 @@ const getApplicationStatus = asyncHandler(async (req, res) => {
         running: isApplicationAgentRunning(),
         status: isApplicationAgentRunning()
             ? "running"
-            : "stopped"
+            : "stopped",
+        outcome: getApplicationAgentOutcome(),
     });
 });
 

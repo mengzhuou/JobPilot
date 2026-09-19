@@ -127,6 +127,9 @@ const FillApplication = () => {
     const [skillSaving, setSkillSaving] = useState("");
     const [skillNotice, setSkillNotice] = useState("");
     const [logoFailed, setLogoFailed] = useState(false);
+    const [autofillStartedAt, setAutofillStartedAt] = useState(null);
+    const [autofillElapsed, setAutofillElapsed] = useState(0);
+    const [invalidJobNotice, setInvalidJobNotice] = useState("");
     const wasRunning = useRef(false);
     const isStarting = status === "starting";
     const isRunning = status === "running";
@@ -145,6 +148,17 @@ const FillApplication = () => {
         ["Salary or compensation", faMoneyBillWave, formatCompensation(job.salary)],
         ["Career source", faBriefcase, displayValue(job.source)],
     ].filter(([, , value]) => value !== "N/A");
+    const showInvalidJobNotice = outcome => {
+        wasRunning.current = false;
+        setAutofillStartedAt(null);
+        setShowConfirmation(false);
+        setStatus("invalid");
+        setHasReported(Boolean(outcome?.reportSubmitted));
+        setReportStatus("");
+        setInvalidJobNotice(outcome?.reportSubmitted
+            ? "This job page is unavailable. JobPilot marked it as not applicable and reported it to the moderator."
+            : "This job page is unavailable. JobPilot marked it as not applicable.");
+    };
 
     useEffect(() => {
         if (!jobId) return;
@@ -178,6 +192,20 @@ const FillApplication = () => {
     useEffect(() => setLogoFailed(false), [job.company, job.jobUrl, job.url]);
 
     useEffect(() => {
+        setInvalidJobNotice("");
+        setReportStatus("");
+        setHasReported(false);
+    }, [jobUrl]);
+
+    useEffect(() => {
+        if (!autofillStartedAt || (!isStarting && !isRunning)) return undefined;
+        const updateElapsed = () => setAutofillElapsed(Math.max(0, Math.floor((Date.now() - autofillStartedAt) / 1000)));
+        updateElapsed();
+        const timer = window.setInterval(updateElapsed, 1000);
+        return () => window.clearInterval(timer);
+    }, [autofillStartedAt, isStarting, isRunning]);
+
+    useEffect(() => {
         const persistedJobUrl = job.jobUrl;
         if (!isAdmin || !persistedJobUrl) return;
         let active = true;
@@ -191,6 +219,10 @@ const FillApplication = () => {
         const syncStatus = async () => {
             try {
                 const result = await getApplicationStatus();
+                if (result.outcome?.type === "invalid_job" && result.outcome.jobUrl === jobUrl) {
+                    showInvalidJobNotice(result.outcome);
+                    return;
+                }
                 if (wasRunning.current && !result.running) setShowConfirmation(true);
                 wasRunning.current = result.running;
                 setStatus(current => current === "idle" && !result.running
@@ -202,7 +234,7 @@ const FillApplication = () => {
         };
         const statusTimer = setInterval(syncStatus, 1000);
         return () => clearInterval(statusTimer);
-    }, []);
+    }, [jobUrl]);
 
     const applicationPayload = {
         jobUrl,
@@ -210,6 +242,7 @@ const FillApplication = () => {
         company: job.company,
         location: job.location,
         source: job.source,
+        provider: job.provider,
         externalJobId: job.externalJobId,
         employmentType: job.employmentType,
         workplaceType: job.workplaceType,
@@ -222,11 +255,18 @@ const FillApplication = () => {
     const startApplication = async () => {
         if (!jobUrl.trim()) return;
         setError("");
+        setAutofillStartedAt(Date.now());
+        setAutofillElapsed(0);
         setStatus("starting");
         try {
             await openAndFillApplication(applicationPayload);
-            wasRunning.current = true;
-            setStatus("running");
+            const result = await getApplicationStatus();
+            if (result.outcome?.type === "invalid_job" && result.outcome.jobUrl === jobUrl) {
+                showInvalidJobNotice(result.outcome);
+            } else {
+                wasRunning.current = true;
+                setStatus("running");
+            }
         } catch (requestError) {
             setStatus("error");
             setError(requestError.response?.data?.message
@@ -239,6 +279,7 @@ const FillApplication = () => {
         try {
             await stopApplicationAgent();
             wasRunning.current = false;
+            setAutofillStartedAt(null);
             setStatus("stopped");
             setShowConfirmation(true);
         } catch (requestError) {
@@ -374,7 +415,7 @@ const FillApplication = () => {
 
                 {(summary || job.requirements?.length > 0) && <section className="job-description-panel">
                     {summary && <p className="job-summary">{summary}</p>}
-                    {(qualifications.length > 0 || qualificationSkills.length > 0) && <section className="qualification-panel"><div className="qualification-heading"><div><span>Key criteria</span><h3>Qualifications</h3><p>You can <strong>click on the tags</strong> to select or unselect skills that reflect your actual expertise. Your choices are private to your account and apply anywhere those skills appear in future job applications.</p></div>{matchedSkills.length > 0 && <em><FontAwesomeIcon icon={faThumbsUp}/> Represents the skills you have</em>}</div>{qualificationSkills.length > 0 && <div className="qualification-skill-tags" aria-label="Skills mentioned in this job">{qualificationSkills.map(skill => { const matched = isMatchedSkill(skill); return <button type="button" className={matched ? "matched" : ""} aria-pressed={matched} disabled={Boolean(skillSaving)} onClick={() => toggleQualificationSkill(skill)} key={skill}>{matched && <FontAwesomeIcon icon={faThumbsUp}/>} {skill}{skillSaving === skill && <span className="skill-saving">…</span>}</button>; })}</div>}<ul>{qualifications.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
+                    {(qualifications.length > 0 || qualificationSkills.length > 0) && <section className="qualification-panel"><div className="qualification-heading"><div><span>Key criteria</span><h3>Qualifications</h3><p>These skills are detected from this job. <strong>Click a tag</strong> to add or remove it from your Profile, based on your actual expertise. Your choices are private and are used for future job matches and applications.</p></div>{matchedSkills.length > 0 && <em><FontAwesomeIcon icon={faThumbsUp}/> Represents the skills you have</em>}</div>{qualificationSkills.length > 0 && <div className="qualification-skill-tags" aria-label="Skills detected from this job">{qualificationSkills.map(skill => { const matched = isMatchedSkill(skill); return <button type="button" className={matched ? "matched" : ""} aria-pressed={matched} disabled={Boolean(skillSaving)} onClick={() => toggleQualificationSkill(skill)} key={skill}>{matched && <FontAwesomeIcon icon={faThumbsUp}/>} {skill}{skillSaving === skill && <span className="skill-saving">…</span>}</button>; })}</div>}<ul>{qualifications.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                     {responsibilities.length > 0 && <section className="job-detail-section"><h3><FontAwesomeIcon icon={faListCheck}/> Responsibilities</h3><ul>{responsibilities.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                 </section>}
 
@@ -384,12 +425,17 @@ const FillApplication = () => {
                         <input type="url" maxLength={MAX_INPUT_LENGTH} value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isStarting || isRunning} />
                         {isStarting ? <Button disabled>Starting…</Button>
                             : isRunning ? <Button onClick={stopApplication}>Finish</Button>
-                                : <Button onClick={startApplication}>Start Autofill</Button>}
+                                : <Button onClick={startApplication} disabled={hasReported}>{hasReported ? "Reported" : "Start Autofill"}</Button>}
                         {isAdmin && <button className="report-job-button" type="button" disabled={hasReported} onClick={()=>setShowReportDialog(true)}>{hasReported ? "Reported" : "Report job"}</button>}
                     </div>
                 </label>
 
                 {reportStatus && <div className="autofill-report-status" role="status">{reportStatus}</div>}
+
+                {(isStarting || isRunning) && <section className="autofill-live-progress" aria-live="polite">
+                    <div className="autofill-live-orbit" aria-hidden="true"><i/><i/><i/></div>
+                    <div><span>{isStarting ? "Opening your application" : "Autofill is working"}</span><strong>{autofillElapsed}s elapsed</strong><p>{autofillElapsed < 15 ? "Connecting to the application and reading the form." : autofillElapsed < 45 ? "Matching your saved Profile details to the available fields." : "This application is taking longer than usual. Keep the browser tab open while JobPilot continues."}</p></div>
+                </section>}
 
                 {error && <div className="autofill-error" role="alert">{error}</div>}
 
@@ -397,6 +443,7 @@ const FillApplication = () => {
             </section>
 
             {skillNotice && <div className="skill-snackbar" role="status" aria-live="polite"><FontAwesomeIcon icon={faCircleCheck}/><span>{skillNotice}</span></div>}
+            {invalidJobNotice && <div className="invalid-job-snackbar" role="status" aria-live="assertive"><span className="invalid-job-snackbar-icon" aria-hidden="true">!</span><p>{invalidJobNotice}</p></div>}
 
             {showConfirmation && (
                 <div className="confirmation-backdrop">

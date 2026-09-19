@@ -2,6 +2,8 @@ import axios from "axios";
 export const getProfileLocations = async params => (await api.get('/api/profile/locations', { params })).data.options;
 export const getFilterPresets = async () => (await api.get('/api/filter-presets')).data.presets;
 export const saveFilterPreset = async (name, filters) => (await api.post('/api/filter-presets', { name, filters })).data.preset;
+export const updateFilterPreset = async (id, name, filters) => (await api.put(`/api/filter-presets/${id}`, { name, filters })).data.preset;
+export const deleteFilterPreset = async id => (await api.delete(`/api/filter-presets/${id}`)).data.preset;
 export const getJobPlatforms = async () => (await api.get('/api/job-postings/platforms')).data.platforms;
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
