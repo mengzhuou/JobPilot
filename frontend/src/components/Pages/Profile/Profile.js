@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBriefcase, faCircleQuestion, faCode, faEnvelope, faGlobe, faGraduationCap, faLocationDot, faLock, faPen, faPhone, faSliders, faUser } from "@fortawesome/free-solid-svg-icons";
-import { getUserProfile, updateUserProfileSection } from "../../../connector";
+import { faBriefcase, faCheck, faCircleQuestion, faCode, faCopy, faEnvelope, faGlobe, faGraduationCap, faLocationDot, faLock, faPen, faPhone, faPlug, faRotate, faSliders, faTrash, faUser } from "@fortawesome/free-solid-svg-icons";
+import { createExtensionPairingCode, getExtensionConnections, getUserProfile, revokeExtensionConnection, updateUserProfileSection } from "../../../connector";
 import profileFixture from "./profileFixture";
 import ProfileEditor from "./ProfileEditor";
 import { formatProfileMonth } from "./profileDates";
 import "./Profile.scss";
 import "./ProfileRefinements.scss";
+import "./ProfileExtension.scss";
 
-const tabs = [["personal","Personal"],["education","Education"],["experience","Work Experience"],["skills","Skills"],["preferences","Preferences"],["equal-employment","Equal Employment"]];
+const tabs = [["extension","Chrome Extension"],["personal","Personal"],["education","Education"],["experience","Work Experience"],["skills","Skills"],["preferences","Preferences"],["equal-employment","Equal Employment"]];
 const normalizeProfile = profile => ({ ...profile, skills:Array.isArray(profile.skills) ? profile.skills : [...new Set(Object.values(profile.skills || {}).flat())] });
 
 const SocialIcon = ({ type }) => {
@@ -30,9 +31,14 @@ const Profile = () => {
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
     const [notice, setNotice] = useState("");
+    const [pairing, setPairing] = useState(null);
+    const [connections, setConnections] = useState([]);
+    const [extensionBusy, setExtensionBusy] = useState(false);
+    const [copied, setCopied] = useState(false);
     const editorValue = useMemo(() => editing ? profile[editing] : null, [editing, profile]);
 
     useEffect(() => { let active=true; getUserProfile().then(data => active && setProfile(normalizeProfile(data))).catch(error => { if(error.response?.status !== 404) setNotice("Profile data could not be loaded. Showing the local preview."); }); return () => { active=false; }; }, []);
+    useEffect(() => { let active=true; getExtensionConnections().then(data => active && setConnections(data)).catch(() => {}); return () => { active=false; }; }, []);
     useEffect(() => {
         const rawHandoff = sessionStorage.getItem("jobpilot.profileResumeHandoff");
         if (!rawHandoff) return;
@@ -49,6 +55,23 @@ const Profile = () => {
         catch (error) { setNotice(error.response?.data?.message || "Unable to update the profile."); }
         finally { setSaving(false); }
     };
+    const generatePairingCode = async () => {
+        setExtensionBusy(true); setCopied(false); setNotice("");
+        try { setPairing(await createExtensionPairingCode()); }
+        catch (error) { setNotice(error.response?.data?.message || "Unable to create an extension pairing code."); }
+        finally { setExtensionBusy(false); }
+    };
+    const copyPairingCode = async () => {
+        if (!pairing?.code) return;
+        try { await navigator.clipboard.writeText(pairing.code); setCopied(true); }
+        catch { setNotice("Copy was blocked by the browser. Select the code and copy it manually."); }
+    };
+    const revokeConnection = async id => {
+        setExtensionBusy(true); setNotice("");
+        try { await revokeExtensionConnection(id); setConnections(current => current.filter(connection => connection.id !== id)); setNotice("Chrome extension connection revoked."); }
+        catch (error) { setNotice(error.response?.data?.message || "Unable to revoke the extension connection."); }
+        finally { setExtensionBusy(false); }
+    };
 
     return <main className="profile-page">
         <header className="profile-page-heading"><span>Application identity</span><h1>Profile</h1><p>The information JobPilot uses to understand your background and complete applications.</p></header>
@@ -56,6 +79,25 @@ const Profile = () => {
         <nav className="profile-tabs" aria-label="Profile sections">{tabs.map(([id,label])=><a key={id} href={`#${id}`}>{label}</a>)}</nav>
         {notice && <p className="profile-notice" role="status">{notice}</p>}
         <div className="profile-card">
+            <section className="profile-section-card profile-extension" id="extension">
+                <div className="profile-section-title"><div><FontAwesomeIcon icon={faPlug}/><h2>Chrome Autofill Extension</h2></div><span className="profile-extension-badge">Optional</span></div>
+                <div className="profile-extension-layout">
+                    <div className="profile-extension-copy">
+                        <h3>Autofill in the browser you already use</h3>
+                        <p>Connect the JobPilot Chrome extension to review detected fields beside an application and fill them from this Profile. The extension never submits an application.</p>
+                        <ol><li>Load and pin the JobPilot extension in Chrome.</li><li>Generate a one-time code below.</li><li>Open the extension side panel and enter the code.</li></ol>
+                        <button className="profile-extension-action" type="button" disabled={extensionBusy} onClick={generatePairingCode}><FontAwesomeIcon icon={pairing ? faRotate : faPlug}/>{pairing ? "Generate a new code" : "Generate pairing code"}</button>
+                    </div>
+                    <div className={`profile-pairing-card ${pairing ? "has-code" : ""}`}>
+                        {pairing ? <>
+                            <span>ONE-TIME PAIRING CODE</span>
+                            <button className="profile-pairing-code" type="button" onClick={copyPairingCode} title="Copy pairing code"><strong>{pairing.code}</strong><FontAwesomeIcon icon={copied ? faCheck : faCopy}/></button>
+                            <small>{copied ? "Copied. Paste it into the JobPilot side panel." : `Expires ${new Date(pairing.expiresAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}. It can be used once.`}</small>
+                        </> : <><FontAwesomeIcon icon={faLock}/><strong>No active pairing code</strong><small>Generate a short-lived code when the extension is ready.</small></>}
+                    </div>
+                </div>
+                {connections.length > 0 && <div className="profile-extension-connections"><h3>Connected browsers</h3>{connections.map(connection=><div key={connection.id}><div><strong>{connection.device_name}</strong><span>{connection.last_used_at ? `Last used ${new Date(connection.last_used_at).toLocaleString()}` : `Connected ${new Date(connection.created_at).toLocaleString()}`}</span></div><button type="button" disabled={extensionBusy} onClick={()=>revokeConnection(connection.id)}><FontAwesomeIcon icon={faTrash}/> Revoke</button></div>)}</div>}
+            </section>
             <section className="profile-section-card" id="personal"><SectionTitle icon={faUser} title="Personal" section="personal" onEdit={setEditing}/><div className="profile-personal"><div className="profile-avatar">MO</div><div><h3>{profile.personal.name}</h3><div className="profile-contact-chips"><span><FontAwesomeIcon icon={faLocationDot}/>{profile.personal.address}</span><span><FontAwesomeIcon icon={faEnvelope}/>{profile.personal.email}</span><span><FontAwesomeIcon icon={faPhone}/>{profile.personal.phone}</span></div><div className="profile-links">{profile.personal.links?.map(link=><a key={link.label} href={link.href} target="_blank" rel="noreferrer" title={link.label} aria-label={`${link.label}: ${link.value}`}><SocialIcon type={link.label}/><span>{link.value}</span></a>)}</div></div></div></section>
             <section className="profile-section-card" id="education"><SectionTitle icon={faGraduationCap} title="Education" section="education" onEdit={setEditing}/><Timeline items={profile.education}/></section>
             <section className="profile-section-card" id="experience"><SectionTitle icon={faBriefcase} title="Work Experience" section="experience" onEdit={setEditing}/><Timeline items={profile.experience}/></section>

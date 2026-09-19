@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JobPilot Autofill</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <main class="app-shell">
+        <header class="app-header">
+            <div class="brand">
+                <img src="icons/icon48.png" alt="">
+                <div><strong>JobPilot</strong><span>Application assistant</span></div>
+            </div>
+            <button class="icon-button hidden" id="disconnectButton" type="button" title="Disconnect extension" aria-label="Disconnect extension">↪</button>
+        </header>
+
+        <section class="connection-card" id="connectionView">
+            <span class="eyebrow">CONNECT YOUR ACCOUNT</span>
+            <h1>Bring your Profile into Chrome</h1>
+            <p>Generate a pairing code on your JobPilot Profile page, then enter it here. Codes expire after 10 minutes.</p>
+            <label for="backendUrl">JobPilot server</label>
+            <input id="backendUrl" type="url" value="http://localhost:3500" autocomplete="url">
+            <label for="pairingCode">Pairing code</label>
+            <input id="pairingCode" type="text" inputmode="text" maxlength="9" placeholder="ABCD-EFGH" autocomplete="one-time-code">
+            <button class="primary-button" id="connectButton" type="button">Connect JobPilot</button>
+            <p class="fine-print">Your extension receives a revocable token. It never stores your JobPilot password or OpenAI API key.</p>
+        </section>
+
+        <section class="workspace hidden" id="workspaceView">
+            <div class="job-card">
+                <div><span class="eyebrow">CURRENT APPLICATION</span><h1 id="jobTitle">Scanning page…</h1><p id="jobCompany"></p></div>
+                <button class="secondary-button compact" id="rescanButton" type="button">Rescan</button>
+            </div>
+
+            <div class="status-card" id="statusCard">
+                <div class="spinner" aria-hidden="true"></div>
+                <div><strong id="statusTitle">Inspecting this application</strong><span id="statusMessage">Looking for fields JobPilot can safely complete.</span></div>
+            </div>
+
+            <div class="summary hidden" id="summaryView">
+                <div><strong id="readyCount">0</strong><span>Ready</span></div>
+                <div><strong id="reviewCount">0</strong><span>Review</span></div>
+                <div><strong id="skippedCount">0</strong><span>Skipped</span></div>
+            </div>
+
+            <section class="field-section hidden" id="fieldSection">
+                <div class="section-heading"><div><span class="eyebrow">FIELD REVIEW</span><h2>What JobPilot found</h2></div><span id="fieldCount"></span></div>
+                <div class="field-list" id="fieldList"></div>
+            </section>
+
+            <div class="actions hidden" id="actionsView">
+                <button class="primary-button" id="fillButton" type="button">Fill ready fields</button>
+                <button class="ai-button" id="aiButton" type="button"><span>✦</span> Use AI for unresolved fields</button>
+                <button class="primary-button hidden" id="applyAiButton" type="button">Apply selected AI answers</button>
+                <p>JobPilot never submits the application. AI is called only when you press the AI button.</p>
+            </div>
+        </section>
+
+        <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    </main>
+    <script src="sidepanel.js"></script>
+</body>
+</html>
+

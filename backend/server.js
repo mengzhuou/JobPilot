@@ -54,7 +54,25 @@ const PORT = process.env.PORT || 3500;
 // ====================
 
 app.use(cors({
-    origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const frontendOrigins = String(process.env.FRONTEND_ORIGIN || "http://localhost:3000")
+            .split(",")
+            .map(value => value.trim())
+            .filter(Boolean);
+        if (frontendOrigins.includes(origin)) return callback(null, true);
+
+        const extensionMatch = origin.match(/^chrome-extension:\/\/([a-p]{32})$/);
+        const configuredExtensionIds = String(process.env.JOBPILOT_EXTENSION_IDS || "")
+            .split(",")
+            .map(value => value.trim())
+            .filter(Boolean);
+        if (extensionMatch && (
+            process.env.NODE_ENV !== "production" || configuredExtensionIds.includes(extensionMatch[1])
+        )) return callback(null, true);
+
+        return callback(new Error("Origin is not allowed by JobPilot CORS"));
+    },
     credentials: true,
 }));
 
@@ -78,6 +96,7 @@ app.use("/api/job-analytics", jobAnalyticsRoutes);
 app.use("/api/profile", userProfileRoutes);
 app.use("/api/resumes", resumeRoutes);
 app.use("/api/ai-autofill", require("./routes/aiAutofillReviewRoutes"));
+app.use("/api/extension", require("./routes/extensionRoutes"));
 
 
 // ====================

@@ -1,8 +1,16 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import Loops from "./Loops";
+import { getAiAutofillReviews } from "../../../connector";
 
-jest.mock("../../../connector", () => ({ getProfileLocations: jest.fn().mockResolvedValue([]) }));
+jest.mock("../../../connector", () => ({
+    getProfileLocations: jest.fn().mockResolvedValue([]),
+    getAiAutofillReviews: jest.fn().mockResolvedValue([]),
+}));
+
+beforeEach(() => {
+    getAiAutofillReviews.mockResolvedValue([]);
+});
 
 test("opens Loop creation and requires the three starter details", () => {
     render(<Loops />);

@@ -139,6 +139,9 @@ const exportResume = async id => api.get(`/api/resumes/${id}/download`, { respon
 const deleteResume = async id => { await api.delete(`/api/resumes/${id}`); };
 const getAiAutofillReviews = async () => (await api.get("/api/ai-autofill/reviews")).data.reviews;
 const getAiAutofillReview = async id => (await api.get(`/api/ai-autofill/reviews/${id}`)).data.review;
+const createExtensionPairingCode = async () => (await api.post("/api/extension/pair")).data.pairing;
+const getExtensionConnections = async () => (await api.get("/api/extension/connections")).data.connections;
+const revokeExtensionConnection = async id => { await api.delete(`/api/extension/connections/${id}`); };
 
 const getJobApplicationHistory = async ({
     status = "",
@@ -211,4 +214,7 @@ export {
     deleteResume,
     getAiAutofillReviews,
     getAiAutofillReview,
+    createExtensionPairingCode,
+    getExtensionConnections,
+    revokeExtensionConnection,
 };

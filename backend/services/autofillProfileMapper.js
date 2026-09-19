@@ -116,6 +116,9 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
         work_authorization: {
             us_citizen_or_permanent_resident: /citizen|permanent resident/i.test(text(citizenship)),
             authorized_to_work_without_sponsorship: authorized && !needsSponsorship,
+            requires_employment_sponsorship: needsSponsorship,
+            has_saved_authorization_answer: Boolean(text(choice(equalEmployment, "authorized to work in the united states"))),
+            has_saved_sponsorship_answer: Boolean(text(choice(equalEmployment, "requires employment sponsorship"))),
             authorized_to_work_form_options: optionValues(authorized ? "Yes" : "No", fallback.work_authorization?.authorized_to_work_form_options),
             citizenship_status_form_options: optionValues(citizenship, fallback.work_authorization?.citizenship_status_form_options),
         },

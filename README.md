@@ -1,5 +1,7 @@
 # JID-4121 Georgia Tech LMC Film Equipment Inventory System
 
+> JobPilot now includes an optional Manifest V3 Chrome autofill extension. See [`extension/README.md`](extension/README.md) for local installation, pairing, security, production configuration, and Chrome Web Store packaging instructions.
+
 ## Project Overview
 
 This project is a **film equipment inventory system** developed for the School of Literature, Media, and Communication (LMC) at Georgia Tech. The platform allows students, professors, and staff members to reserve film equipment for projects or schoolwork seamlessly. Students can create orders to rent equipment for specific time frames, while the system includes an admin portal where administrators can manage the website. Admins can track and modify all orders, manage equipment in the database, and generate damage reports for mishandled equipment. The platform focuses on providing a streamlined, user-friendly experience tailored to the unique needs of the LMC Film Lab.

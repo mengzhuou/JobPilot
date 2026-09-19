@@ -12,3 +12,6 @@
 # Node dependencies
 /backend/node_modules/
 /frontend/node_modules/
+
+# Generated Chrome Web Store packages
+/extension/*.zip

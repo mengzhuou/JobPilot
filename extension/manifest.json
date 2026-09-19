@@ -1,0 +1,69 @@
+{
+  "manifest_version": 3,
+  "name": "JobPilot Autofill",
+  "version": "0.1.0",
+  "description": "Review and autofill job applications using your JobPilot Profile.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "storage",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "http://localhost:3500/*",
+    "http://127.0.0.1:3500/*",
+    "https://boards.greenhouse.io/*",
+    "https://job-boards.greenhouse.io/*",
+    "https://jobs.ashbyhq.com/*",
+    "https://jobs.lever.co/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://jobs.smartrecruiters.com/*",
+    "https://jobs.jobvite.com/*",
+    "https://*.icims.com/*",
+    "https://apply.workable.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open JobPilot",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://jobs.lever.co/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://jobs.smartrecruiters.com/*",
+        "https://jobs.jobvite.com/*",
+        "https://*.icims.com/*",
+        "https://apply.workable.com/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
+

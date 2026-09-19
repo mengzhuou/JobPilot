@@ -1,0 +1,94 @@
+.profile-extension-badge {
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: #eef3fb;
+    color: #3361ae;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.profile-extension-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
+    gap: 22px;
+    align-items: stretch;
+}
+
+.profile-extension-copy {
+    h3 { margin: 0 0 8px; font-size: 18px; }
+    p { max-width: 680px; margin: 0; color: #667085; font-size: 13px; line-height: 1.55; }
+    ol { margin: 16px 0; padding-left: 20px; color: #475467; font-size: 12px; line-height: 1.75; }
+}
+
+.profile-extension-action {
+    display: inline-flex;
+    min-height: 40px;
+    padding: 0 15px;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    border-radius: 10px;
+    background: #3361ae;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+
+    &:disabled { opacity: .55; cursor: wait; }
+}
+
+.profile-pairing-card {
+    display: flex;
+    min-height: 170px;
+    padding: 22px;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 9px;
+    border: 1px dashed #cfd9e7;
+    border-radius: 16px;
+    background: #f8fafc;
+    color: #718096;
+    text-align: center;
+
+    > svg { font-size: 22px; }
+    > span { color: #6e7c90; font-size: 10px; font-weight: 850; letter-spacing: .11em; }
+    > strong { color: #344054; }
+    small { color: #7c899c; font-size: 11px; line-height: 1.4; }
+    &.has-code { border-style: solid; border-color: #b9d9cf; background: #f1fbf7; }
+}
+
+.profile-pairing-code {
+    display: flex;
+    padding: 4px 8px;
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    background: transparent;
+    color: #176b51;
+    cursor: pointer;
+
+    strong { font-family: "SFMono-Regular", Consolas, monospace; font-size: 27px; letter-spacing: .08em; }
+    svg { font-size: 13px; }
+}
+
+.profile-extension-connections {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #edf0f4;
+
+    h3 { margin: 0 0 10px; font-size: 14px; }
+    > div { display: flex; padding: 11px 12px; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid #e3e8ef; border-radius: 10px; background: #fafbfd; }
+    strong, span { display: block; }
+    strong { font-size: 12px; }
+    span { margin-top: 3px; color: #7b8799; font-size: 10px; }
+    button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #a13b32; font-size: 11px; font-weight: 750; cursor: pointer; }
+}
+
+@media (max-width: 760px) {
+    .profile-extension-layout { grid-template-columns: 1fr; }
+    .profile-pairing-card { min-height: 145px; }
+    .profile-pairing-code strong { font-size: 23px; }
+}
