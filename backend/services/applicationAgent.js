@@ -1,5 +1,6 @@
 const { chromium } = require("playwright");
-const profile = require("./profile.json");
+const staticProfile = require("./profile.json");
+let profile = staticProfile;
 const path = require("path");
 const os = require("os");
 const fs = require("fs/promises");
@@ -17,6 +18,7 @@ const {
     detectApplicationSite,
     getApplicationPageIdentity,
 } = require("./applicationSiteAdapters");
+const { createApplicationAnswerPlan } = require("./applicationAiService");
 
 let context = null;
 let page = null;
@@ -27,6 +29,81 @@ let resumeUploaded = false;
 let externalProfileImported = false;
 let resumePath = null;
 let resumeDirectory = null;
+let aiAutofillContext = null;
+let aiAutofillPlan = [];
+let aiPlanCreated = false;
+let onAiPlanChanged = null;
+let onAutofillEvent = null;
+
+const profileEntries = value => Array.isArray(value) ? value : [];
+const labelMap = rows => Object.fromEntries(profileEntries(rows).filter(Array.isArray).map(([key, value]) => [normalizeText(key), value]));
+const getProfileLink = (links, label) => profileEntries(links).find(link => normalizeText(link.label) === label)?.href || "";
+const toAutofillProfile = current => {
+    const personal = current?.personal || {};
+    const education = profileEntries(current?.education);
+    const experience = profileEntries(current?.experience);
+    const preferences = labelMap(current?.preferences);
+    const equalEmployment = labelMap(current?.equalEmployment);
+    const [firstName = "", ...remainingNames] = String(personal.name || "").split(/\s+/).filter(Boolean);
+    const skills = Array.isArray(current?.skills) ? current.skills : Object.values(current?.skills || {}).flat();
+    return {
+        candidate: {
+            name: personal.name || "",
+            first_name: personal.firstName || firstName,
+            last_name: personal.lastName || remainingNames.at(-1) || "",
+            email: personal.email || "",
+            phone: personal.phone || "",
+            location: { address_line_1: personal.addressLine || "", city: personal.city || "", state: personal.state || "", country: personal.country || "" },
+            links: { linkedin: getProfileLink(personal.links, "linkedin"), github: getProfileLink(personal.links, "github"), portfolio: getProfileLink(personal.links, "portfolio") },
+        },
+        education: {
+            school: education[0]?.school || "",
+            highest_level: education[0]?.degree || "",
+            field_of_study: education[0]?.degree || "",
+            undergraduate_gpa: education[0]?.gpa || "",
+        },
+        career: { current_company: experience[0]?.company || "", current_title: experience[0]?.title || "", work_history: experience.map(item => ({ job_title: item.title, company: item.company, from: item.from, to: item.to, current: /present|current/i.test(String(item.to || "")) })) },
+        experience: { total_professional_software_engineering_years: experience.length ? experience.length : 0 },
+        skills,
+        job_preferences: { applying_for_full_time: /full.?time/i.test(String(preferences.seeking || "")), earliest_start_date: preferences["earliest start date"] || "", office_days_per_week_form_option: preferences["office preference"] || "" },
+        work_authorization: { authorized_to_work_without_sponsorship: /^no$/i.test(String(equalEmployment["requires employment sponsorship"] || "")), authorized_to_work_form_options: [equalEmployment["authorized to work in the united states"], "Yes"].filter(Boolean), citizenship_status_form_options: [equalEmployment["citizenship status"]].filter(Boolean) },
+        eeoc: {},
+        application_answers: { preferred_application_location: preferences["preferred application location"] || "" },
+    };
+};
+
+const blockedAiQuestion = question => /password|signature|certif(?:y|ication)|consent|voluntary|demographic|race|ethnicity|gender|disability|veteran|equal opportunity|self.?identification/i.test(question || "");
+
+const getAiProfileValue = field => {
+    const question = field.question || field.label || field.placeholder || "";
+    if (blockedAiQuestion(question)) return null;
+    const answer = aiAutofillPlan.find(item => item.fieldKey === field.locatorKey && item.action === "fill" && Number(item.confidence) >= 0.5);
+    if (!answer || !String(answer.value || "").trim()) return null;
+    if ((field.options || []).length) {
+        const matched = (field.options || []).find(option => normalizeText(option) === normalizeText(answer.value));
+        if (!matched) return null;
+        return { value: matched, source: `openai.${answer.source || "profile"}` };
+    }
+    return { value: answer.value, source: `openai.${answer.source || "profile"}` };
+};
+
+const refreshAiAutofillPlan = async fields => {
+    if (!aiAutofillContext || !fields?.length) return;
+    try {
+        const plan = await createApplicationAnswerPlan({ ...aiAutofillContext, fields });
+        aiAutofillPlan = plan;
+        void onAutofillEvent?.({ type: "ai_plan", answers: plan });
+        if (!aiPlanCreated && aiAutofillContext.onAiPlan) {
+            aiPlanCreated = true;
+            await aiAutofillContext.onAiPlan(plan);
+        } else if (onAiPlanChanged) {
+            await onAiPlanChanged(plan);
+        }
+    } catch (error) {
+        void onAutofillEvent?.({ type: "ai_error", message: error.message });
+        console.log("AI autofill plan unavailable; continuing with deterministic autofill:", error.message);
+    }
+};
 
 const userDataDir = path.resolve(
     __dirname,
@@ -3384,10 +3461,7 @@ const fillApplicationFields = async (
 
 
         const profileValue =
-            getProfileValue(
-                field,
-                siteAdapter
-            );
+            getProfileValue(field, siteAdapter) || getAiProfileValue(field);
 
 
         if (
@@ -3649,6 +3723,8 @@ const fillApplicationFields = async (
 
 
         if (!success) {
+
+            void onAutofillEvent?.({ type: "field_not_filled", field: { question: field.question || field.label || "Unnamed field", type: field.type, source: profileValue.source || "Profile" } });
 
             console.log(
                 "⚠️ FIELD NOT FILLED"
@@ -4084,14 +4160,18 @@ const startMultiPageMonitor = async (
                 "Submit clicked; waiting for application confirmation."
             );
         }
-    );
+    ).catch(error => {
+        if (!/has been already registered/i.test(error.message)) throw error;
+    });
 
     await page.exposeFunction(
         "__jobPilotNotifyStepAdvance",
         () => {
             stepAdvanceRequested = true;
         }
-    );
+    ).catch(error => {
+        if (!/has been already registered/i.test(error.message)) throw error;
+    });
 
 
     await page.addInitScript(
@@ -4240,7 +4320,7 @@ const startMultiPageMonitor = async (
                         siteAdapter
                     );
 
-
+                await refreshAiAutofillPlan(fields);
                 await fillApplicationFields(
                     applicationScope,
                     fields,
@@ -4293,6 +4373,12 @@ const closeApplicationSession = async (
     lastFormSignature = null;
     resumeUploaded = false;
     externalProfileImported = false;
+    aiAutofillContext = null;
+    aiAutofillPlan = [];
+    aiPlanCreated = false;
+    onAiPlanChanged = null;
+    onAutofillEvent = null;
+    profile = staticProfile;
 
 
     if (!targetContext) {
@@ -4340,6 +4426,14 @@ const startApplicationAgent = async (
     // Always release it before reusing the same profile.
     await closeApplicationSession();
     await prepareSelectedResume(options.resume);
+    aiAutofillContext = options.aiContext
+        ? { ...options.aiContext, resume: options.resume, onAiPlan: options.onAiPlan }
+        : null;
+    onAiPlanChanged = options.onAiPlanChanged || null;
+    onAutofillEvent = options.onAutofillEvent || null;
+    // Playwright continues to use the curated static profile. AI, when it is
+    // explicitly enabled later, receives the signed-in Profile separately.
+    profile = staticProfile;
 
 
     const launchedContext =
@@ -4570,6 +4664,7 @@ const startApplicationAgent = async (
     // 15. AUTOFILL
     // ==================================================
 
+    await refreshAiAutofillPlan(finalFields);
     await fillApplicationFields(
         applicationScope,
         finalFields,

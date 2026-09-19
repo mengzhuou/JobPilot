@@ -135,6 +135,8 @@ const updateResume = async (id, values) => (await api.patch(`/api/resumes/${id}`
 const setPrimaryResume = async id => (await api.post(`/api/resumes/${id}/primary`)).data.resume;
 const exportResume = async id => api.get(`/api/resumes/${id}/download`, { responseType: "blob" });
 const deleteResume = async id => { await api.delete(`/api/resumes/${id}`); };
+const getAiAutofillReviews = async () => (await api.get("/api/ai-autofill/reviews")).data.reviews;
+const getAiAutofillReview = async id => (await api.get(`/api/ai-autofill/reviews/${id}`)).data.review;
 
 const getJobApplicationHistory = async ({
     status = "",
@@ -205,4 +207,6 @@ export {
     setPrimaryResume,
     exportResume,
     deleteResume,
+    getAiAutofillReviews,
+    getAiAutofillReview,
 };

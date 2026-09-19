@@ -130,6 +130,16 @@ const uniqueTextValues = values => {
     });
 };
 
+// Some career boards append a slash-delimited technology stack to the role
+// name. Keep the role scannable and expose that stack as searchable tags.
+const splitTitleAndSkills = rawTitle => {
+    const title = String(rawTitle || "").replace(/\s+/g, " ").trim();
+    const match = title.match(/^(.{3,100}?)\s*(?:[-–—|:]\s*)((?:[A-Za-z0-9+#.]+\s*\/\s*){2,}[A-Za-z0-9+#.]+(?:\s*\/\s*[A-Za-z0-9+#.]+)*)$/);
+    if (!match) return { title, skills: [] };
+    const skills = match[2].split("/").map(value => value.trim()).filter(value => value.length > 1 && value.length < 40);
+    return skills.length >= 3 ? { title: match[1].trim(), skills } : { title, skills: [] };
+};
+
 const isUnitedStatesLocation = (location) => {
     return (
         US_LOCATION_PATTERN.test(location || "") ||
@@ -196,7 +206,9 @@ const extractJobDetails = html => {
 };
 
 const enrichJobDetails = job => {
-    const text = [job.title, job.location, ...(job.tags || []), job.summary]
+    const identity = splitTitleAndSkills(job.title);
+    const tags = uniqueTextValues([...(job.tags || []), ...identity.skills]);
+    const text = [identity.title, job.location, ...tags, job.summary]
         .filter(Boolean).join(" ");
     const employmentType = job.employmentType || (
         /\b(?:intern|internship)\b/i.test(text) ? "Internship" :
@@ -210,7 +222,7 @@ const enrichJobDetails = job => {
             /\b(?:on[ -]?site|in office)\b/i.test(text) ? "On-site" :
                 job.remote || /\bremote\b/i.test(text) ? "Remote" : null
     );
-    return { ...job, tags:uniqueTextValues(job.tags), employmentType, workplaceType };
+    return { ...job, title: identity.title, tags, employmentType, workplaceType };
 };
 
 const normalizeAshbyJobs = (payload, source) => {
@@ -236,6 +248,7 @@ const normalizeAshbyJobs = (payload, source) => {
             url: job.applyUrl || job.jobUrl,
             source: "Official career site",
             provider: "Ashby",
+            companyLogo: job.companyLogoUrl || job.company?.logoUrl || null,
             tags: [job.department, job.team].filter(Boolean),
             postedAt: job.publishedAt || null,
             ...details,
@@ -271,6 +284,7 @@ const normalizeGreenhouseJobs = (payload, source) => {
             url: job.absolute_url,
             source: "Official career site",
             provider: "Greenhouse",
+            companyLogo: job.companyLogoUrl || job.company?.logoUrl || null,
             tags,
             postedAt: job.first_published || job.updated_at || null,
             ...details,
@@ -296,6 +310,7 @@ const normalizeLeverJobs = (payload, source) => {
             url: job.applyUrl || job.hostedUrl,
             source: "Official career site",
             provider: "Lever",
+            companyLogo: job.companyLogoUrl || job.company?.logoUrl || null,
             tags: [
                 job.categories?.team,
                 job.categories?.department,

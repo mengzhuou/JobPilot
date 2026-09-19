@@ -18,6 +18,9 @@
 }
 
 .navTitle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     font-family: 'Montserrat', sans-serif;
     font-size: 28px;
     font-style: normal;
@@ -26,6 +29,12 @@
     color: #fff;
     text-decoration: none;
     cursor: pointer;
+}
+
+.navTitle img {
+    width: 88px;
+    height: 88px;
+    object-fit: contain;
 }
 
 .dropdown-container {

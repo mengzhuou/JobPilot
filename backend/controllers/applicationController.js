@@ -7,10 +7,12 @@ const {
     isApplicationAgentRunning
 } = require("../services/applicationAgent");
 const resumeRepository = require("../repositories/resumeRepository");
+const userProfileRepository = require("../repositories/userProfileRepository");
+const reviewRepository = require("../repositories/aiAutofillReviewRepository");
 
 const startApplication = asyncHandler(async (req, res, next) => {
     try {
-        const { jobUrl } = req.body;
+        const { jobUrl, jobTitle, company, location, summary, requirements, aiAmbiguityMode, useAi = false } = req.body;
 
         if (!jobUrl) {
             return res.status(400).json({
@@ -25,10 +27,51 @@ const startApplication = asyncHandler(async (req, res, next) => {
             });
         }
 
-        await startApplicationAgent(jobUrl, { resume: primaryResume });
+        const candidateProfile = await userProfileRepository.getByUserId(req.auth.userId);
+        let review = null;
+        let plannedAnswers = [];
+        let reviewEvents = [];
+        const job = {
+            url: jobUrl,
+            title: jobTitle,
+            company,
+            location,
+            summary,
+            requirements: Array.isArray(requirements) ? requirements : [],
+        };
+        const ambiguityMode = aiAmbiguityMode === "ask_user" ? "ask_user" : "auto_review";
+        if (useAi) review = await reviewRepository.create(req.auth.userId, {
+            jobUrl, jobTitle, company, ambiguityMode, answers: [], unresolvedFields: [],
+        });
+        const saveReview = async () => {
+            if (!review) return;
+            review = await reviewRepository.update(req.auth.userId, review.id, {
+                answers: plannedAnswers,
+                unresolvedFields: reviewEvents,
+            }) || review;
+        };
+
+        await startApplicationAgent(jobUrl, {
+            resume: primaryResume,
+            aiContext: useAi ? { job, profile: candidateProfile, ambiguityMode } : null,
+            onAiPlan: async plan => {
+                plannedAnswers = plan;
+                await saveReview();
+            },
+            onAiPlanChanged: async plan => {
+                plannedAnswers = plan;
+                await saveReview();
+            },
+            onAutofillEvent: async event => {
+                if (event.type === "field_not_filled") reviewEvents = [...reviewEvents, event.field];
+                if (event.type === "ai_error") reviewEvents = [...reviewEvents, { question: "AI answer plan", type: "system", source: event.message }];
+                await saveReview();
+            },
+        });
 
         res.status(200).json({
-            message: "Application agent started"
+            message: "Application agent started",
+            reviewId: review?.id || null,
         });
 
     } catch (error) {

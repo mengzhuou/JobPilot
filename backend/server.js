@@ -77,6 +77,7 @@ app.use("/api/job-moderation", jobModerationRoutes);
 app.use("/api/job-analytics", jobAnalyticsRoutes);
 app.use("/api/profile", userProfileRoutes);
 app.use("/api/resumes", resumeRoutes);
+app.use("/api/ai-autofill", require("./routes/aiAutofillReviewRoutes"));
 
 
 // ====================

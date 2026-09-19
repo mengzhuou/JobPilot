@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import ProfileModal from "../../Modal/ProfileModal/ProfileModal";
 import { faBars, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { logout } from "../../redux/reducers/authSlice";
+import jobPilotMascot from "../../../Image/jobPilot.png";
 
 const TopNavBar = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -72,6 +73,7 @@ const TopNavBar = () => {
         <div className="navBar">
             <div className="navBar-left">
                 <NavLink className="navTitle" to="/active-job-postings">
+                    <img src={jobPilotMascot} alt="" />
                     JobPilot
                 </NavLink>
             </div>

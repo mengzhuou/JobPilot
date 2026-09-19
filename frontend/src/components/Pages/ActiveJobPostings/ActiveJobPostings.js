@@ -420,7 +420,6 @@ const ActiveJobPostings = () => {
 
             <form className="job-search-panel" onSubmit={handleSearch}>
                 <label className="simple-keyword-search">
-                    Role or technology
                     <input
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}

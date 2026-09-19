@@ -94,7 +94,7 @@ const findFile = async (userId, id) => {
 
 const findPrimaryFile = async userId => {
     const result = await pool.query(
-        `SELECT file_name, display_name, mime_type, file_data FROM jobpilot.user_resumes
+        `SELECT file_name, display_name, target_job_title, mime_type, file_data FROM jobpilot.user_resumes
          WHERE user_id=$1::UUID AND is_primary=true`,
         [userId]
     );
