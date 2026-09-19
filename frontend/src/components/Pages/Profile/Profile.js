@@ -4,6 +4,7 @@ import { faBriefcase, faCircleQuestion, faCode, faEnvelope, faGlobe, faGraduatio
 import { getUserProfile, updateUserProfileSection } from "../../../connector";
 import profileFixture from "./profileFixture";
 import ProfileEditor from "./ProfileEditor";
+import { formatProfileMonth } from "./profileDates";
 import "./Profile.scss";
 import "./ProfileRefinements.scss";
 
@@ -11,16 +12,16 @@ const tabs = [["personal","Personal"],["education","Education"],["experience","W
 const normalizeProfile = profile => ({ ...profile, skills:Array.isArray(profile.skills) ? profile.skills : [...new Set(Object.values(profile.skills || {}).flat())] });
 
 const SocialIcon = ({ type }) => {
-    if(type === "Portfolio") return <FontAwesomeIcon icon={faGlobe}/>;
-    const path = type === "LinkedIn"
-        ? "M19 3A2 2 0 1 1 15 3A2 2 0 0 1 19 3M7 8H3V21H7V8M5 3A2 2 0 1 0 5 7A2 2 0 0 0 5 3M21 13.5C21 9.6 18.9 7.8 15.9 7.8C13.5 7.8 12.4 9.1 11.8 10V8H8V21H12V14.6C12 12.9 12.3 11.2 14.5 11.2C16.7 11.2 16.7 13.2 16.7 14.8V21H21V13.5Z"
+    if(String(type).toLowerCase() === "portfolio") return <FontAwesomeIcon icon={faGlobe}/>;
+    const path = String(type).toLowerCase() === "linkedin"
+        ? "M20.45 2H3.55C2.69 2 2 2.68 2 3.52v16.96C2 21.32 2.69 22 3.55 22h16.9c.86 0 1.55-.68 1.55-1.52V3.52C22 2.68 21.31 2 20.45 2zM7.93 18.75H4.98V9.2h2.95v9.55zM6.45 7.89a1.71 1.71 0 1 1 0-3.42 1.71 1.71 0 0 1 0 3.42zm12.3 10.86H15.8V14.1c0-1.11-.02-2.54-1.55-2.54-1.55 0-1.79 1.21-1.79 2.46v4.73H9.51V9.2h2.83v1.3h.04c.39-.74 1.36-1.53 2.79-1.53 2.99 0 3.58 1.97 3.58 4.53v5.25z"
         : "M12 .7A11.3 11.3 0 0 0 8.4 22.8c.6.1.8-.2.8-.6v-2.1c-3.4.7-4.1-1.4-4.1-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.2-3.2 4.4 4.4 0 0 1 .1-3.2s1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2a4.4 4.4 0 0 1 .1 3.2 4.7 4.7 0 0 1 1.2 3.2c0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.2c0 .4.2.7.8.6A11.3 11.3 0 0 0 12 .7Z";
     return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={path}/></svg>;
 };
 
 const SectionTitle = ({ icon, title, section, onEdit }) => <div className="profile-section-title"><div><FontAwesomeIcon icon={icon}/><h2>{title}</h2></div><button className="profile-edit" type="button" title={`Edit ${title}`} aria-label={`Edit ${title}`} onClick={() => onEdit(section)}><FontAwesomeIcon icon={faPen}/></button></div>;
-const Timeline = ({ items }) => <div className="profile-timeline">{items.map((item,index)=><article className="profile-timeline-item" key={`${item.company || item.school}-${item.from}-${index}`}><div className="profile-period"><span>{item.from}</span><b>→</b><span>{item.to}</span></div><div className="profile-timeline-content"><div className="profile-role-heading"><div><h3>{item.company || item.school}</h3><p>{item.title || item.degree}</p></div>{item.location && <span>{item.location}</span>}</div>{item.gpa ? <p className="profile-detail">GPA {item.gpa}</p> : item.details?.map(detail=><p className="profile-detail" key={detail}>{detail}</p>)}{item.bullets?.length>0&&<ul>{item.bullets.map((bullet,bulletIndex)=><li key={bulletIndex}>{bullet}</li>)}</ul>}</div></article>)}</div>;
-const DetailCards = ({ rows, className="" }) => <div className={`profile-detail-grid ${className}`}>{rows.map(([question,answer])=><article key={question}><span>{question}</span><strong>{answer}</strong></article>)}</div>;
+const Timeline = ({ items }) => <div className="profile-timeline">{items.map((item,index)=><article className="profile-timeline-item" key={`${item.company || item.school}-${item.from}-${index}`}><div className="profile-period"><span>{formatProfileMonth(item.from)}</span><b>→</b><span>{formatProfileMonth(item.to)}</span></div><div className="profile-timeline-content"><div className="profile-role-heading"><div><h3>{item.company || item.school}</h3><p>{item.title || item.degree}</p></div>{item.location && <span>{item.location}</span>}</div>{item.gpa ? <p className="profile-detail">GPA {item.gpa}</p> : item.details?.filter(detail=>item.gpa === undefined || !/^GPA\s/i.test(detail)).map(detail=><p className="profile-detail" key={detail}>{detail}</p>)}{item.bullets?.length>0&&<ul>{item.bullets.map((bullet,bulletIndex)=><li key={bulletIndex}>{bullet}</li>)}</ul>}</div></article>)}</div>;
+const DetailCards = ({ rows, className="" }) => <div className={`profile-detail-grid ${className}`}>{rows.map(([question,answer])=><article key={question}><span>{question}</span><strong>{Array.isArray(answer) ? answer.join(" · ") : answer}</strong></article>)}</div>;
 
 const Profile = () => {
     const [profile, setProfile] = useState(() => normalizeProfile(profileFixture));

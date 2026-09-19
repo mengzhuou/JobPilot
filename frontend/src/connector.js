@@ -1,4 +1,5 @@
 import axios from "axios";
+export const getProfileLocations = async params => (await api.get('/api/profile/locations', { params })).data.options;
 export const getFilterPresets = async () => (await api.get('/api/filter-presets')).data.presets;
 export const saveFilterPreset = async (name, filters) => (await api.post('/api/filter-presets', { name, filters })).data.preset;
 export const getJobPlatforms = async () => (await api.get('/api/job-postings/platforms')).data.platforms;

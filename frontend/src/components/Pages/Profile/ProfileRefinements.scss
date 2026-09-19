@@ -61,6 +61,8 @@
 }
 
 .profile-tabs {
+    width: 100%;
+    box-sizing: border-box;
     top: 80px;
     margin-top: 0;
     border-radius: 0;
@@ -218,7 +220,15 @@
 .profile-editor header h2 { margin: 2px 0 0; font-size: 23px; }
 .profile-editor-sync { margin: 0; padding: 11px 24px; background: #f1f4f8; color: #475467; font-size: 12px; text-align: center; }
 .profile-editor-content { display: grid; padding: 26px; overflow-y: auto; gap: 18px; }
-.profile-editor-content fieldset { display: grid; margin: 0; padding: 18px; gap: 14px; border: 1px solid #dce3ed; border-radius: 12px; }
+.profile-editor-content { flex: 1; min-height: 0; align-content: start; }
+.profile-editor-content fieldset:not(.MuiOutlinedInput-notchedOutline), .editor-grid > * { min-width: 0; }
+.profile-suggest { min-width: 0; width: 100%; }
+.profile-suggest .MuiOutlinedInput-root { background: #f8fafc; border-radius: 9px; }
+.profile-suggest .MuiOutlinedInput-notchedOutline { border-color: #d8e0eb; }
+.profile-suggest .MuiFormLabel-asterisk { color: #ef4444; }
+.profile-suggest .MuiAutocomplete-tag { max-width: calc(100% - 6px); background: #eaf0fb; color: #2859a5; }
+.profile-editor header, .profile-editor footer, .profile-editor-sync { flex-shrink: 0; }
+.profile-editor-content fieldset:not(.MuiOutlinedInput-notchedOutline) { display: grid; margin: 0; padding: 18px; gap: 14px; border: 1px solid #dce3ed; border-radius: 12px; }
 .profile-editor-content legend { padding: 0 7px; color: #172033; font-weight: 800; }
 .profile-editor-field { display: grid; gap: 7px; color: #344054; font-size: 13px; font-weight: 750; }
 .profile-editor-field input,.profile-editor-field textarea { width: 100%; padding: 12px 13px; box-sizing: border-box; border: 1px solid #d8e0eb; border-radius: 9px; outline: none; background: #f8fafc; color: #172033; font: inherit; font-weight: 500; }
@@ -272,5 +282,29 @@
 .skill-editor span button { padding:0; border:0; background:transparent; cursor:pointer; font-size:16px; }
 .skill-editor>input { min-width: 150px; padding: 8px 10px; border: 0; border-radius: 8px; outline: 0; background: #f0f2f5; }
 .eeo-editor { display: grid; gap: 18px; }
+
+// All editor controls use the same fixed label and input height.
+.profile-suggest-field { display: grid; align-content: start; gap: 7px; min-width: 0; }
+.profile-suggest-field > label { color: #344054; font-size: 13px; font-weight: 750; }
+.profile-suggest-field > label b { margin-right: 4px; color: #ef4444; }
+.profile-editor .profile-suggest .MuiOutlinedInput-root { min-height: 44px; font: inherit; font-size: 13px; padding: 5px 9px; }
+.profile-editor .profile-suggest .MuiAutocomplete-input { font-weight: 500; color: #172033; }
+.profile-editor .profile-suggest .MuiFormHelperText-root { margin-left: 0; font-size: 11px; }
+.editor-grid { align-items: start; }
+.editor-section-intro { margin: 0 0 2px; color: #172033; font-size: 17px; font-weight: 750; }
+.editor-section-intro span { display: block; margin-top: 6px; color: #667085; font-size: 12px; font-weight: 400; line-height: 1.6; }
+.education-edit-card { display: grid; gap: 20px; min-width: 0; padding: 22px; border: 1px solid #e1e7ef; border-radius: 16px; background: #fff; box-shadow: 0 3px 12px rgba(31,48,78,.04); }
+.education-card-heading { display: flex; gap: 12px; align-items: center; padding-bottom: 16px; border-bottom: 1px solid #edf0f5; }
+.education-number { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border-radius: 11px; background: #edf3fe; color: #3361ae; font-size: 13px; font-weight: 800; }
+.education-card-heading h3 { margin: 0; font-size: 16px; color: #172033; }
+.education-card-heading p { margin: 4px 0 0; font-size: 11px; color: #667085; }
+.education-remove { margin-left: auto; padding: 7px; background: transparent; border: 0; border-radius: 6px; color: #8c4050; cursor: pointer; font-size: 12px; }
+.education-remove:hover { background: #fff1f2; }
+.education-location-row { grid-template-columns: minmax(0,2fr) minmax(100px,1fr); }
+.education-dates { display: grid; gap: 16px; border-top: 1px solid #edf0f5; padding-top: 18px; }
+.education-dates .current-check { margin: 0; }
+.education-add { width: 100%; border: 1px dashed #b6c8e2; padding: 14px; color: #3361ae; background: #f8faff; }
+.education-add:hover { background: #edf3fe; }
+@media(max-width:700px) { .education-edit-card { padding: 16px; } .education-location-row { grid-template-columns: 1fr; } }
 
 @media(max-width:700px){.editor-grid,.editor-grid.three,.editor-grid.phone{grid-template-columns:1fr}.profile-editor header{padding:0 14px}.profile-editor header .header-update{min-width:88px;padding:9px 13px}.profile-links a{width:auto;height:auto;max-width:100%}}
