@@ -3,6 +3,7 @@ const cheerio = require("cheerio");
 const { randomUUID } = require("crypto");
 const { listCustomCareerSources, resolveSource } = require("../repositories/customCareerSourceRepository");
 const { getCachedJson, setCachedJson, deleteCachedValue } = require("../config/redis");
+const { rankJobsForProfile } = require("./profileMatchService");
 
 const SOFTWARE_JOB_PATTERN =
     /\b(software|frontend|front-end|backend|back-end|full[ -]?stack|web|mobile|ios|android|java|react|node(?:\.js)?|python|devops|cloud|platform|application|site reliability|data engineer|hardware|firmware|embedded|electrical|semiconductor|network|cybersecurity|cyber security|security|architect(?:ure)?)\b/i;
@@ -779,6 +780,8 @@ const getActiveJobPostings = async ({
     includeLevels = "",
     excludePlatforms = "",
     moderation = new Map(),
+    profile = null,
+    matchLevel = "all",
 } = {}) => {
     let current;
     if (refresh) {
@@ -887,10 +890,13 @@ const getActiveJobPostings = async ({
         100,
         Math.max(1, Number.parseInt(limit, 10) || 30)
     );
-    const total = filteredJobs.length;
+    const rankedJobs = rankJobsForProfile(filteredJobs, profile);
+    const matchLevelJobs = matchLevel === "all" ? rankedJobs : rankedJobs
+        .filter(job => job.profileMatch.level === matchLevel);
+    const total = matchLevelJobs.length;
     const totalPages = Math.ceil(total / normalizedLimit);
     const startIndex = (normalizedPage - 1) * normalizedLimit;
-    const jobs = filteredJobs.slice(
+    const jobs = matchLevelJobs.slice(
         startIndex,
         startIndex + normalizedLimit
     );

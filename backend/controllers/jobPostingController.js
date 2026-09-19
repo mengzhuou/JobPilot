@@ -10,6 +10,7 @@ const {
 const { addResolvedCareerSource, listCustomCareerSources, resolveSource } = require("../repositories/customCareerSourceRepository");
 const { getPreferenceSignals } = require("../repositories/jobPreferenceRepository");
 const { listActiveModeration } = require("../repositories/jobModerationRepository");
+const { getByUserId: getUserProfile } = require("../repositories/userProfileRepository");
 const companyCareerSources = require("../services/companyCareerSources");
 const {
     getAppliedJobKeys,
@@ -44,6 +45,7 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
         if (row.job_url) moderation.set(`url:${row.job_url}`,value);
         if (row.external_job_id) moderation.set(`id:${row.external_job_id}`,value);
     });
+    const profile = await getUserProfile(req.auth.userId);
     const results = await getActiveJobPostings({
         query: req.query.query,
         location: req.query.location,
@@ -65,6 +67,8 @@ const listActiveJobPostings = asyncHandler(async (req, res) => {
         includeLevels: req.query.includeLevels,
         excludePlatforms: req.query.excludePlatforms,
         moderation,
+        profile,
+        matchLevel: req.query.matchLevel,
     });
 
     const [signals, preferences] = await Promise.all([

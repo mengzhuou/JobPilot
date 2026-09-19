@@ -68,6 +68,7 @@ const getActiveJobPostings = async ({
     excludeLevels = [],
     includeLevels = [],
     excludePlatforms = [],
+    matchLevel = "all",
 } = {}) => {
     const res = await api.get(
         "/api/job-postings",
@@ -91,6 +92,7 @@ const getActiveJobPostings = async ({
                 excludeLevels: excludeLevels.join(","),
                 includeLevels: includeLevels.join(","),
                 excludePlatforms: excludePlatforms.join(","),
+                matchLevel,
             },
         }
     );

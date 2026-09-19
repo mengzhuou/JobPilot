@@ -16,6 +16,8 @@ const JOB_TYPE_OPTIONS = [
 const SKILL_OPTIONS = ["React", "Java", "JavaScript", "TypeScript", "Python", "Node.js", "C++", "Kubernetes", "AWS", "PostgreSQL"];
 const FOCUS_OPTIONS = [{ value: "web", label: "Web" }, { value: "mobile", label: "Mobile" }, { value: "embedded", label: "Embedded" }];
 const ELIGIBILITY_EXCLUSIONS = [{ value: "citizenship", label: "Requires U.S. citizenship" }, { value: "clearance", label: "Requires security clearance" }, { value:"no_sponsorship", label:"Does not offer sponsorship" }];
+const MATCH_LEVEL_OPTIONS = [{ value: "all", label: "Any match level" }, { value: "strong", label: "Strong match · 90–100" }, { value: "good", label: "Good match · 75–89" }, { value: "fair", label: "Fair match · 60–74" }, { value: "bad", label: "Bad match · below 60" }];
+const matchLabel = level => `${String(level || "bad").replace(/^./, letter => letter.toUpperCase())} match`;
 
 const ChipMultiSelect = ({ label, values, onChange, options, placeholder, allowCustom = true }) => {
     const [input, setInput] = useState("");
@@ -100,6 +102,7 @@ const ActiveJobPostings = () => {
     const [error, setError] = useState("");
     const [displayFilter, setDisplayFilter] = useState("all");
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [matchLevel, setMatchLevel] = useState(savedFilters.matchLevel || "all");
     const [includeCompanies, setIncludeCompanies] = useState(Array.isArray(savedFilters.includeCompanies) ? savedFilters.includeCompanies : (savedFilters.company ? [savedFilters.company] : []));
     const [excludeCompanies, setExcludeCompanies] = useState(Array.isArray(savedFilters.excludeCompanies) ? savedFilters.excludeCompanies : String(savedFilters.excludeCompany || "").split(",").map(value => value.trim()).filter(Boolean));
     const [requiredSkills, setRequiredSkills] = useState(Array.isArray(savedFilters.requiredSkills) ? savedFilters.requiredSkills : String(savedFilters.keywords || "").split(",").map(value => value.trim()).filter(Boolean));
@@ -120,7 +123,7 @@ const ActiveJobPostings = () => {
     const [includeLevelInput, setIncludeLevelInput] = useState("");
     const [showIncludeLevelSuggestions, setShowIncludeLevelSuggestions] = useState(false);
     const [applyClearedFilters, setApplyClearedFilters] = useState(false);
-    const activeAdvancedFilters = [includeCompanies.length > 0, excludeCompanies.length > 0, requiredSkills.length > 0, remoteOnly, excludeFocuses.length > 0, excludeEligibility.length > 0, excludeJobTypes.length > 0, excludePlatforms.length > 0, postedWithin !== "all", locations.length > 0, excludeLevels.length > 0, includeLevels.length > 0]
+    const activeAdvancedFilters = [includeCompanies.length > 0, excludeCompanies.length > 0, requiredSkills.length > 0, remoteOnly, excludeFocuses.length > 0, excludeEligibility.length > 0, excludeJobTypes.length > 0, excludePlatforms.length > 0, postedWithin !== "all", locations.length > 0, excludeLevels.length > 0, includeLevels.length > 0, matchLevel !== "all"]
         .filter(Boolean).length;
     const locationSuggestions = useMemo(() => Array.from(new Set([
         ...jobs.flatMap(job => String(job.location || "").split(" · ").map(value => value.trim()).filter(Boolean)),
@@ -170,6 +173,7 @@ const ActiveJobPostings = () => {
                 excludeLevels,
                 includeLevels,
                 excludePlatforms,
+                matchLevel,
             });
 
             setJobs((currentJobs) => {
@@ -212,7 +216,7 @@ const ActiveJobPostings = () => {
                 setIsLoading(false);
             }
         }
-    }, [displayFilter, excludeCompanies, excludeEligibility, excludeFocuses, excludeJobTypes, excludeLevels, excludePlatforms, includeCompanies, includeLevels, locations, postedWithin, query, remoteOnly, requiredSkills]);
+    }, [displayFilter, excludeCompanies, excludeEligibility, excludeFocuses, excludeJobTypes, excludeLevels, excludePlatforms, includeCompanies, includeLevels, locations, matchLevel, postedWithin, query, remoteOnly, requiredSkills]);
 
     useEffect(() => {
         loadJobs({ targetPage: 1 });
@@ -262,11 +266,12 @@ const ActiveJobPostings = () => {
         setExcludePlatforms([]);
         setIncludeLevelInput("");
         setShowIncludeLevelSuggestions(false);
+        setMatchLevel("all");
         setPresetNotice('');
         setApplyClearedFilters(true);
     };
 
-    const currentFilters = { includeCompanies, excludeCompanies, requiredSkills, remoteOnly,
+    const currentFilters = { includeCompanies, excludeCompanies, requiredSkills, remoteOnly, matchLevel,
         excludeFocuses, excludeEligibility, excludeJobTypes, postedWithin,
         locations, excludeLevels, includeLevels, excludePlatforms };
     const selectedPresetId = presets.find(preset => Object.keys(currentFilters).every(key =>
@@ -281,6 +286,7 @@ const ActiveJobPostings = () => {
         setExcludeJobTypes(f.excludeJobTypes || []); setPostedWithin(f.postedWithin || 'all');
         setLocations(f.locations || []); setExcludeLevels(f.excludeLevels || []);
         setIncludeLevels(f.includeLevels || []); setExcludePlatforms(f.excludePlatforms || []);
+        setMatchLevel(f.matchLevel || "all");
         setLocationChipInput(''); setExcludeLevelInput(''); setIncludeLevelInput('');
         setPresetNotice({ message: `“${preset.name}” filters applied.` });
         setApplyClearedFilters(true);
@@ -310,10 +316,9 @@ const ActiveJobPostings = () => {
         return () => window.clearTimeout(timer);
     }, [navigate, routeLocation.pathname, routeLocation.state]);
 
-    const visibleJobs = jobs.filter(job => {
-        if (job.currentUserBlocked) return false;
-        return true;
-    });
+    const visibleJobs = useMemo(() => jobs.filter(job => !job.currentUserBlocked)
+        .sort((first, second) => (second.profileMatch?.score || 0) - (first.profileMatch?.score || 0)
+            || new Date(second.postedAt || 0).getTime() - new Date(first.postedAt || 0).getTime()), [jobs]);
 
     const handleSearch = (event) => {
         event.preventDefault();
@@ -462,6 +467,11 @@ const ActiveJobPostings = () => {
                             <option value="six_months">Posted within 6 months</option>
                         </select>
                     </label>
+                    <label>Profile match
+                        <select value={matchLevel} onChange={event => setMatchLevel(event.target.value)}>
+                            {MATCH_LEVEL_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                    </label>
                     <label className="advanced-filter-wide">Available Locations
                         <div className="location-autocomplete">
                             <div className="location-chip-input">
@@ -586,7 +596,10 @@ const ActiveJobPostings = () => {
                         {visibleJobs.map((job) => (
                             <article className={`job-card${job.currentUserApplied ? " job-card-applied" : ""}`} key={job.id}>
                                 <div className="job-card-labels">
-                                    <div className="job-card-source">{job.source}</div>
+                                    <div className={`job-card-match ${job.profileMatch?.level || "bad"}`} title={`Profile match score: ${job.profileMatch?.score || 0} out of 100`}>
+                                        <div className="job-match-ring" style={{ "--match-progress": `${(job.profileMatch?.score || 0) * 3.6}deg` }}><div><strong>{job.profileMatch?.score || 0}</strong><small>%</small></div></div>
+                                        <span>{matchLabel(job.profileMatch?.level)}</span>
+                                    </div>
                                     {job.currentUserApplied && <span className="applied-mark">✓ Applied</span>}
                                 </div>
                                 <h2><button className="job-title-autofill" type="button" onClick={() => startAutofill(job)} disabled={job.currentUserApplied}>{job.title}</button></h2>

@@ -271,7 +271,7 @@
 .job-card-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    max-width: 1180px;
+    max-width: var(--app-content-width);
     margin: 0 auto;
     gap: 18px;
 }
@@ -316,15 +316,48 @@
     font-weight: 850;
 }
 
-.job-card-source {
+.job-card-match {
+    display: grid;
     align-self: flex-start;
-    padding: 5px 9px;
-    border-radius: 999px;
-    background: #edf3ff;
-    color: #3361ae;
-    font-size: 11px;
-    font-weight: 800;
+    justify-items: center;
+    gap: 5px;
+    color: #2b5da7;
+    animation: job-match-pop 420ms cubic-bezier(.2,.8,.2,1) both;
 }
+
+.job-match-ring {
+    display: grid;
+    width: 57px;
+    height: 57px;
+    place-items: center;
+    border-radius: 50%;
+    background: conic-gradient(#1ec9ef 0deg, #18d9a0 var(--match-progress), #dbe5ef var(--match-progress) 360deg);
+    transform: rotate(-90deg);
+    box-shadow: 0 5px 13px rgba(41, 102, 181, .12);
+}
+
+.job-match-ring > div {
+    display: flex;
+    width: 47px;
+    height: 47px;
+    align-items: baseline;
+    justify-content: center;
+    border-radius: 50%;
+    background: #fff;
+    color: #172033;
+    transform: rotate(90deg);
+}
+.job-match-ring strong { font-size: 18px; letter-spacing: -.06em; margin-top: 12px; }
+.job-match-ring small { margin-left: 1px; font-size: 9px; font-weight: 850; }
+.job-card-match > span {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+}
+.job-card-match.strong { color: #087a55; }.job-card-match.strong .job-match-ring { background: conic-gradient(#22c9ef 0deg, #18d9a0 var(--match-progress), #dbe5ef var(--match-progress) 360deg); }
+.job-card-match.good { color: #2563a7; }.job-card-match.fair { color: #9a6509; }.job-card-match.fair .job-match-ring { background: conic-gradient(#22c9ef 0deg, #e9b949 var(--match-progress), #e5e8ea var(--match-progress) 360deg); }.job-card-match.bad { color: #b54735; }.job-card-match.bad .job-match-ring { background: conic-gradient(#fb9570 0deg, #e96852 var(--match-progress), #ece5e3 var(--match-progress) 360deg); }
+@keyframes job-match-pop { from { opacity: 0; transform: scale(.72); } to { opacity: 1; transform: scale(1); } }
 
 .job-card h2 {
     margin: 16px 0 6px;
