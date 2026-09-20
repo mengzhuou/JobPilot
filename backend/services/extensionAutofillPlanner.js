@@ -19,8 +19,10 @@ const safeField = field => ({
     name: clean(field?.name).slice(0, 200),
     type: clean(field?.type || "text").slice(0, 50),
     required: Boolean(field?.required),
-    filled: Boolean(field?.filled),
+    filled: Boolean(field?.filled) && !field?.hasError,
     currentValue: clean(field?.currentValue).slice(0, MAX_FIELD_TEXT),
+    hasError: Boolean(field?.hasError),
+    errorMessage: clean(field?.errorMessage).slice(0, MAX_FIELD_TEXT),
     options: Array.isArray(field?.options)
         ? field.options.map(clean).filter(Boolean).slice(0, 60)
         : [],
@@ -131,7 +133,9 @@ const planField = (field, profile) => {
 
     if (containsAny(question, ["postal code", "zip code", "zipcode"]) || field.autocomplete === "postal-code") return fill(field, location.postal_code, "Profile · Address", "Matched postal code.");
     if (containsAny(question, ["street address", "address line 1", "address 1"]) || field.autocomplete === "address-line1") return fill(field, location.address_line_1, "Profile · Address", "Matched street address.");
-    if (containsAny(question, ["city", "current location", "where are you currently located"]) || field.autocomplete === "address-level2") return fill(field, [location.city, `${location.city}, ${location.state}`, answers.preferred_application_location], "Profile · Address", "Matched city or current location.");
+    if (containsAny(question, ["city", "current location", "where are you currently located"]) || field.autocomplete === "address-level2") return fill(field, [location.city, `${location.city}, ${location.state}`, answers.preferred_application_location], "Profile · Address", "Matched city or current location.", {
+        optionContext: { city: clean(location.city), state: clean(location.state), country: clean(location.country) },
+    });
     if (containsAny(question, ["state", "province", "region"]) || field.autocomplete === "address-level1") return fill(field, location.state, "Profile · Address", "Matched state or region.");
     if (containsAny(question, ["country"]) || field.autocomplete === "country-name") return fill(field, location.country, "Profile · Address", "Matched country.");
 

@@ -34,7 +34,7 @@ const profile = {
 const fields = [
     { fieldKey: "first", label: "First Name", type: "text", currentValue: "Avery", filled: true },
     { fieldKey: "city", label: "Location (City)", type: "text" },
-    { fieldKey: "sponsor", label: "Will you now or in the future require immigration sponsorship?", type: "select", options: ["Select…", "Yes", "No"] },
+    { fieldKey: "sponsor", label: "Will you now or in the future require immigration sponsorship?", type: "select", options: ["Select…", "Yes", "No"], filled: true, currentValue: "No", hasError: true, errorMessage: "This field is required." },
     { fieldKey: "sponsor-custom", label: "Will you require sponsorship?", type: "combobox", options: [] },
     { fieldKey: "hispanic", label: "Are you Hispanic/Latino?", type: "radio", options: ["Yes", "No", "Decline to self-identify"] },
     { fieldKey: "veteran", label: "Veteran Status", type: "select", options: ["Select…", "I am not a protected veteran", "I identify as a protected veteran"] },
@@ -49,6 +49,7 @@ const byKey = Object.fromEntries(plan.answers.map(answer => [answer.fieldKey, an
 
 assert.equal(byKey.first.action, "skip");
 assert.equal(byKey.city.value, "Austin");
+assert.deepEqual(byKey.city.optionContext, { city: "Austin", state: "Texas", country: "United States" });
 assert.equal(byKey.sponsor.value, "No");
 assert.equal(byKey["sponsor-custom"].value, "No");
 assert.equal(byKey.hispanic.value, "No");

@@ -4,6 +4,10 @@ The extension is a Manifest V3 companion for JobPilot. It scans the application 
 
 Autofill also attaches the user's primary JobPilot résumé to a detected résumé/CV file field, types into autocomplete controls and selects the closest equivalent option, then rescans the application so the side panel reflects the updated form.
 
+Rescans inspect native validity, `aria-invalid`, associated error messages, and visible field errors. A field with a displayed value is still treated as unresolved when the application reports that value as invalid.
+
+Greenhouse's React Select dropdowns open with a full mouse sequence. Autofill follows the active field's menu ID, selects an equivalent option, moves focus away, and checks that a selected value persists. Search text alone is not a selection. City matching includes the Profile's state and country; ambiguous matches stay unresolved. Selected controls are still scanned when React Select empties or hides its search input.
+
 ## Local installation
 
 1. Start the JobPilot backend on `http://localhost:3500` and frontend on `http://localhost:3000`.
@@ -15,6 +19,14 @@ Autofill also attaches the user's primary JobPilot résumé to a detected résum
 7. Open the JobPilot side panel, enter the code, and connect.
 
 After editing extension files, use the reload button on `chrome://extensions` and refresh the application webpage.
+
+Version 0.1.8 also needs the updated backend fill planner (restart the backend if it is not running with automatic reload) so city suggestions include state and country context.
+
+## Browser regression checks
+
+From the repository root, run `npm ci --prefix extension/tests`, then `npm run extension:test:serve`. Open `http://127.0.0.1:4178` in Chrome and click **Run regression tests**.
+
+The fixture runs the source content script through its scan/apply messages against React Select 5.10.2, including Greenhouse's controlled menu behavior (`menuIsOpen`, control `mouseup`, real blur). It checks committed country/city/sponsorship values, delayed city details, portaled menus, Yes/No ↔ True/False, rescan and skip behavior, ambiguous/rejected options, adjacent validation errors, and no form submission. The fixture uses synthetic data and mocks extension messaging; it does not replace testing the installed extension on a target application. Test dependencies are separate from extension runtime assets and should not be included in the release ZIP.
 
 ## Supported sites
 

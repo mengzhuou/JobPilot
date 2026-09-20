@@ -12,6 +12,24 @@
         return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0
             && rect.width > 0 && rect.height > 0;
     };
+    const selectControl = element => element.closest("[class*='__control'], [class$='-control']");
+    const reactSelectRoot = element => {
+        if (element.getAttribute("role") !== "combobox" || !selectControl(element)) return null;
+        return element.closest(".select-shell, [class$='-container']") || selectControl(element).parentElement;
+    };
+    const selectedDisplay = element => {
+        const root = reactSelectRoot(element);
+        return cleanText(Array.from(root?.querySelectorAll(
+            "[class*='__single-value'], [class$='-singleValue'], [class*='__multi-value__label']"
+        ) || []).map(node => node.textContent).join(", "));
+    };
+    const controlVisible = element => element.getAttribute("aria-hidden") !== "true"
+        && (visible(element) || (reactSelectRoot(element) && visible(selectControl(element))));
+    const fieldValue = (type, element) => {
+        if (reactSelectRoot(element)) return selectedDisplay(element);
+        if (type === "select") return cleanText(element.selectedOptions?.[0]?.textContent);
+        return cleanText(element.value || element.textContent);
+    };
     const textById = ids => cleanText(String(ids || "").split(/\s+/).map(id => document.getElementById(id)?.textContent || "").join(" "));
     const nearestText = element => {
         const candidates = [];
@@ -35,6 +53,44 @@
         || element.parentElement?.innerText
         || element.value
     ).slice(0, 300) : "";
+    const ERROR_SELECTOR = "[role='alert'], [aria-live='assertive'], .error-message, .field-error, .input-error, [class*='errorMessage'], [class*='error-message'], [data-testid*='error'], [id*='error']";
+    const FIELD_CONTROL_SELECTOR = "input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='combobox'], button[aria-haspopup='listbox'], [role='button'][aria-haspopup='listbox']";
+    const leafControls = container => Array.from(container?.querySelectorAll?.(FIELD_CONTROL_SELECTOR) || [])
+        .filter(item => !item.disabled && controlVisible(item))
+        .filter(item => !(item.matches("[role='combobox']") && item.querySelector("input, textarea, select, button")));
+    const ownedErrorText = element => {
+        let container = element.parentElement;
+        for (let depth = 0; container && depth < 6; depth += 1, container = container.parentElement) {
+            const controls = leafControls(container);
+            if (controls.length > 1) break;
+            const errorNode = Array.from(container.querySelectorAll(ERROR_SELECTOR))
+                .find(node => visible(node) && cleanText(node.innerText || node.textContent));
+            const errorText = cleanText(errorNode?.innerText || errorNode?.textContent);
+            if (errorText && errorText.length <= 500) return errorText;
+        }
+        return "";
+    };
+    const fieldErrorMessage = (element, elements = [element]) => {
+        const describedIds = elements.flatMap(item => [item?.getAttribute?.("aria-describedby"), item?.getAttribute?.("aria-errormessage")]
+            .filter(Boolean).flatMap(ids => ids.split(/\s+/))).filter(Boolean);
+        const describedNodes = [...new Set(describedIds)].map(id => document.getElementById(id)).filter(Boolean);
+        const describedErrorText = cleanText(describedNodes
+            .filter(node => node.matches(ERROR_SELECTOR) && visible(node))
+            .map(node => node.innerText || node.textContent).join(" "));
+        if (describedErrorText && describedErrorText.length <= 500) return describedErrorText;
+        const nativeMessage = elements.map(item => {
+            try { return item?.validity?.valid === false ? cleanText(item.validationMessage) : ""; }
+            catch { return ""; }
+        }).find(Boolean);
+        if (nativeMessage) return nativeMessage;
+        const errorText = ownedErrorText(element);
+        if (errorText && errorText.length <= 500) return errorText;
+        if (elements.some(item => item?.getAttribute?.("aria-invalid") === "true")) {
+            const describedText = cleanText(describedNodes.map(node => node.innerText || node.textContent).join(" "));
+            return describedText && describedText.length <= 500 ? describedText : "This field is marked invalid.";
+        }
+        return "";
+    };
     const fileContext = element => {
         let node = element.parentElement;
         for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
@@ -60,14 +116,14 @@
         if (type === "checkbox") return Boolean(element.checked);
         if (type === "file") return Boolean(element.files?.length);
         if (type === "select" || type === "combobox") {
-            const value = cleanText(element.value || element.textContent);
+            const value = fieldValue(type, element);
             return Boolean(value && !/^(select|choose|please select|--)/i.test(value));
         }
         return Boolean(cleanText(element.value || element.textContent));
     };
     const typeFor = element => {
         if (element.matches("select")) return "select";
-        if (element.getAttribute("role") === "combobox") return "combobox";
+        if (element.getAttribute("role") === "combobox" || element.getAttribute("aria-haspopup") === "listbox") return "combobox";
         if (element.matches("textarea")) return "textarea";
         if (element.isContentEditable) return "textarea";
         return String(element.type || "text").toLowerCase();
@@ -76,8 +132,10 @@
     const scanFields = () => {
         registry.clear();
         const elements = Array.from(document.querySelectorAll(
-            "input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='combobox']"
-        )).filter(element => !element.disabled && (visible(element) || typeFor(element) === "file")).slice(0, MAX_FIELDS * 2);
+            FIELD_CONTROL_SELECTOR
+        )).filter(element => !element.disabled && (controlVisible(element) || typeFor(element) === "file"))
+            .filter(element => !(element.matches("[role='combobox']") && element.querySelector("input, textarea, select, button")))
+            .slice(0, MAX_FIELDS * 2);
         const handledRadioNames = new Set();
         const fields = [];
 
@@ -90,7 +148,8 @@
                 handledRadioNames.add(element.name);
                 const group = elements.filter(item => typeFor(item) === "radio" && item.name === element.name);
                 const key = stableKey(element, index);
-                registry.set(key, { type, element, elements: group });
+                const errorMessage = fieldErrorMessage(element, group);
+                registry.set(key, { type, element, elements: group, errorMessage, label: nearestText(element) });
                 fields.push({
                     fieldKey: key,
                     label: nearestText(element),
@@ -99,9 +158,11 @@
                     name: cleanText(element.name),
                     type,
                     required: group.some(item => item.required || item.getAttribute("aria-required") === "true"),
-                    filled: isFilled(type, element, group),
+                    filled: isFilled(type, element, group) && !errorMessage,
                     currentValue: selectedRadioValue(group),
                     options: group.map(optionLabel).filter(Boolean),
+                    hasError: Boolean(errorMessage),
+                    errorMessage,
                 });
                 return;
             }
@@ -109,7 +170,8 @@
             const options = type === "select"
                 ? Array.from(element.options).map(option => cleanText(option.textContent)).filter(Boolean)
                 : [];
-            registry.set(key, { type, element, elements: [element] });
+            const errorMessage = fieldErrorMessage(element);
+            registry.set(key, { type, element, elements: [element], errorMessage, label: nearestText(element) });
             fields.push({
                 fieldKey: key,
                 label: nearestText(element),
@@ -119,13 +181,15 @@
                 type,
                 context: type === "file" ? fileContext(element) : "",
                 required: Boolean(element.required || element.getAttribute("aria-required") === "true"),
-                filled: isFilled(type, element),
+                filled: isFilled(type, element) && !errorMessage,
                 currentValue: type === "checkbox"
                     ? (element.checked ? optionLabel(element) || "Yes" : "")
                     : type === "file"
                         ? Array.from(element.files || []).map(file => file.name).join(", ")
-                        : cleanText(element.value || element.textContent),
+                        : fieldValue(type, element),
                 options,
+                hasError: Boolean(errorMessage),
+                errorMessage,
             });
         });
         return fields;
@@ -146,6 +210,18 @@
         summary: cleanText(document.querySelector("main")?.innerText || document.body?.innerText).slice(0, 6000),
     });
 
+    const dispatchInput = (element, value) => {
+        try {
+            element.dispatchEvent(new InputEvent("input", {
+                bubbles: true,
+                composed: true,
+                inputType: "insertText",
+                data: value,
+            }));
+        } catch {
+            element.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+    };
     const setNativeValue = (element, value, { commit = true } = {}) => {
         if (element.isContentEditable) {
             element.textContent = value;
@@ -157,11 +233,18 @@
         } else {
             return;
         }
-        element.dispatchEvent(new Event("input", { bubbles: true }));
+        dispatchInput(element, value);
         if (commit) {
             element.dispatchEvent(new Event("change", { bubbles: true }));
             element.dispatchEvent(new Event("blur", { bubbles: true }));
         }
+    };
+    const setNativeSelectValue = (element, value) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+        if (setter) setter.call(element, value);
+        else element.value = value;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
     };
     const semanticMatch = (available, desired) => {
         const target = normalized(desired)
@@ -182,36 +265,114 @@
         element.dispatchEvent(new Event("change", { bubbles: true }));
     };
     const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-    const visibleAutocompleteOptions = () => Array.from(document.querySelectorAll(
-        "[role='listbox'] [role='option']:not([aria-disabled='true']), [role='option']:not([aria-disabled='true']), [data-testid*='option'], [id*='option-']"
-    )).filter(option => visible(option) && cleanText(option.innerText || option.textContent));
-    const waitForAutocompleteOptions = async (timeout = 2500) => {
-        const started = Date.now();
-        while (Date.now() - started < timeout) {
-            const options = visibleAutocompleteOptions();
-            if (options.length) return options;
+    const optionText = option => cleanText(option?.innerText || option?.textContent);
+    const autocompleteMenus = element => {
+        const ids = [element.getAttribute("aria-controls"), element.getAttribute("aria-owns")]
+            .filter(Boolean).flatMap(value => value.split(/\s+/));
+        // React Select portals its menu outside the field. Follow the ID relation;
+        // screen distance and unrelated matching text do not identify an option.
+        if (ids.length) return ids.map(id => document.getElementById(id)).filter(node => node && visible(node));
+        const root = reactSelectRoot(element);
+        if (root) return Array.from(root.querySelectorAll("[role='listbox'], [class*='__menu-list']")).filter(visible);
+        const group = element.closest(".field, .form-field, .select__container") || element.parentElement;
+        return Array.from(group?.querySelectorAll("[role='listbox']") || []).filter(visible);
+    };
+    const autocompleteOptions = element => autocompleteMenus(element).flatMap(menu =>
+        Array.from(menu.querySelectorAll("[role='option'], [class*='__option'], li[data-value]"))
+            .filter(node => !node.disabled && node.getAttribute("aria-disabled") !== "true" && visible(node) && optionText(node))
+    );
+    const comparableOption = text => {
+        const value = normalized(cleanText(text).replace(/\s+\+\d[\d\s()-]*$/, ""));
+        if (/^(true|yes)$/.test(value)) return "yes";
+        if (/^(false|no)$/.test(value)) return "no";
+        if (/^(us|usa|united states of america)$/.test(value)) return "united states";
+        return value;
+    };
+    const chooseAutocompleteOption = (options, value, context = {}) => {
+        const target = comparableOption(value);
+        let matches = options.filter(option => comparableOption(optionText(option)) === target);
+        if (!matches.length && context.city) {
+            matches = options.filter(option => normalized(optionText(option).split(",")[0]) === normalized(context.city));
+        }
+        if (!matches.length) matches = options.filter(option => semanticMatch([optionText(option)], value));
+        if (context.city && matches.length) {
+            matches = matches.filter(option => normalized(optionText(option).split(",")[0]) === normalized(context.city));
+            for (const hint of [context.state, context.country].filter(Boolean)) {
+                const tokens = comparableOption(hint);
+                const narrowed = matches.filter(option => optionText(option).split(",").some(part => comparableOption(part) === tokens));
+                // A menu with geographic detail must agree with the saved location.
+                if (matches.some(option => optionText(option).includes(","))) matches = narrowed;
+            }
+        }
+        const labels = new Set(matches.map(option => comparableOption(optionText(option))));
+        return labels.size === 1 ? matches[0] : null;
+    };
+    const mouseClick = element => {
+        element.scrollIntoView({ block: "nearest", inline: "nearest" });
+        const rect = element.getBoundingClientRect();
+        const options = { bubbles: true, cancelable: true, composed: true, button: 0,
+            clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+        for (const name of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+            if (!element.isConnected) break;
+            const EventType = name.startsWith("pointer") ? PointerEvent : MouseEvent;
+            element.dispatchEvent(new EventType(name, { ...options, buttons: name.endsWith("down") ? 1 : 0 }));
+        }
+    };
+    const typeAndSelectAutocomplete = async (element, value, context) => {
+        element.scrollIntoView({ block: "center", inline: "nearest" });
+        element.focus({ preventScroll: true });
+        // Standard React Select opens on mousedown. Greenhouse controls the menu
+        // on mouseup. HTMLElement.click() alone runs neither handler.
+        if (element.getAttribute("aria-expanded") !== "true") mouseClick(element);
+        await wait(60);
+        let option = chooseAutocompleteOption(autocompleteOptions(element), value, context);
+        const editable = !element.readOnly && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element.isContentEditable);
+        if (!option && editable) {
+            setNativeValue(element, "", { commit: false });
+            await wait(40);
+            const query = /^(true|false)$/i.test(value) ? (comparableOption(value) === "yes" ? "Yes" : "No") : value;
+            setNativeValue(element, query, { commit: false });
             await wait(100);
         }
-        return [];
-    };
-    const typeAndSelectAutocomplete = async (element, value) => {
-        element.focus({ preventScroll: true });
-        element.click();
-        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element.isContentEditable) {
-            setNativeValue(element, "", { commit: false });
-            setNativeValue(element, value, { commit: false });
+        if (element.getAttribute("aria-expanded") !== "true" && !autocompleteMenus(element).length) mouseClick(element);
+
+        const deadline = Date.now() + 3500;
+        while (Date.now() < deadline) {
+            option = chooseAutocompleteOption(autocompleteOptions(element), value, context);
+            if (option) break;
+            await wait(100);
         }
-        const options = await waitForAutocompleteOptions();
-        const labels = options.map(option => cleanText(option.innerText || option.textContent));
-        const match = semanticMatch(labels, value)
-            || labels.find(label => normalized(label).startsWith(normalized(value)));
-        const index = labels.indexOf(match);
-        if (index < 0) return false;
-        clickReactAware(options[index]);
-        await wait(120);
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-        element.dispatchEvent(new Event("blur", { bubbles: true }));
-        return true;
+        if (!option) {
+            element.blur();
+            return { status: "failed", message: "No unique matching suggestion was found. Select an option on the application." };
+        }
+        mouseClick(option);
+        await wait(100);
+        // A synthetic blur event does not move focus or invoke React's focusout
+        // handler. Real blur also proves that the site's selection survives.
+        element.blur();
+        await wait(180);
+        let committed = "";
+        const verificationDeadline = Date.now() + 1200;
+        do {
+            committed = fieldValue("combobox", element);
+            if (committed && element.getAttribute("aria-expanded") !== "true" && !fieldErrorMessage(element)) break;
+            await wait(100);
+        } while (Date.now() < verificationDeadline);
+        if (!committed || element.getAttribute("aria-expanded") === "true" || fieldErrorMessage(element)) {
+            return { status: "failed", message: fieldErrorMessage(element) || "The application did not retain the selected suggestion. Please select it manually." };
+        }
+        // Search inputs become empty after React Select commits a separate value.
+        if (!reactSelectRoot(element) && !semanticMatch([committed], value)) {
+            return { status: "failed", message: "The application retained a different option. Please review this field." };
+        }
+        return { status: "filled" };
+    };
+    const isAutocompleteField = entry => {
+        const { element } = entry;
+        if (entry.type === "combobox") return true;
+        return ["list", "both"].includes(element.getAttribute("aria-autocomplete"))
+            || Boolean(element.getAttribute("aria-controls") && autocompleteMenus(element).length);
     };
 
     const focusEntry = fieldKey => {
@@ -238,11 +399,17 @@
     const fillEntry = async (entry, answer) => {
         const { element, elements, type } = entry;
         if (!element?.isConnected) return { status: "failed", message: "The field is no longer on the page." };
-        if (isFilled(type, element, elements)) return { status: "skipped", message: "Already filled." };
+        const reportedError = fieldErrorMessage(element, elements);
+        if (isFilled(type, element, elements) && !reportedError) return { status: "skipped", message: "Already filled." };
         const value = cleanText(answer.value);
 
         if (type === "checkbox") {
             if (!element.checked && /^(true|yes|acknowledge|acknowledge confirm)$/i.test(normalized(value))) clickReactAware(element);
+            else if (element.checked && reportedError) {
+                element.dispatchEvent(new Event("input", { bubbles: true }));
+                element.dispatchEvent(new Event("change", { bubbles: true }));
+                element.dispatchEvent(new Event("blur", { bubbles: true }));
+            }
             return element.checked ? { status: "filled" } : { status: "failed", message: "The checkbox could not be selected." };
         }
         if (type === "radio") {
@@ -258,27 +425,33 @@
             const match = semanticMatch(labels, value);
             const index = labels.indexOf(match);
             if (index < 0) return { status: "failed", message: "No equivalent dropdown option was found." };
-            element.selectedIndex = index;
-            element.dispatchEvent(new Event("input", { bubbles: true }));
-            element.dispatchEvent(new Event("change", { bubbles: true }));
+            if (reportedError && element.selectedIndex === index) {
+                const placeholder = Array.from(element.options).find(option => !cleanText(option.value) || /^(select|choose|please select|--)/i.test(cleanText(option.textContent)));
+                if (placeholder) {
+                    setNativeSelectValue(element, placeholder.value);
+                    await wait(60);
+                }
+            }
+            setNativeSelectValue(element, element.options[index].value);
             element.dispatchEvent(new Event("blur", { bubbles: true }));
             return { status: cleanText(element.value) ? "filled" : "failed" };
         }
-        if (type === "combobox") {
-            const selected = await typeAndSelectAutocomplete(element, value);
-            return selected
-                ? { status: "filled" }
-                : { status: "failed", message: "No equivalent autocomplete option was found." };
-        }
-
-        if (element.getAttribute("aria-autocomplete") || element.getAttribute("role") === "combobox") {
-            const selected = await typeAndSelectAutocomplete(element, value);
-            return selected
-                ? { status: "filled" }
-                : { status: "failed", message: "No equivalent autocomplete option was found." };
+        if (isAutocompleteField(entry)) {
+            return typeAndSelectAutocomplete(element, value, answer.optionContext);
         }
         setNativeValue(element, value);
         return cleanText(element.value || element.textContent) ? { status: "filled" } : { status: "failed", message: "The site rejected the value." };
+    };
+
+    const waitForValidation = async (entry, timeout = 1600) => {
+        const started = Date.now();
+        let message = "";
+        do {
+            message = entry?.element?.isConnected ? fieldErrorMessage(entry.element, entry.elements) : "";
+            if (!message) return "";
+            await wait(100);
+        } while (Date.now() - started < timeout);
+        return message;
     };
 
     const base64ToBytes = value => {
@@ -337,7 +510,16 @@
                 const outcome = entry
                     ? await fillEntry(entry, answer)
                     : { status: "failed", message: "Rescan the page before filling this field." };
-                results.push({ fieldKey: answer.fieldKey, ...outcome });
+                const validationError = outcome.status === "filled"
+                    ? await waitForValidation(entry, entry.errorMessage ? 1600 : 200)
+                    : "";
+                results.push({
+                    fieldKey: answer.fieldKey,
+                    ...outcome,
+                    ...(outcome.status === "filled" && validationError
+                        ? { status: "failed", message: validationError }
+                        : {}),
+                });
             }
             return results;
         } finally {

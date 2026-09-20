@@ -66,6 +66,8 @@ const fieldClass = answer => {
     const outcome = state.results.get(answer.fieldKey);
     if (outcome?.status === "filled") return "filled";
     if (outcome?.status === "failed") return "failed";
+    const scanned = state.scan?.fields.find(field => field.fieldKey === answer.fieldKey);
+    if (scanned?.hasError) return "failed";
     if (answer.aiSuggestion) return answer.action === "fill" && answer.value ? "review" : "skipped";
     if (answer.action === "fill") return "ready";
     if (answer.action === "ask_user") return "review";
@@ -76,6 +78,8 @@ const statusFor = (answer, className) => {
     const outcome = state.results.get(answer.fieldKey);
     if (outcome?.status === "filled") return "Filled on this page";
     if (outcome?.status === "failed") return outcome.message || "Could not fill this field";
+    const scanned = state.scan?.fields.find(field => field.fieldKey === answer.fieldKey);
+    if (scanned?.hasError) return scanned.errorMessage || "The application reports this field is invalid; Autofill will retry it.";
     if (answer.aiSuggestion && answer.value) return "AI suggestion ready for your review";
     if (answer.action === "fill") return answer.reason || "Ready from Profile";
     if (answer.action === "ask_user") return answer.reason || "Needs your review";

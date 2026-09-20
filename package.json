@@ -1,6 +1,7 @@
 {
   "scripts": {
     "extension:check": "node extension/validate.js",
+    "extension:test:serve": "node extension/tests/server.cjs",
     "test:autofill": "node backend/services/applicationAgentUtils.test.js && node backend/services/autofillProfileMapper.test.js && node backend/services/extensionAutofillPlanner.test.js && node backend/services/applicationAiService.test.js && node backend/services/candidateContextService.test.js"
   },
   "dependencies": {
