@@ -6,6 +6,8 @@ Autofill also attaches the user's primary JobPilot résumé to a detected résum
 
 Rescans inspect native validity, `aria-invalid`, associated error messages, and visible field errors. A field with a displayed value is still treated as unresolved when the application reports that value as invalid.
 
+Version 0.2.1 maps full degree titles to qualification-level dropdown options (for example, Bachelor of Science in Computer Science → Bachelor's Degree). It selects the option and verifies it survives blur; it does not infer another major or professional qualification. Restart the backend and reload the extension plus job tab to use the updated mapping.
+
 Greenhouse's React Select dropdowns open with a full mouse sequence. Autofill follows the active field's menu ID, selects an equivalent option, moves focus away, and checks that a selected value persists. Search text alone is not a selection. City matching includes the Profile's state and country; ambiguous matches stay unresolved. Selected controls are still scanned when React Select empties or hides its search input.
 
 ## Local installation
@@ -20,7 +22,15 @@ Greenhouse's React Select dropdowns open with a full mouse sequence. Autofill fo
 
 After editing extension files, use the reload button on `chrome://extensions` and refresh the application webpage.
 
-Version 0.1.8 also needs the updated backend fill planner (restart the backend if it is not running with automatic reload) so city suggestions include state and country context.
+Version 0.2.0 requires restarting the backend/frontend, reloading the extension, and refreshing both JobPilot and any existing job tabs. Playwright browser autofill and its endpoints have been removed.
+
+## Launch and submission flow
+
+Click **Open with extension** on JobPilot's Autofill page. The extension opens the job, opens its side panel, and automatically rescans, including when the application form loads later. The Autofill page always presents the submission confirmation dialog.
+
+After a submit attempt followed by an explicit success confirmation, the extension closes the job tab and returns to Autofill. JobPilot automatically confirms Yes, saves the application, then closes the Autofill tab. A save failure keeps the dialog open for retry. Closing a job tab without success does not mark it applied; the user answers the dialog. Sites without a recognizable success confirmation require that manual answer. The extension itself never clicks Submit.
+
+Run `npm run extension:test:lifecycle` from the repository root for mocked Chrome lifecycle tests. Run the frontend `useExtensionApplication.test.js` suite for confirmation and save-failure tests. An installed-Chrome smoke test is still needed for each site's success screen.
 
 ## Browser regression checks
 
@@ -55,7 +65,7 @@ The extension is pre-enabled for Greenhouse, Ashby, Lever, Workday, SmartRecruit
    JOBPILOT_EXTENSION_IDS=your_32_character_extension_id
    ```
 
-4. Add the production frontend origin to `FRONTEND_ORIGIN`. Multiple origins can be comma-separated.
-5. Zip the contents of this directory—not its parent directory—and submit the package in the Chrome Web Store developer dashboard.
+4. Add the production frontend origin to `FRONTEND_ORIGIN`. Multiple origins can be comma-separated. Also add its exact origin to the manifest's `host_permissions` and the `app-bridge.js` content script's `matches`. The launch bridge only trusts these configured JobPilot origins; do not use a wildcard for it.
+5. Package only runtime assets (manifest, runtime JavaScript, sidepanel HTML/CSS, and icons), excluding tests and node_modules, and submit the package in the Chrome Web Store developer dashboard.
 
 The Chrome Web Store listing will also require screenshots, the 128px icon, a support contact, and a public privacy policy URL. Those account-owned publication steps cannot be performed by the repository itself.

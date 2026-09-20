@@ -48,7 +48,7 @@ function Dropdown({ id, label, options, asyncOptions, searchable = true, broken 
         {error && <div className="error-message" id={`${id}-error`}>{id === "country" ? "Select a country" : "This field is required."}</div>}
     </div>;
 }
-function Fixture({ only, broken, searchable = true, cityOptions = cities, buffered, delayed, placement, sponsorOptions }) {
+function Fixture({ only, broken, searchable = true, cityOptions = cities, buffered, delayed, placement, sponsorOptions, degreeOptions }) {
     return <form onSubmit={event => { event.preventDefault(); submissions++; }}>
         <div className="field" style={{ display: "flex", gap: 16 }}>
             {(!only || only === "country") && <Dropdown id="country" label="Country" options={countries} valueLabel="+1"/>}
@@ -57,6 +57,7 @@ function Fixture({ only, broken, searchable = true, cityOptions = cities, buffer
         {(!only || only === "city") && <Dropdown id="city" label="Location (City)" options={cityOptions} asyncOptions delayed={delayed} placement={placement}/>}
         {(!only || only === "sponsor") && <Dropdown id="sponsor" label="Will you require immigration sponsorship?" options={sponsorOptions || [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} searchable={searchable} broken={broken} buffered={buffered}/>}
         <label htmlFor="plain-city">City (plain text)</label><input id="plain-city"/>
+        {only === "degree" && <Dropdown id="degree" label="Degree" buffered={buffered} asyncOptions options={degreeOptions || [{ value: "associate", label: "Associate's Degree" }, { value: "bachelor", label: "Bachelor's Degree" }, { value: "master", label: "Master's Degree" }]}/>}
         <div id="decoy" role="listbox"><div role="option">No</div><div role="option">United States +1</div></div>
         <button id="outside" type="button">Outside focus target</button><button type="submit">Submit (must never be clicked)</button>
     </form>;
@@ -74,6 +75,20 @@ const fill = async (id, value, extra = {}) => {
     return (await send({ type: "JOBPILOT_APPLY_PLAN", answers: [{ fieldKey: id, value, action: "fill", ...extra }] })).results[0];
 };
 const tests = [
+    ["Full degree title commits Bachelor's Degree and clears validation after blur", async () => {
+        await mount({ only: "degree", buffered: "Bachelor of Science in Computer Science" });
+        const outcome = await fill("degree", "Bachelor of Science in Computer Science", { optionContext: { degreeLabel: "Bachelor's Degree" } });
+        document.getElementById("outside").focus();
+        await pause(150);
+        check(outcome.status === "filled" && selected.degree === "bachelor", "Degree option was not committed");
+        const field = (await scan()).find(item => item.fieldKey === "degree");
+        check(field.filled && !field.hasError, "Degree validation did not clear");
+    }],
+    ["Degree matching does not invent a different major", async () => {
+        await mount({ only: "degree", degreeOptions: [{ value: "arts", label: "Bachelor of Arts" }] });
+        const outcome = await fill("degree", "Bachelor of Science in Computer Science", { optionContext: { degreeLabel: "Bachelor's Degree" } });
+        check(outcome.status === "failed" && !selected.degree, "Different degree specialization was guessed");
+    }],
     ["Country commits an option object and survives real blur", async () => {
         await mount({ only: "country" });
         const outcome = await fill("country", "United States");

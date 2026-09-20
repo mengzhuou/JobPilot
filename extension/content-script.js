@@ -291,10 +291,13 @@
     const chooseAutocompleteOption = (options, value, context = {}) => {
         const target = comparableOption(value);
         let matches = options.filter(option => comparableOption(optionText(option)) === target);
+        if (!matches.length && context.degreeLabel) {
+            matches = options.filter(option => comparableOption(optionText(option)) === comparableOption(context.degreeLabel));
+        }
         if (!matches.length && context.city) {
             matches = options.filter(option => normalized(optionText(option).split(",")[0]) === normalized(context.city));
         }
-        if (!matches.length) matches = options.filter(option => semanticMatch([optionText(option)], value));
+        if (!matches.length && !context.degreeLabel) matches = options.filter(option => semanticMatch([optionText(option)], value));
         if (context.city && matches.length) {
             matches = matches.filter(option => normalized(optionText(option).split(",")[0]) === normalized(context.city));
             for (const hint of [context.state, context.country].filter(Boolean)) {
@@ -330,7 +333,7 @@
         if (!option && editable) {
             setNativeValue(element, "", { commit: false });
             await wait(40);
-            const query = /^(true|false)$/i.test(value) ? (comparableOption(value) === "yes" ? "Yes" : "No") : value;
+            const query = context?.degreeLabel || (/^(true|false)$/i.test(value) ? (comparableOption(value) === "yes" ? "Yes" : "No") : value);
             setNativeValue(element, query, { commit: false });
             await wait(100);
         }
@@ -363,7 +366,7 @@
             return { status: "failed", message: fieldErrorMessage(element) || "The application did not retain the selected suggestion. Please select it manually." };
         }
         // Search inputs become empty after React Select commits a separate value.
-        if (!reactSelectRoot(element) && !semanticMatch([committed], value)) {
+        if (!reactSelectRoot(element) && !chooseAutocompleteOption([{ textContent: committed }], value, context)) {
             return { status: "failed", message: "The application retained a different option. Please review this field." };
         }
         return { status: "filled" };

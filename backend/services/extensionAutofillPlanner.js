@@ -11,6 +11,21 @@ const clean = value => String(value ?? "").trim();
 const normalized = value => normalizeText(value);
 const containsAny = (value, phrases) => phrases.some(phrase => value.includes(phrase));
 
+// Degree dropdowns ask for a qualification level, not the major in its title.
+// Keep professional degrees distinct; a master's degree does not imply an MBA.
+const degreeLabel = value => {
+    const text = clean(value).toLowerCase().replace(/[.’']/g, "");
+    if (/^(bachelor\b|bachelors\b|bsc\b|bs\b|ba\b|beng\b)/.test(text)) return "Bachelor's Degree";
+    if (/^(associate\b|associates\b|aas\b|aa\b|as\b)/.test(text)) return "Associate's Degree";
+    if (/^(master of business administration\b|mba\b)/.test(text)) return "Master of Business Administration (M.B.A.)";
+    if (/^(master\b|masters\b|msc\b|ms\b|ma\b|meng\b)/.test(text)) return "Master's Degree";
+    if (/^(doctor of philosophy\b|phd\b)/.test(text)) return "Doctor of Philosophy (Ph.D.)";
+    if (/^(doctor of medicine\b|md\b)/.test(text)) return "Doctor of Medicine (M.D.)";
+    if (/^(juris doctor\b|jd\b)/.test(text)) return "Juris Doctor (J.D.)";
+    if (/^high school\b/.test(text)) return "High School";
+    return "";
+};
+
 const safeField = field => ({
     fieldKey: clean(field?.fieldKey).slice(0, 240),
     label: clean(field?.label || field?.question).slice(0, MAX_FIELD_TEXT),
@@ -140,7 +155,18 @@ const planField = (field, profile) => {
     if (containsAny(question, ["country"]) || field.autocomplete === "country-name") return fill(field, location.country, "Profile · Address", "Matched country.");
 
     if (containsAny(question, ["school", "university", "college"]) && !containsAny(question, ["graduate school"])) return fill(field, education.school, "Profile · Education", "Matched school.");
-    if (containsAny(question, ["degree", "education level", "highest level of education"])) return fill(field, [education.highest_level, ...(education.highest_level_form_options || [])], "Profile · Education", "Matched degree.");
+    if (containsAny(question, ["degree", "education level", "highest level of education"])) {
+        const label = degreeLabel(education.highest_level);
+        if (label && field.options.length) {
+            const choices = [education.highest_level, label, ...(education.highest_level_form_options || [])].map(normalized);
+            const exact = field.options.find(option => choices.includes(normalized(option)));
+            return exact ? fill(field, [exact], "Profile · Education", "Matched degree.")
+                : result(field, "ask_user", "", "Profile · Education", "No equivalent degree option was found. Please select your qualification.");
+        }
+        return fill(field, [education.highest_level, label, ...(education.highest_level_form_options || [])], "Profile · Education", "Matched degree.", {
+            optionContext: { degreeLabel: label },
+        });
+    }
     if (containsAny(question, ["major", "field of study"])) return fill(field, education.field_of_study, "Profile · Education", "Matched field of study.");
     if (containsAny(question, ["gpa", "grade point average"])) return fill(field, education.undergraduate_gpa, "Profile · Education", "Matched GPA.");
 

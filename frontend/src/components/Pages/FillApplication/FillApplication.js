@@ -1,15 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBriefcase, faBuilding, faCircleCheck, faCircleInfo, faClock, faListCheck, faLocationDot, faMoneyBillWave, faThumbsUp } from "@fortawesome/free-solid-svg-icons";
 import "./FillApplication.scss";
 import Button from "../../Button/Button";
+import useExtensionApplication from "./useExtensionApplication";
 import {
-    confirmJobApplication,
-    getApplicationStatus,
-    openAndFillApplication,
-    stopApplication as stopApplicationAgent,
     reportJob,
     getJobReportStatus,
     getJobPosting,
@@ -114,9 +111,6 @@ const FillApplication = () => {
         catch { return {}; }
     });
     const [jobUrl, setJobUrl] = useState(job.jobUrl || "");
-    const [status, setStatus] = useState("idle");
-    const [showConfirmation, setShowConfirmation] = useState(false);
-    const [isConfirming, setIsConfirming] = useState(false);
     const [error, setError] = useState("");
     const [reportStatus, setReportStatus] = useState("");
     const [showReportDialog, setShowReportDialog] = useState(false);
@@ -127,12 +121,6 @@ const FillApplication = () => {
     const [skillSaving, setSkillSaving] = useState("");
     const [skillNotice, setSkillNotice] = useState("");
     const [logoFailed, setLogoFailed] = useState(false);
-    const [autofillStartedAt, setAutofillStartedAt] = useState(null);
-    const [autofillElapsed, setAutofillElapsed] = useState(0);
-    const [invalidJobNotice, setInvalidJobNotice] = useState("");
-    const wasRunning = useRef(false);
-    const isStarting = status === "starting";
-    const isRunning = status === "running";
     const { qualifications, responsibilities } = splitRequirements(job.requirements);
     const matchedSkills = uniqueTags(job.profileMatch?.matchedSkills || []);
     const isMatchedSkill = skill => matchedSkills.some(profileSkill => equivalentSkill(profileSkill, skill));
@@ -148,17 +136,6 @@ const FillApplication = () => {
         ["Salary or compensation", faMoneyBillWave, formatCompensation(job.salary)],
         ["Career source", faBriefcase, displayValue(job.source)],
     ].filter(([, , value]) => value !== "N/A");
-    const showInvalidJobNotice = outcome => {
-        wasRunning.current = false;
-        setAutofillStartedAt(null);
-        setShowConfirmation(false);
-        setStatus("invalid");
-        setHasReported(Boolean(outcome?.reportSubmitted));
-        setReportStatus("");
-        setInvalidJobNotice(outcome?.reportSubmitted
-            ? "This job page is unavailable. JobPilot marked it as not applicable and reported it to the moderator."
-            : "This job page is unavailable. JobPilot marked it as not applicable.");
-    };
 
     useEffect(() => {
         if (!jobId) return;
@@ -192,18 +169,9 @@ const FillApplication = () => {
     useEffect(() => setLogoFailed(false), [job.company, job.jobUrl, job.url]);
 
     useEffect(() => {
-        setInvalidJobNotice("");
         setReportStatus("");
         setHasReported(false);
     }, [jobUrl]);
-
-    useEffect(() => {
-        if (!autofillStartedAt || (!isStarting && !isRunning)) return undefined;
-        const updateElapsed = () => setAutofillElapsed(Math.max(0, Math.floor((Date.now() - autofillStartedAt) / 1000)));
-        updateElapsed();
-        const timer = window.setInterval(updateElapsed, 1000);
-        return () => window.clearInterval(timer);
-    }, [autofillStartedAt, isStarting, isRunning]);
 
     useEffect(() => {
         const persistedJobUrl = job.jobUrl;
@@ -214,28 +182,6 @@ const FillApplication = () => {
             .catch(requestError => console.error("Failed to check report status:", requestError));
         return () => { active = false; };
     }, [isAdmin, job.jobUrl]);
-
-    useEffect(() => {
-        if (!isStarting && !isRunning) return undefined;
-        const syncStatus = async () => {
-            try {
-                const result = await getApplicationStatus();
-                if (result.outcome?.type === "invalid_job" && result.outcome.jobUrl === jobUrl) {
-                    showInvalidJobNotice(result.outcome);
-                    return;
-                }
-                if (wasRunning.current && !result.running) setShowConfirmation(true);
-                wasRunning.current = result.running;
-                setStatus(current => current === "idle" && !result.running
-                    ? current
-                    : result.status);
-            } catch (requestError) {
-                console.error("Failed to fetch application status:", requestError);
-            }
-        };
-        const statusTimer = setInterval(syncStatus, 1000);
-        return () => clearInterval(statusTimer);
-    }, [jobUrl, isRunning, isStarting]);
 
     const applicationPayload = {
         jobUrl,
@@ -253,69 +199,8 @@ const FillApplication = () => {
         requirements: job.requirements,
     };
 
-    const startApplication = async () => {
-        if (!jobUrl.trim()) return;
-        setError("");
-        setAutofillStartedAt(Date.now());
-        setAutofillElapsed(0);
-        setStatus("starting");
-        try {
-            await openAndFillApplication(applicationPayload);
-            const result = await getApplicationStatus();
-            if (result.outcome?.type === "invalid_job" && result.outcome.jobUrl === jobUrl) {
-                showInvalidJobNotice(result.outcome);
-            } else {
-                wasRunning.current = true;
-                setStatus("running");
-            }
-        } catch (requestError) {
-            setStatus("error");
-            setError(requestError.response?.data?.message
-                || requestError.message
-                || "Failed to start Playwright.");
-        }
-    };
-
-    const openWithExtension = () => {
-        if (!jobUrl.trim() || hasReported) return;
-        setError("");
-        window.open(jobUrl.trim(), "_blank", "noopener,noreferrer");
-        setStatus("extension");
-    };
-
-    const stopApplication = async () => {
-        try {
-            await stopApplicationAgent();
-            wasRunning.current = false;
-            setAutofillStartedAt(null);
-            setStatus("stopped");
-            setShowConfirmation(true);
-        } catch (requestError) {
-            setStatus("error");
-            setError(requestError.message || "Failed to stop Playwright.");
-        }
-    };
-
-    const confirmApplied = async () => {
-        setIsConfirming(true);
-        setError("");
-        try {
-            await confirmJobApplication(applicationPayload);
-            localStorage.setItem("jobpilot.application.confirmed", JSON.stringify({
-                externalJobId: job.externalJobId,
-                jobUrl,
-                confirmedAt: Date.now(),
-            }));
-            setShowConfirmation(false);
-            setStatus("applied");
-            setIsConfirming(false);
-            window.setTimeout(() => window.close(), 50);
-        } catch (requestError) {
-            setError(requestError.response?.data?.message
-                || "Unable to save this application.");
-            setIsConfirming(false);
-        }
-    };
+    const { status, showConfirmation, setShowConfirmation, isConfirming, error: extensionError,
+        openWithExtension, confirmApplied } = useExtensionApplication(applicationPayload);
 
     const reportSelectedJob = async () => {
         const reasonDetail = otherReportReason.trim();
@@ -401,7 +286,6 @@ const FillApplication = () => {
                         <h1>{job.jobTitle || "Autofill an application"}</h1>
                     </div>
                     <div className="autofill-heading-actions">
-                        {jobUrl && <a className="open-original-job" href={jobUrl} target="_blank" rel="noreferrer">Open original job ↗</a>}
                         <span className={`autofill-status status-${status}`}>{status}</span>
                     </div>
                 </div>
@@ -428,41 +312,33 @@ const FillApplication = () => {
                 </section>}
 
                 <label className="application-url-label">
-                    <span className="application-url-heading">Application URL <span className="autofill-help-icon" tabIndex="0" aria-label="How Autofill works"><FontAwesomeIcon icon={faCircleInfo}/><span className="autofill-help-tooltip" role="tooltip"><b>How Autofill works</b><span>Open the application in Chrome, click the pinned JobPilot extension, and review every answer before submitting. The legacy browser agent remains available only as a fallback.</span></span></span></span>
+                    <span className="application-url-heading">Application URL <span className="autofill-help-icon" tabIndex="0" aria-label="How Autofill works"><FontAwesomeIcon icon={faCircleInfo}/><span className="autofill-help-tooltip" role="tooltip"><b>How Autofill works</b><span>Open the application with JobPilot to scan its fields automatically. Review your answers before submitting. When the site confirms submission, JobPilot records your application and closes these application tabs.</span></span></span></span>
                     <div className={`job-url-section${isAdmin ? "" : " no-report"}`}>
-                        <input type="url" maxLength={MAX_INPUT_LENGTH} value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isStarting || isRunning} />
-                        {isStarting ? <Button disabled>Starting…</Button>
-                            : isRunning ? <Button onClick={stopApplication}>Finish</Button>
-                                : <Button onClick={openWithExtension} disabled={hasReported}>{hasReported ? "Reported" : "Open with extension"}</Button>}
+                        <input type="url" maxLength={MAX_INPUT_LENGTH} value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isConfirming} />
+                        <Button onClick={openWithExtension} disabled={hasReported || isConfirming}>{hasReported ? "Reported" : "Open with extension"}</Button>
                         {isAdmin && <button className="report-job-button" type="button" disabled={hasReported} onClick={()=>setShowReportDialog(true)}>{hasReported ? "Reported" : "Report job"}</button>}
                     </div>
-                    {!hasReported && !isStarting && !isRunning && <button className="legacy-autofill-link" type="button" onClick={startApplication}>Extension cannot fill this site? Use legacy browser autofill</button>}
                 </label>
 
                 {reportStatus && <div className="autofill-report-status" role="status">{reportStatus}</div>}
 
-                {(isStarting || isRunning) && <section className="autofill-live-progress" aria-live="polite">
-                    <div className="autofill-live-orbit" aria-hidden="true"><i/><i/><i/></div>
-                    <div><span>{isStarting ? "Opening your application" : "Autofill is working"}</span><strong>{autofillElapsed}s elapsed</strong><p>{autofillElapsed < 15 ? "Connecting to the application and reading the form." : autofillElapsed < 45 ? "Matching your saved Profile details to the available fields." : "This application is taking longer than usual. Keep the browser tab open while JobPilot continues."}</p></div>
-                </section>}
+                {(error || extensionError) && <div className="autofill-error" role="alert">{error || extensionError}</div>}
 
-                {error && <div className="autofill-error" role="alert">{error}</div>}
-
-                {(isRunning || status === "extension") && <button className="finished-link" type="button" onClick={() => setShowConfirmation(true)}>I finished applying</button>}
+                {["extension", "closed", "submitted"].includes(status) && <button className="finished-link" type="button" onClick={() => setShowConfirmation(true)}>I finished applying</button>}
             </section>
 
             {skillNotice && <div className="skill-snackbar" role="status" aria-live="polite"><FontAwesomeIcon icon={faCircleCheck}/><span>{skillNotice}</span></div>}
-            {invalidJobNotice && <div className="invalid-job-snackbar" role="status" aria-live="assertive"><span className="invalid-job-snackbar-icon" aria-hidden="true">!</span><p>{invalidJobNotice}</p></div>}
 
             {showConfirmation && (
                 <div className="confirmation-backdrop">
                     <section className="application-confirmation" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
-                        <button className="confirmation-close" type="button" onClick={() => setShowConfirmation(false)} aria-label="Close">×</button>
+                        <button className="confirmation-close" type="button" onClick={() => setShowConfirmation(false)} disabled={isConfirming} aria-label="Close">×</button>
                         <div className="confirmation-icon">✓</div>
                         <h2 id="confirmation-title">Did you apply?</h2>
                         <p>Let us know so JobPilot can track your application and keep your job list current.</p>
+                        {extensionError && <p className="autofill-error" role="alert">{extensionError}</p>}
                         <button className="confirm-applied" type="button" onClick={confirmApplied} disabled={isConfirming}>{isConfirming ? "Saving…" : "Yes, I applied!"}</button>
-                        <button className="confirm-not-applied" type="button" onClick={() => setShowConfirmation(false)}>No, I didn&apos;t apply</button>
+                        <button className="confirm-not-applied" type="button" disabled={isConfirming} onClick={() => setShowConfirmation(false)}>No, I didn&apos;t apply</button>
                     </section>
                 </div>
             )}

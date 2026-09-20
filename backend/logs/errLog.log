@@ -116,3 +116,4 @@
 20260919	17:53:58	91228d18-bd75-485a-bb94-d364dc580958	Error: page.title: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
 20260919	17:54:33	1d04606a-d137-46f7-8a34-9cf029c34717	Error: page.waitForTimeout: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000
 20260919	18:58:20	0fcbfe4f-991b-4165-aaf7-56301b89ffed	TypeError: Cannot read properties of null (reading 'exposeFunction')	POST	/api/applications/start	http://localhost:3000
+20260920	13:38:45	de3a2c68-f978-479e-8d80-19e6979b9b18	Error: page.waitForTimeout: Target page, context or browser has been closed	POST	/api/applications/start	http://localhost:3000

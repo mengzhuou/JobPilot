@@ -62,4 +62,15 @@ assert.equal(byKey.resume.action, "skip");
 assert.equal(byKey.resume.resumeAttachment, true);
 assert.deepEqual(plan.summary, { total: 10, ready: 6, needsReview: 2, skipped: 2 });
 
+for (const [title, label] of [["Bachelor of Science in Computer Science", "Bachelor's Degree"], ["B.S.", "Bachelor's Degree"], ["Master of Science", "Master's Degree"], ["MBA", "Master of Business Administration (M.B.A.)"]]) {
+    const degreeProfile = { ...profile, education: { highest_level: title } };
+    const degreeField = { fieldKey: "degree", label: "Degree", type: "combobox", hasError: true, filled: true };
+    const custom = createDeterministicFillPlan({ fields: [degreeField], profile: degreeProfile }).answers[0];
+    assert.equal(custom.action, "fill");
+    assert.equal(custom.optionContext.degreeLabel, label);
+    const native = createDeterministicFillPlan({ fields: [{ ...degreeField, options: ["Associate's Degree", label] }], profile: degreeProfile }).answers[0];
+    assert.equal(native.value, label);
+}
+const mismatchedDegree = createDeterministicFillPlan({ fields: [{ fieldKey: "degree", label: "Degree", type: "select", options: ["Bachelor of Arts", "Master's Degree"] }], profile }).answers[0];
+assert.equal(mismatchedDegree.action, "ask_user");
 console.log("Extension autofill planner checks passed.");

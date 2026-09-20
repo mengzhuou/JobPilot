@@ -288,7 +288,9 @@ const renderPlan = summary => {
     renderFields();
 };
 
+let scanGeneration = 0;
 const scanAndPlan = async () => {
+    const generation = ++scanGeneration;
     state.results.clear();
     state.aiAnswers = [];
     state.unresolvedFields = [];
@@ -298,13 +300,16 @@ const scanAndPlan = async () => {
     show(elements.actionsView, false);
     setStatus("Inspecting this application", "Looking for fields JobPilot can safely complete.");
     try {
-        state.scan = await send({ type: "JOBPILOT_SCAN" });
+        const scan = await send({ type: "JOBPILOT_SCAN" });
+        if (generation !== scanGeneration) return;
+        state.scan = scan;
         elements.jobTitle.textContent = state.scan.job?.title || "Application page";
         elements.jobCompany.textContent = state.scan.job?.company || new URL(state.scan.job?.url || "https://example.com").hostname;
         if (state.scan.unavailable) throw new Error("This application page appears to be unavailable.");
         if (!state.scan.fields.length) throw new Error("No visible application fields were found on this page.");
 
         const plan = await send({ type: "JOBPILOT_BUILD_PLAN", fields: state.scan.fields });
+        if (generation !== scanGeneration) return;
         const pendingFileFields = state.scan.fields.filter(field => field.type === "file" && !field.filled);
         const clearlyResumeFields = pendingFileFields.filter(field => /\b(resume|résumé|curriculum vitae|cv)\b/i.test(
             `${field.label || ""} ${field.name || ""} ${field.context || ""}`
@@ -338,6 +343,7 @@ const scanAndPlan = async () => {
         );
         if (plan.missingProfileFields?.length) toast(`Profile could be stronger: ${plan.missingProfileFields.join(", ")}.`);
     } catch (error) {
+        if (generation !== scanGeneration) return;
         state.plan = [];
         setStatus("JobPilot needs your attention", error.message, "error");
     }
@@ -434,6 +440,15 @@ elements.disconnectButton.addEventListener("click", async () => {
     toast("This Chrome extension is disconnected from JobPilot.");
 });
 elements.rescanButton.addEventListener("click", scanAndPlan);
+let launchScanTimer;
+chrome.runtime.onMessage.addListener(message => {
+    if (message.type !== "JOBPILOT_RESCAN_REQUEST") return;
+    window.clearTimeout(launchScanTimer);
+    launchScanTimer = window.setTimeout(async () => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (state.connected && tab?.id === message.tabId && tab.windowId === message.windowId) await scanAndPlan();
+    }, 150);
+});
 elements.reviewBackButton.addEventListener("click", () => setView("main"));
 elements.fillButton.addEventListener("click", () => applyAnswers(state.plan.filter(answer => answer.action === "fill")));
 elements.aiButton.addEventListener("click", () => {

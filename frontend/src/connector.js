@@ -12,45 +12,6 @@ const api = axios.create({
     withCredentials: true,
 });
 
-const openAndFillApplication = async (application) => {
-    try {
-        const res = await api.post(
-            "/api/applications/start",
-            application,
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                },
-            }
-        );
-
-        return res.data;
-    } catch (error) {
-        console.error(
-            "Error opening and filling application:",
-            error
-        );
-        throw error;
-    }
-};
-
-const stopApplication = async () => {
-    try {
-        const res = await api.post("/api/applications/stop");
-
-        return res.data;
-    } catch (error) {
-        console.error("Error stopping application:", error);
-        throw error;
-    }
-};
-
-const getApplicationStatus = async () => {
-    const res = await api.get("/api/applications/status");
-
-    return res.data;
-};
-
 const getActiveJobPostings = async ({
     query = "software engineer",
     location = "",
@@ -176,9 +137,6 @@ const deleteJobApplication = async id => {
 };
 
 export {
-    openAndFillApplication,
-    stopApplication,
-    getApplicationStatus,
     getActiveJobPostings,
     getJobPosting,
     addCareerSource,

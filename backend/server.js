@@ -29,7 +29,6 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.SESSION_SECRET) {
 const express = require("express");
 const cors = require("cors");
 
-const applicationRoutes = require("./routes/applicationRoutes");
 const jobPostingRoutes = require("./routes/jobPostingRoutes");
 const authRoutes = require("./routes/authRoutes");
 const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
@@ -90,7 +89,6 @@ app.use("/api/job-applications", jobApplicationRoutes);
 app.use("/api/job-preferences", jobPreferenceRoutes);
 app.use("/api/filter-presets", require("./routes/filterPresetRoutes"));
 app.use("/api/feedback", feedbackRoutes);
-app.use("/api/applications", applicationRoutes);
 app.use("/api/job-postings", jobPostingRoutes);
 app.use("/api/job-moderation", jobModerationRoutes);
 app.use("/api/job-analytics", jobAnalyticsRoutes);

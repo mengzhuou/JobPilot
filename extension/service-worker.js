@@ -1,4 +1,13 @@
 const DEFAULT_BACKEND_URL = "http://localhost:3500";
+importScripts("application-lifecycle.js");
+const applicationLifecycle = createApplicationLifecycle(chrome);
+chrome.tabs.onUpdated.addListener((tabId, change) => {
+    if (change.status === "complete") applicationLifecycle.ready(tabId).catch(console.error);
+});
+chrome.webNavigation.onCompleted.addListener(details => {
+    if (details.frameId !== 0) applicationLifecycle.ready(details.tabId).catch(console.error);
+});
+chrome.tabs.onRemoved.addListener(tabId => applicationLifecycle.removed(tabId).catch(console.error));
 const STORAGE_KEYS = Object.freeze({
     backendUrl: "jobpilotBackendUrl",
     token: "jobpilotExtensionToken",
@@ -201,8 +210,18 @@ const focusInActiveTab = async fieldKey => {
     return response;
 };
 
-const handleMessage = async message => {
+const handleMessage = async (message, sender) => {
     switch (message?.type) {
+        case "JOBPILOT_LAUNCH":
+            return applicationLifecycle.launch(message, sender);
+        case "JOBPILOT_LAUNCH_STATUS":
+            return applicationLifecycle.status(sender);
+        case "JOBPILOT_APPLICATION_SAVED":
+            return applicationLifecycle.saved(message, sender);
+        case "JOBPILOT_APPLICATION_FORM_SEEN":
+        case "JOBPILOT_APPLICATION_SUBMIT_ATTEMPT":
+        case "JOBPILOT_APPLICATION_SUBMITTED":
+            return applicationLifecycle.observed(message, sender);
         case "JOBPILOT_GET_CONNECTION": {
             const settings = await connectionSettings();
             return {
@@ -262,7 +281,8 @@ const handleMessage = async message => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!String(message?.type || "").startsWith("JOBPILOT_")) return false;
-    handleMessage(message)
+    if (message.type === "JOBPILOT_RESCAN_REQUEST") return false;
+    handleMessage(message, sender)
         .then(data => sendResponse({ ok: true, data }))
         .catch(error => sendResponse({ ok: false, error: error.message || "JobPilot extension error." }));
     return true;
