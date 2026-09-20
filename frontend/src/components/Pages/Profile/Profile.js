@@ -11,7 +11,19 @@ import "./ProfileRefinements.scss";
 import "./ProfileExtension.scss";
 
 const tabs = [["extension","Chrome Extension"],["personal","Personal"],["education","Education"],["experience","Work Experience"],["skills","Skills"],["preferences","Preferences"],["equal-employment","Equal Employment"]];
-const normalizeProfile = profile => ({ ...profile, skills:Array.isArray(profile.skills) ? profile.skills : [...new Set(Object.values(profile.skills || {}).flat())] });
+const EQUAL_EMPLOYMENT_FIELDS = ["Authorized to work in the United States","Requires employment sponsorship","Citizenship status","Gender","Hispanic or Latino","Race","Veteran status","Disability","Sexual orientation","Transgender experience"];
+const normalizeProfile = profile => {
+    const equalEmployment = Array.isArray(profile.equalEmployment) ? profile.equalEmployment : [];
+    const existing = new Map(equalEmployment.map(row => [String(row?.[0] || "").toLowerCase(), row]));
+    return {
+        ...profile,
+        skills:Array.isArray(profile.skills) ? profile.skills : [...new Set(Object.values(profile.skills || {}).flat())],
+        equalEmployment: [
+            ...EQUAL_EMPLOYMENT_FIELDS.map(label => existing.get(label.toLowerCase()) || [label, ""]),
+            ...equalEmployment.filter(row => !EQUAL_EMPLOYMENT_FIELDS.some(label => label.toLowerCase() === String(row?.[0] || "").toLowerCase())),
+        ],
+    };
+};
 
 const SocialIcon = ({ type }) => {
     if(String(type).toLowerCase() === "portfolio") return <FontAwesomeIcon icon={faGlobe}/>;

@@ -2,6 +2,8 @@
 
 The extension is a Manifest V3 companion for JobPilot. It scans the application in the active Chrome tab, previews Profile-based answers in a native side panel, and fills only after the user clicks a fill button. It never submits an application.
 
+Autofill also attaches the user's primary JobPilot résumé to a detected résumé/CV file field, types into autocomplete controls and selects the closest equivalent option, then rescans the application so the side panel reflects the updated form.
+
 ## Local installation
 
 1. Start the JobPilot backend on `http://localhost:3500` and frontend on `http://localhost:3000`.
@@ -23,8 +25,10 @@ The extension is pre-enabled for Greenhouse, Ashby, Lever, Workday, SmartRecruit
 - Pairing codes expire after 10 minutes and work once.
 - The extension stores a revocable, 90-day scoped token in `chrome.storage.local`.
 - The extension never contains database credentials or `OPENAI_API_KEY`.
-- OpenAI is called only after **Use AI for unresolved fields** is clicked.
-- AI suggestions require individual review and selection before filling.
+- OpenAI is called only after **Generate AI suggestions** or a per-answer **Ask AI to improve** button is clicked.
+- Generated answers open in a dedicated review view. The user can edit them, request a revised answer, or jump to the matching application field before clicking **Apply AI suggestions**.
+- AI drafts use the editable Profile, cached résumé text, cached public portfolio text, and relevant answers the user previously reviewed. LinkedIn is not scraped; work history comes from the Profile.
+- A résumé is extracted once per uploaded file, and a public portfolio is fetched once per saved URL. Reviewed answers and factual story context are saved for similar future questions.
 - Existing field values are never overwritten.
 - Passwords, signatures, certifications, file uploads, and unsupported legal fields are not filled.
 - The extension never submits an application.
@@ -43,4 +47,3 @@ The extension is pre-enabled for Greenhouse, Ashby, Lever, Workday, SmartRecruit
 5. Zip the contents of this directory—not its parent directory—and submit the package in the Chrome Web Store developer dashboard.
 
 The Chrome Web Store listing will also require screenshots, the 128px icon, a support contact, and a public privacy policy URL. Those account-owned publication steps cannot be performed by the repository itself.
-

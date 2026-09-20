@@ -27,12 +27,17 @@ const create = async (userId, resume) => {
         if (count.rows[0].count >= 5) throw Object.assign(new Error("You can save up to 5 resumes."), { statusCode: 400 });
         const result = await client.query(
             `INSERT INTO jobpilot.user_resumes
-                (user_id, file_name, display_name, target_job_title, mime_type, file_size, file_data, is_primary)
-             VALUES ($1::UUID, $2, $3, $4, $5, $6, $7, NOT EXISTS (
+                (user_id, file_name, display_name, target_job_title, mime_type, file_size, file_data,
+                 extracted_text, extracted_at, extraction_error, is_primary)
+             VALUES ($1::UUID, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOT EXISTS (
                  SELECT 1 FROM jobpilot.user_resumes WHERE user_id=$1::UUID AND is_primary
              ))
              RETURNING ${summaryColumns}`,
-            [userId, resume.fileName, resume.displayName, resume.targetJobTitle || null, resume.mimeType, resume.fileSize, resume.fileData]
+            [
+                userId, resume.fileName, resume.displayName, resume.targetJobTitle || null,
+                resume.mimeType, resume.fileSize, resume.fileData,
+                resume.extractedText || null, resume.extractedAt || null, resume.extractionError || null,
+            ]
         );
         await client.query("COMMIT");
         return result.rows[0];
@@ -94,11 +99,24 @@ const findFile = async (userId, id) => {
 
 const findPrimaryFile = async userId => {
     const result = await pool.query(
-        `SELECT file_name, display_name, target_job_title, mime_type, file_data FROM jobpilot.user_resumes
+        `SELECT id, file_name, display_name, target_job_title, mime_type, file_data,
+                extracted_text, extracted_at, extraction_error
+         FROM jobpilot.user_resumes
          WHERE user_id=$1::UUID AND is_primary=true`,
         [userId]
     );
     return result.rows[0];
+};
+
+const saveExtractedText = async (userId, id, { text, error }) => {
+    const result = await pool.query(
+        `UPDATE jobpilot.user_resumes
+         SET extracted_text=$1, extracted_at=NOW(), extraction_error=$2
+         WHERE id=$3::UUID AND user_id=$4::UUID
+         RETURNING extracted_text, extracted_at, extraction_error`,
+        [text || null, error || null, id, userId]
+    );
+    return result.rows[0] || null;
 };
 
 const remove = async (userId, id) => {
@@ -131,4 +149,4 @@ const remove = async (userId, id) => {
     }
 };
 
-module.exports = { listByUserId, create, update, setPrimary, findFile, findPrimaryFile, remove };
+module.exports = { listByUserId, create, update, setPrimary, findFile, findPrimaryFile, saveExtractedText, remove };

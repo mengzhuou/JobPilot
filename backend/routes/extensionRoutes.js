@@ -32,8 +32,9 @@ router.post("/exchange", pairingLimiter, controller.exchange);
 router.use(requireExtensionAuth);
 router.delete("/connection", controller.disconnect);
 router.get("/autofill-profile", controller.getMappedProfile);
+router.get("/primary-resume", controller.primaryResume);
 router.post("/fill-plan", controller.fillPlan);
 router.post("/ai-plan", aiLimiter, controller.aiPlan);
+router.post("/answer-memory", controller.saveAnswerMemory);
 
 module.exports = router;
-

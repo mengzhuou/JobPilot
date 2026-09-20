@@ -1,5 +1,6 @@
 const path = require("path");
 const repository = require("../repositories/resumeRepository");
+const { extractResumeText } = require("../services/resumeTextService");
 
 const allowedExtensions = new Set([".pdf", ".doc", ".docx"]);
 const allowedMimeTypes = new Set([
@@ -31,9 +32,17 @@ const create = async (req, res, next) => {
         const displayName = cleanText(req.body.displayName) || displayNameFromFile(file.originalname);
         const targetJobTitle = cleanText(req.body.targetJobTitle);
         assertResumeText({ displayName, targetJobTitle });
+        let extractedText = "";
+        let extractionError = "";
+        try {
+            extractedText = await extractResumeText({ fileData: file.buffer, mimeType: file.mimetype });
+        } catch (error) {
+            extractionError = String(error.message || "Résumé text could not be extracted.").slice(0, 500);
+        }
         const resume = await repository.create(req.auth.userId, {
             fileName: path.basename(file.originalname), displayName, targetJobTitle,
             mimeType: file.mimetype, fileSize: file.size, fileData: file.buffer,
+            extractedText, extractedAt: new Date(), extractionError,
         });
         return res.status(201).json({ resume });
     } catch (error) { return next(error); }

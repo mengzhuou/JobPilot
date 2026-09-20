@@ -74,6 +74,7 @@ app.use(cors({
         return callback(new Error("Origin is not allowed by JobPilot CORS"));
     },
     credentials: true,
+    exposedHeaders: ["X-JobPilot-Filename"],
 }));
 
 app.use(express.json());

@@ -41,6 +41,36 @@ const apiRequest = async (path, { method = "GET", body, requiresToken = true } =
     return payload;
 };
 
+const arrayBufferToBase64 = buffer => {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return btoa(binary);
+};
+
+const downloadPrimaryResume = async () => {
+    const settings = await connectionSettings();
+    if (!settings.token) throw new Error("Connect this extension to your JobPilot account first.");
+    const response = await fetch(`${settings.backendUrl}/api/extension/primary-resume`, {
+        headers: { Authorization: `Bearer ${settings.token}` },
+    });
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.message || `Primary résumé download failed (${response.status}).`);
+    }
+    const encodedName = response.headers.get("X-JobPilot-Filename") || "resume.pdf";
+    let fileName = "resume.pdf";
+    try { fileName = decodeURIComponent(encodedName); } catch { fileName = encodedName; }
+    return {
+        fileName,
+        mimeType: response.headers.get("content-type") || "application/octet-stream",
+        base64: arrayBufferToBase64(await response.arrayBuffer()),
+    };
+};
+
 const activeTab = async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error("No active browser tab was found.");
@@ -92,7 +122,38 @@ const scanActiveTab = async () => {
     };
 };
 
-const applyToActiveTab = async answers => {
+const attachResumeToActiveTab = async (tab, fileFields) => {
+    if (!fileFields.length) return [];
+    let resume;
+    try {
+        resume = await downloadPrimaryResume();
+    } catch (error) {
+        return fileFields.map(field => ({ fieldKey: field.fieldKey, status: "failed", message: error.message }));
+    }
+    return Promise.all(fileFields.map(async field => {
+        const [frameText, ...keyParts] = String(field.fieldKey || "").split("::");
+        const frameId = Number(frameText);
+        if (!Number.isInteger(frameId) || !keyParts.length) {
+            return { fieldKey: field.fieldKey, status: "failed", message: "The résumé field could not be located." };
+        }
+        try {
+            const response = await sendToFrame(tab.id, frameId, {
+                type: "JOBPILOT_ATTACH_RESUME",
+                fieldKey: keyParts.join("::"),
+                file: resume,
+            });
+            return {
+                fieldKey: field.fieldKey,
+                status: response?.status || "failed",
+                message: response?.message,
+            };
+        } catch (error) {
+            return { fieldKey: field.fieldKey, status: "failed", message: "The application rejected the résumé attachment." };
+        }
+    }));
+};
+
+const applyToActiveTab = async (answers, fileFields = []) => {
     const tab = await activeTab();
     await ensureContentScript(tab);
     const grouped = (answers || []).reduce((all, answer) => {
@@ -122,7 +183,22 @@ const applyToActiveTab = async answers => {
             }));
         }
     }));
-    return responseGroups.flat();
+    const fileResults = await attachResumeToActiveTab(tab, fileFields);
+    return [...responseGroups.flat(), ...fileResults];
+};
+
+const focusInActiveTab = async fieldKey => {
+    const tab = await activeTab();
+    await ensureContentScript(tab);
+    const [frameText, ...keyParts] = String(fieldKey || "").split("::");
+    const frameId = Number(frameText);
+    if (!Number.isInteger(frameId) || !keyParts.length) throw new Error("This application field could not be located.");
+    const response = await sendToFrame(tab.id, frameId, {
+        type: "JOBPILOT_FOCUS_FIELD",
+        fieldKey: keyParts.join("::"),
+    });
+    if (!response?.focused) throw new Error(response?.error || "This application field could not be located.");
+    return response;
 };
 
 const handleMessage = async message => {
@@ -161,11 +237,23 @@ const handleMessage = async message => {
                 body: { fields: message.fields },
             });
         case "JOBPILOT_APPLY":
-            return { results: await applyToActiveTab(message.answers) };
+            return { results: await applyToActiveTab(message.answers, message.fileFields || []) };
+        case "JOBPILOT_FOCUS":
+            return focusInActiveTab(message.fieldKey);
         case "JOBPILOT_AI_PLAN":
             return apiRequest("/api/extension/ai-plan", {
                 method: "POST",
-                body: { fields: message.fields, job: message.job },
+                body: {
+                    fields: message.fields,
+                    job: message.job,
+                    guidance: message.guidance,
+                    draftAnswers: message.draftAnswers,
+                },
+            });
+        case "JOBPILOT_SAVE_ANSWER_MEMORY":
+            return apiRequest("/api/extension/answer-memory", {
+                method: "POST",
+                body: { memories: message.memories, job: message.job },
             });
         default:
             throw new Error("Unknown JobPilot extension action.");
@@ -179,4 +267,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch(error => sendResponse({ ok: false, error: error.message || "JobPilot extension error." }));
     return true;
 });
-

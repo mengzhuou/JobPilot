@@ -1,8 +1,9 @@
 const elements = Object.fromEntries([
-    "connectionView", "workspaceView", "disconnectButton", "backendUrl", "pairingCode", "connectButton",
-    "jobTitle", "jobCompany", "rescanButton", "statusCard", "statusTitle", "statusMessage", "summaryView",
-    "readyCount", "reviewCount", "skippedCount", "fieldSection", "fieldCount", "fieldList", "actionsView",
-    "fillButton", "aiButton", "applyAiButton", "toast",
+    "connectionView", "workspaceView", "mainView", "reviewView", "disconnectButton", "backendUrl",
+    "pairingCode", "connectButton", "jobTitle", "jobCompany", "rescanButton", "statusCard",
+    "statusTitle", "statusMessage", "summaryView", "readyCount", "reviewCount", "skippedCount",
+    "fieldSection", "fieldCount", "fieldList", "actionsView", "fillButton", "aiButton", "toast",
+    "reviewBackButton", "aiReviewCount", "aiReviewList", "applyAiButton",
 ].map(id => [id, document.getElementById(id)]));
 
 const state = {
@@ -11,7 +12,7 @@ const state = {
     plan: [],
     results: new Map(),
     aiAnswers: [],
-    selectedAi: new Set(),
+    unresolvedFields: [],
 };
 
 const send = message => new Promise((resolve, reject) => {
@@ -34,6 +35,11 @@ const setStatus = (title, message, mode = "loading") => {
     elements.statusMessage.textContent = message;
     elements.statusCard.classList.toggle("error", mode === "error");
     elements.statusCard.classList.toggle("success", mode === "success");
+};
+const setView = view => {
+    show(elements.mainView, view === "main");
+    show(elements.reviewView, view === "review");
+    document.scrollingElement?.scrollTo({ top: 0, behavior: "smooth" });
 };
 const formatCode = value => {
     const raw = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
@@ -60,6 +66,7 @@ const fieldClass = answer => {
     const outcome = state.results.get(answer.fieldKey);
     if (outcome?.status === "filled") return "filled";
     if (outcome?.status === "failed") return "failed";
+    if (answer.aiSuggestion) return answer.action === "fill" && answer.value ? "review" : "skipped";
     if (answer.action === "fill") return "ready";
     if (answer.action === "ask_user") return "review";
     return "skipped";
@@ -69,35 +76,48 @@ const statusFor = (answer, className) => {
     const outcome = state.results.get(answer.fieldKey);
     if (outcome?.status === "filled") return "Filled on this page";
     if (outcome?.status === "failed") return outcome.message || "Could not fill this field";
+    if (answer.aiSuggestion && answer.value) return "AI suggestion ready for your review";
     if (answer.action === "fill") return answer.reason || "Ready from Profile";
     if (answer.action === "ask_user") return answer.reason || "Needs your review";
     return answer.reason || "Skipped";
 };
+const focusField = async fieldKey => {
+    try {
+        await send({ type: "JOBPILOT_FOCUS", fieldKey });
+    } catch (error) {
+        toast(error.message);
+    }
+};
 
-const renderFields = () => {
-    elements.fieldList.replaceChildren();
+const combinedAnswers = () => {
     const aiByKey = new Map(state.aiAnswers.map(answer => [answer.fieldKey, answer]));
-    const answers = [
+    return [
         ...state.plan.map(answer => aiByKey.get(answer.fieldKey) || answer),
         ...state.aiAnswers.filter(ai => !state.plan.some(answer => answer.fieldKey === ai.fieldKey)),
     ];
+};
+
+const renderFields = () => {
+    elements.fieldList.replaceChildren();
+    const answers = combinedAnswers();
     answers.forEach(answer => {
         const scanned = state.scan?.fields.find(field => field.fieldKey === answer.fieldKey);
-        const className = answer.aiSuggestion && !state.results.has(answer.fieldKey) ? "review" : fieldClass(answer);
-        const row = document.createElement("div");
+        const className = fieldClass(answer);
+        const row = document.createElement("button");
+        row.type = "button";
         row.className = `field-row ${className}`;
+        row.title = "Show this field on the application page";
+        row.addEventListener("click", () => focusField(answer.fieldKey));
 
         const icon = document.createElement("span");
         icon.className = "field-icon";
-        icon.textContent = answer.aiSuggestion ? "✦" : iconFor(className);
-        const copy = document.createElement("div");
+        icon.textContent = answer.aiSuggestion && !state.results.has(answer.fieldKey) ? "✦" : iconFor(className);
+        const copy = document.createElement("span");
         copy.className = "field-copy";
         const title = document.createElement("strong");
         title.textContent = scanned?.label || answer.fieldKey;
         const status = document.createElement("span");
-        status.textContent = answer.aiSuggestion && !state.results.has(answer.fieldKey)
-            ? answer.reason || "AI suggestion—review before applying"
-            : statusFor(answer, className);
+        status.textContent = statusFor(answer, className);
         copy.append(title, status);
 
         if (answer.value && answer.action === "fill") {
@@ -106,27 +126,145 @@ const renderFields = () => {
             value.textContent = answer.sensitive ? "Saved private Profile answer" : answer.value;
             copy.appendChild(value);
         }
-        if (answer.aiSuggestion && answer.action === "fill") {
-            const review = document.createElement("label");
-            review.className = "ai-review";
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.checked = state.selectedAi.has(answer.fieldKey);
-            checkbox.addEventListener("change", () => {
-                if (checkbox.checked) state.selectedAi.add(answer.fieldKey);
-                else state.selectedAi.delete(answer.fieldKey);
-                elements.applyAiButton.disabled = state.selectedAi.size === 0;
-            });
-            const label = document.createElement("span");
-            label.textContent = "I reviewed this answer and want JobPilot to fill it.";
-            review.append(checkbox, label);
-            copy.appendChild(review);
-        }
         row.append(icon, copy);
         elements.fieldList.appendChild(row);
     });
     elements.fieldCount.textContent = `${answers.length} fields`;
 };
+
+const updateAiApplyButton = () => {
+    const count = state.aiAnswers.filter(answer => answer.action === "fill" && String(answer.value || "").trim()).length;
+    elements.applyAiButton.disabled = count === 0;
+    elements.applyAiButton.textContent = count
+        ? `Apply ${count} AI suggestion${count === 1 ? "" : "s"}`
+        : "No AI suggestions ready";
+    elements.aiReviewCount.textContent = `${count} of ${state.aiAnswers.length} answers ready to apply`;
+};
+
+const updateAiButton = () => {
+    if (state.aiAnswers.length) {
+        const ready = state.aiAnswers.filter(answer => answer.action === "fill" && String(answer.value || "").trim()).length;
+        elements.aiButton.disabled = false;
+        elements.aiButton.textContent = `✦ Review ${ready} AI suggestion${ready === 1 ? "" : "s"}`;
+        return;
+    }
+    elements.aiButton.disabled = state.unresolvedFields.length === 0;
+    elements.aiButton.textContent = state.unresolvedFields.length
+        ? `✦ Generate AI suggestions for ${state.unresolvedFields.length} field${state.unresolvedFields.length === 1 ? "" : "s"}`
+        : "No unresolved fields";
+};
+
+const refineAiAnswer = async (index, guidance, button) => {
+    const answer = state.aiAnswers[index];
+    const field = state.unresolvedFields.find(item => item.fieldKey === answer.fieldKey);
+    if (!field) return;
+    button.disabled = true;
+    button.textContent = "Improving…";
+    try {
+        const response = await send({
+            type: "JOBPILOT_AI_PLAN",
+            fields: [field],
+            job: state.scan.job,
+            guidance: String(guidance || answer.userGuidance || "Make the answer clearer, more natural, and concise."),
+            draftAnswers: [{ fieldKey: answer.fieldKey, value: answer.value || "" }],
+        });
+        const replacement = (response.answers || []).find(item => item.fieldKey === answer.fieldKey);
+        if (!replacement?.value || replacement.action !== "fill") {
+            state.aiAnswers[index] = { ...answer, reason: replacement?.reason || "AI needs more factual context before it can improve this answer." };
+            toast(state.aiAnswers[index].reason);
+        } else {
+            state.aiAnswers[index] = { ...replacement, aiSuggestion: true, userGuidance: String(guidance || answer.userGuidance || "") };
+            toast("Suggestion updated. Review it before applying.");
+        }
+        renderAiReview();
+        renderFields();
+        updateAiButton();
+    } catch (error) {
+        toast(error.message);
+    } finally {
+        button.disabled = false;
+        button.textContent = "Ask AI to improve";
+    }
+};
+
+function renderAiReview() {
+    elements.aiReviewList.replaceChildren();
+    state.aiAnswers.forEach((answer, index) => {
+        const field = state.unresolvedFields.find(item => item.fieldKey === answer.fieldKey)
+            || state.scan?.fields.find(item => item.fieldKey === answer.fieldKey);
+        const card = document.createElement("article");
+        card.className = "ai-answer-card";
+
+        const questionButton = document.createElement("button");
+        questionButton.type = "button";
+        questionButton.className = "ai-question-button";
+        const number = document.createElement("span");
+        number.textContent = `Question ${index + 1}`;
+        const question = document.createElement("strong");
+        question.textContent = field?.label || answer.fieldKey;
+        const jump = document.createElement("small");
+        jump.textContent = "Show on application ↗";
+        questionButton.append(number, question, jump);
+        questionButton.addEventListener("click", () => focusField(answer.fieldKey));
+
+        const answerLabel = document.createElement("label");
+        answerLabel.textContent = "Suggested answer";
+        const textarea = document.createElement("textarea");
+        textarea.rows = 5;
+        textarea.maxLength = 1200;
+        textarea.value = answer.value || "";
+        textarea.placeholder = "AI could not answer from your saved information. Add factual context below, or write the answer here.";
+        textarea.addEventListener("input", event => {
+            const value = event.target.value;
+            state.aiAnswers[index] = {
+                ...state.aiAnswers[index],
+                value,
+                action: value.trim() ? "fill" : "ask_user",
+                source: "User-reviewed AI suggestion",
+            };
+            updateAiApplyButton();
+            updateAiButton();
+            renderFields();
+        });
+
+        const reason = document.createElement("p");
+        reason.className = "answer-reason";
+        reason.textContent = [
+            answer.reason || "Generated from your saved candidate context.",
+            answer.source ? `Based on: ${answer.source}.` : "",
+        ].filter(Boolean).join(" ");
+
+        const promptLabel = document.createElement("label");
+        promptLabel.textContent = answer.followUpQuestion || "Ask AI for a better response";
+        const promptRow = document.createElement("div");
+        promptRow.className = "prompt-row";
+        const prompt = document.createElement("input");
+        prompt.type = "text";
+        prompt.maxLength = 1000;
+        prompt.value = answer.userGuidance || "";
+        prompt.placeholder = answer.value
+            ? "Make it shorter, warmer, or add factual context…"
+            : "Describe the project, situation, what you did, and the result…";
+        prompt.addEventListener("input", event => {
+            state.aiAnswers[index] = { ...state.aiAnswers[index], userGuidance: event.target.value };
+        });
+        const improveButton = document.createElement("button");
+        improveButton.type = "button";
+        improveButton.className = "secondary-button compact";
+        improveButton.textContent = "Ask AI to improve";
+        improveButton.addEventListener("click", () => refineAiAnswer(index, prompt.value, improveButton));
+        prompt.addEventListener("keydown", event => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                improveButton.click();
+            }
+        });
+        promptRow.append(prompt, improveButton);
+        card.append(questionButton, answerLabel, textarea, reason, promptLabel, promptRow);
+        elements.aiReviewList.appendChild(card);
+    });
+    updateAiApplyButton();
+}
 
 const renderPlan = summary => {
     const calculated = summary || {
@@ -142,16 +280,15 @@ const renderPlan = summary => {
     show(elements.actionsView, true);
     elements.fillButton.disabled = calculated.ready === 0;
     elements.fillButton.textContent = calculated.ready ? `Fill ${calculated.ready} ready field${calculated.ready === 1 ? "" : "s"}` : "No Profile fields ready";
-    elements.aiButton.disabled = calculated.needsReview === 0;
-    elements.aiButton.textContent = calculated.needsReview ? `✦ Use AI for ${calculated.needsReview} unresolved field${calculated.needsReview === 1 ? "" : "s"}` : "No unresolved fields";
-    show(elements.applyAiButton, state.aiAnswers.length > 0);
+    updateAiButton();
     renderFields();
 };
 
 const scanAndPlan = async () => {
     state.results.clear();
     state.aiAnswers = [];
-    state.selectedAi.clear();
+    state.unresolvedFields = [];
+    setView("main");
     show(elements.summaryView, false);
     show(elements.fieldSection, false);
     show(elements.actionsView, false);
@@ -164,11 +301,35 @@ const scanAndPlan = async () => {
         if (!state.scan.fields.length) throw new Error("No visible application fields were found on this page.");
 
         const plan = await send({ type: "JOBPILOT_BUILD_PLAN", fields: state.scan.fields });
-        state.plan = plan.answers || [];
-        renderPlan(plan.summary);
+        const pendingFileFields = state.scan.fields.filter(field => field.type === "file" && !field.filled);
+        const clearlyResumeFields = pendingFileFields.filter(field => /\b(resume|résumé|curriculum vitae|cv)\b/i.test(
+            `${field.label || ""} ${field.name || ""} ${field.context || ""}`
+        ));
+        const resumeFieldKeys = new Set((clearlyResumeFields.length
+            ? clearlyResumeFields
+            : pendingFileFields.length === 1 && !/cover letter/i.test(`${pendingFileFields[0].label || ""} ${pendingFileFields[0].name || ""} ${pendingFileFields[0].context || ""}`)
+                ? pendingFileFields
+                : []).map(field => field.fieldKey));
+        state.plan = (plan.answers || []).map(answer => {
+            const field = state.scan.fields.find(item => item.fieldKey === answer.fieldKey);
+            if (resumeFieldKeys.has(field?.fieldKey)) {
+                return {
+                    ...answer,
+                    action: "fill",
+                    value: "Primary résumé",
+                    source: "JobPilot · Primary résumé",
+                    reason: "Your primary résumé will be attached automatically.",
+                    resumeAttachment: true,
+                };
+            }
+            return answer;
+        });
+        state.unresolvedFields = state.scan.fields.filter(field => state.plan.find(answer => answer.fieldKey === field.fieldKey)?.action === "ask_user");
+        renderPlan();
+        const ready = state.plan.filter(answer => answer.action === "fill").length;
         setStatus(
             "Review before filling",
-            `${plan.summary.ready} fields can be filled from your Profile. JobPilot will skip fields that already contain data.`,
+            `${ready} fields can be filled from your Profile and primary résumé. Click any field to locate it on the application.`,
             "success"
         );
         if (plan.missingProfileFields?.length) toast(`Profile could be stronger: ${plan.missingProfileFields.join(", ")}.`);
@@ -179,13 +340,18 @@ const scanAndPlan = async () => {
 };
 
 const applyAnswers = async answers => {
-    if (!answers.length) return;
+    if (!answers.length) return false;
     setStatus("Autofilling your application", "Keep this tab open while JobPilot applies the answers you reviewed.");
     elements.fillButton.disabled = true;
     elements.aiButton.disabled = true;
     elements.applyAiButton.disabled = true;
     try {
-        const response = await send({ type: "JOBPILOT_APPLY", answers });
+        const resumeAnswers = state.plan.filter(answer => answer.resumeAttachment && answer.action === "fill");
+        const response = await send({
+            type: "JOBPILOT_APPLY",
+            answers: answers.filter(answer => !answer.resumeAttachment),
+            fileFields: resumeAnswers.map(answer => ({ fieldKey: answer.fieldKey })),
+        });
         (response.results || []).forEach(result => state.results.set(result.fieldKey, result));
         renderFields();
         const filled = response.results.filter(result => result.status === "filled").length;
@@ -195,12 +361,45 @@ const applyAnswers = async answers => {
             failed ? `${filled} filled and ${failed} need manual review.` : `${filled} fields filled. Review the application before submitting.`,
             filled ? "success" : "error"
         );
+        await new Promise(resolve => window.setTimeout(resolve, 250));
+        await scanAndPlan();
+        return filled > 0;
     } catch (error) {
         setStatus("Autofill stopped", error.message, "error");
+        return false;
     } finally {
         elements.fillButton.disabled = false;
         elements.aiButton.disabled = false;
-        elements.applyAiButton.disabled = state.selectedAi.size === 0;
+        updateAiApplyButton();
+    }
+};
+
+const generateAiSuggestions = async () => {
+    if (!state.unresolvedFields.length) return;
+    elements.aiButton.disabled = true;
+    elements.aiButton.textContent = "Generating suggestions…";
+    setStatus("AI is drafting answers", "Nothing will be entered until you review and apply the suggestions.");
+    try {
+        const response = await send({ type: "JOBPILOT_AI_PLAN", fields: state.unresolvedFields, job: state.scan.job });
+        const byKey = new Map((response.answers || []).map(answer => [answer.fieldKey, answer]));
+        state.aiAnswers = state.unresolvedFields.map(field => ({
+            ...(byKey.get(field.fieldKey) || {
+                fieldKey: field.fieldKey,
+                action: "ask_user",
+                value: "",
+                reason: "AI needs more factual context before it can suggest an answer.",
+                source: "AI review",
+            }),
+            aiSuggestion: true,
+        }));
+        renderAiReview();
+        renderFields();
+        updateAiButton();
+        setView("review");
+    } catch (error) {
+        setStatus("AI suggestions unavailable", error.message, "error");
+    } finally {
+        updateAiButton();
     }
 };
 
@@ -231,31 +430,31 @@ elements.disconnectButton.addEventListener("click", async () => {
     toast("This Chrome extension is disconnected from JobPilot.");
 });
 elements.rescanButton.addEventListener("click", scanAndPlan);
+elements.reviewBackButton.addEventListener("click", () => setView("main"));
 elements.fillButton.addEventListener("click", () => applyAnswers(state.plan.filter(answer => answer.action === "fill")));
-elements.aiButton.addEventListener("click", async () => {
-    const unresolved = state.scan?.fields.filter(field => state.plan.find(answer => answer.fieldKey === field.fieldKey)?.action === "ask_user") || [];
-    if (!unresolved.length) return;
-    elements.aiButton.disabled = true;
-    elements.aiButton.textContent = "Generating suggestions…";
-    setStatus("AI is drafting answers", "Nothing will be filled until you review and select each suggestion.");
-    try {
-        const response = await send({ type: "JOBPILOT_AI_PLAN", fields: unresolved, job: state.scan.job });
-        state.aiAnswers = (response.answers || []).map(answer => ({ ...answer, aiSuggestion: true }));
-        state.selectedAi.clear();
-        show(elements.applyAiButton, true);
-        elements.applyAiButton.disabled = true;
-        renderFields();
-        setStatus("Review AI suggestions", "Select only answers that accurately represent you, then apply them.", "success");
-    } catch (error) {
-        setStatus("AI suggestions unavailable", error.message, "error");
-    } finally {
-        elements.aiButton.disabled = false;
-        elements.aiButton.textContent = "✦ Regenerate AI suggestions";
+elements.aiButton.addEventListener("click", () => {
+    if (state.aiAnswers.length) {
+        renderAiReview();
+        setView("review");
+        return;
     }
+    generateAiSuggestions();
 });
-elements.applyAiButton.addEventListener("click", () => applyAnswers(
-    state.aiAnswers.filter(answer => answer.action === "fill" && state.selectedAi.has(answer.fieldKey))
-));
+elements.applyAiButton.addEventListener("click", async () => {
+    const answers = state.aiAnswers.filter(answer => answer.action === "fill" && String(answer.value || "").trim());
+    const memories = answers.map(answer => ({
+        question: state.unresolvedFields.find(field => field.fieldKey === answer.fieldKey)?.label || answer.fieldKey,
+        userContext: answer.userGuidance || "",
+        acceptedAnswer: answer.value,
+    }));
+    try {
+        await send({ type: "JOBPILOT_SAVE_ANSWER_MEMORY", memories, job: state.scan.job });
+    } catch (error) {
+        toast(`Answers can still be applied, but JobPilot could not save them for reuse: ${error.message}`);
+    }
+    const applied = await applyAnswers(answers);
+    if (applied) setView("main");
+});
 
 (async () => {
     try {

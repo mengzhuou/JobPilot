@@ -1,7 +1,7 @@
 {
   "scripts": {
     "extension:check": "node extension/validate.js",
-    "test:autofill": "node backend/services/applicationAgentUtils.test.js && node backend/services/autofillProfileMapper.test.js && node backend/services/extensionAutofillPlanner.test.js"
+    "test:autofill": "node backend/services/applicationAgentUtils.test.js && node backend/services/autofillProfileMapper.test.js && node backend/services/extensionAutofillPlanner.test.js && node backend/services/applicationAiService.test.js && node backend/services/candidateContextService.test.js"
   },
   "dependencies": {
     "nodemon": "^3.1.4"

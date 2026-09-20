@@ -15,7 +15,7 @@ const responseSchema = {
             items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["fieldKey", "action", "value", "confidence", "source", "reason"],
+                required: ["fieldKey", "action", "value", "confidence", "source", "reason", "followUpQuestion"],
                 properties: {
                     fieldKey: { type: "string" },
                     action: { type: "string", enum: ["fill", "ask_user", "skip"] },
@@ -23,6 +23,7 @@ const responseSchema = {
                     confidence: { type: "number", minimum: 0, maximum: 1 },
                     source: { type: "string" },
                     reason: { type: "string" },
+                    followUpQuestion: { type: "string" },
                 },
             },
         },
@@ -42,8 +43,11 @@ const compactProfile = profile => {
     const trimExperience = item => ({
         company: item.company,
         title: item.title,
+        jobType: item.jobType,
+        location: item.location,
         from: item.from,
         to: item.to,
+        summary: String(item.summary || "").slice(0, 500),
         bullets: (item.bullets || []).slice(0, 4).map(bullet => String(bullet).slice(0, 350)),
     });
     return {
@@ -55,13 +59,34 @@ const compactProfile = profile => {
     };
 };
 
-const createApplicationAnswerPlan = async ({ job, profile, resume, fields, ambiguityMode = "auto_review" }) => {
+const createApplicationAnswerPlan = async ({
+    job,
+    profile,
+    resume,
+    fields,
+    ambiguityMode = "auto_review",
+    guidance = "",
+    draftAnswers = [],
+    candidateContext = {},
+    answerMemories = [],
+}) => {
     if (!process.env.OPENAI_API_KEY) {
         throw Object.assign(new Error("OpenAI is not configured. Add OPENAI_API_KEY to backend/.env."), { statusCode: 503 });
     }
     const safeFields = (fields || []).filter(field => field.type !== "file").slice(0, MAX_FIELD_COUNT).map(conciseField);
     if (!safeFields.length) return [];
 
+    const allowedFieldKeys = new Set(safeFields.map(field => field.fieldKey));
+    const revision = {
+        guidance: String(guidance || "").slice(0, 1000),
+        currentDrafts: (Array.isArray(draftAnswers) ? draftAnswers : [])
+            .filter(answer => allowedFieldKeys.has(String(answer?.fieldKey || "")))
+            .slice(0, safeFields.length)
+            .map(answer => ({
+                fieldKey: String(answer.fieldKey),
+                value: String(answer.value || "").slice(0, MAX_TEXT_LENGTH),
+            })),
+    };
     const prompt = {
         job: {
             title: job?.title || "",
@@ -71,8 +96,16 @@ const createApplicationAnswerPlan = async ({ job, profile, resume, fields, ambig
             requirements: (job?.requirements || []).slice(0, 30),
         },
         candidateProfile: compactProfile(profile),
-        primaryResume: resume ? { name: resume.display_name, targetJobTitle: resume.target_job_title } : null,
+        primaryResume: candidateContext.resume || (resume ? { name: resume.display_name, targetJobTitle: resume.target_job_title } : null),
+        portfolio: candidateContext.portfolio || null,
+        linkedInHistory: candidateContext.linkedInHistory || null,
+        previousAnswerMemories: (Array.isArray(answerMemories) ? answerMemories : []).slice(0, 12).map(memory => ({
+            question: String(memory.question || "").slice(0, 500),
+            userContext: String(memory.user_context || memory.userContext || "").slice(0, 2000),
+            acceptedAnswer: String(memory.accepted_answer || memory.acceptedAnswer || "").slice(0, MAX_TEXT_LENGTH),
+        })),
         fields: safeFields,
+        ...(revision.guidance || revision.currentDrafts.length ? { revision } : {}),
     };
     const apiResponse = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -86,7 +119,7 @@ const createApplicationAnswerPlan = async ({ job, profile, resume, fields, ambig
                 role: "system",
                 content: [{
                     type: "input_text",
-                    text: `You are a job-application answer planner. Use only facts in the supplied candidate profile and primary-resume metadata. Never invent experience, education, dates, compensation, legal eligibility, certifications, or personal data. For each field, return fill only when its answer is directly supported; otherwise return ask_user. Use an option's exact text for select, radio, and checkbox fields. Do not answer passwords, signatures, certifications, consent, demographic, or voluntary self-identification fields: return ask_user. Keep written answers concise, natural, and under 1200 characters. The user selected ${ambiguityMode === "ask_user" ? "ask_user: ask the user whenever a fact is not explicit" : "auto_review: make the best profile-grounded fill when possible, then flag it for review"}.`,
+                    text: `You are a job-application answer planner. Ground answers in the supplied JobPilot Profile, detailed work history, extracted résumé text, cached public portfolio text, previous user-approved answer memories, and factual context the user explicitly supplies in revision.guidance. Prefer specific projects, actions, technologies, and measurable results from those sources. Never invent experience, education, dates, compensation, legal eligibility, certifications, client interaction, links, or personal data. LinkedIn itself is not scraped; linkedInHistory contains the work history the candidate saved in JobPilot. Reuse a previous answer memory only when it genuinely answers the current question, adapting wording to the new role without changing facts. Revision guidance may request tone, length, wording, or provide user-confirmed facts; follow it without extrapolating beyond those facts. When a current draft is supplied, improve it rather than repeating it unchanged. For free-text questions, draft a useful response from relevant supported facts even when those facts cannot affirm every premise in the question; phrase limitations honestly. Return ask_user only when no grounded, useful answer is possible. For ask_user, leave value empty and provide a short, specific followUpQuestion asking which project or story the user wants to use and requesting the situation, their actions, and result. For fill, set followUpQuestion to an empty string. Use an option's exact text for select, radio, and checkbox fields. Do not answer passwords, signatures, certifications, consent, demographic, or voluntary self-identification fields: return ask_user. Keep written answers concise, natural, and under 1200 characters. The user selected ${ambiguityMode === "ask_user" ? "ask_user: ask the user whenever a required fact is not explicit" : "auto_review: make the best profile-grounded fill when possible, then flag it for review"}.`,
                 }],
             }, {
                 role: "user",
@@ -104,12 +137,12 @@ const createApplicationAnswerPlan = async ({ job, profile, resume, fields, ambig
     let parsed;
     try { parsed = JSON.parse(getOutputText(payload)); }
     catch { throw Object.assign(new Error("OpenAI returned an invalid application plan."), { statusCode: 502 }); }
-    const allowedKeys = new Set(safeFields.map(field => field.fieldKey));
-    return (parsed.answers || []).filter(answer => allowedKeys.has(answer.fieldKey)).map(answer => ({
+    return (parsed.answers || []).filter(answer => allowedFieldKeys.has(answer.fieldKey)).map(answer => ({
         ...answer,
         value: String(answer.value || "").slice(0, MAX_TEXT_LENGTH),
         source: String(answer.source || "").slice(0, 200),
         reason: String(answer.reason || "").slice(0, 500),
+        followUpQuestion: String(answer.followUpQuestion || "").slice(0, 500),
     }));
 };
 

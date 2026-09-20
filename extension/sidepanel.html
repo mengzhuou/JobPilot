@@ -29,32 +29,46 @@
         </section>
 
         <section class="workspace hidden" id="workspaceView">
-            <div class="job-card">
-                <div><span class="eyebrow">CURRENT APPLICATION</span><h1 id="jobTitle">Scanning page…</h1><p id="jobCompany"></p></div>
-                <button class="secondary-button compact" id="rescanButton" type="button">Rescan</button>
+            <div class="panel-view" id="mainView">
+                <div class="job-card">
+                    <div><span class="eyebrow">CURRENT APPLICATION</span><h1 id="jobTitle">Scanning page…</h1><p id="jobCompany"></p></div>
+                    <button class="secondary-button compact" id="rescanButton" type="button">Rescan</button>
+                </div>
+
+                <div class="status-card" id="statusCard">
+                    <div class="spinner" aria-hidden="true"></div>
+                    <div><strong id="statusTitle">Inspecting this application</strong><span id="statusMessage">Looking for fields JobPilot can safely complete.</span></div>
+                </div>
+
+                <div class="summary hidden" id="summaryView">
+                    <div><strong id="readyCount">0</strong><span>Ready</span></div>
+                    <div><strong id="reviewCount">0</strong><span>Review</span></div>
+                    <div><strong id="skippedCount">0</strong><span>Skipped</span></div>
+                </div>
+
+                <section class="field-section hidden" id="fieldSection">
+                    <div class="section-heading"><div><span class="eyebrow">FIELD REVIEW</span><h2>What JobPilot found</h2></div><span id="fieldCount"></span></div>
+                    <div class="field-list" id="fieldList"></div>
+                </section>
+
+                <div class="actions hidden" id="actionsView">
+                    <button class="primary-button" id="fillButton" type="button">Fill ready fields</button>
+                    <button class="ai-button" id="aiButton" type="button"><span>✦</span> Generate AI suggestions</button>
+                    <p>Click any field to find it on the application. JobPilot never submits the form.</p>
+                </div>
             </div>
 
-            <div class="status-card" id="statusCard">
-                <div class="spinner" aria-hidden="true"></div>
-                <div><strong id="statusTitle">Inspecting this application</strong><span id="statusMessage">Looking for fields JobPilot can safely complete.</span></div>
-            </div>
-
-            <div class="summary hidden" id="summaryView">
-                <div><strong id="readyCount">0</strong><span>Ready</span></div>
-                <div><strong id="reviewCount">0</strong><span>Review</span></div>
-                <div><strong id="skippedCount">0</strong><span>Skipped</span></div>
-            </div>
-
-            <section class="field-section hidden" id="fieldSection">
-                <div class="section-heading"><div><span class="eyebrow">FIELD REVIEW</span><h2>What JobPilot found</h2></div><span id="fieldCount"></span></div>
-                <div class="field-list" id="fieldList"></div>
-            </section>
-
-            <div class="actions hidden" id="actionsView">
-                <button class="primary-button" id="fillButton" type="button">Fill ready fields</button>
-                <button class="ai-button" id="aiButton" type="button"><span>✦</span> Use AI for unresolved fields</button>
-                <button class="primary-button hidden" id="applyAiButton" type="button">Apply selected AI answers</button>
-                <p>JobPilot never submits the application. AI is called only when you press the AI button.</p>
+            <div class="panel-view hidden" id="reviewView">
+                <div class="review-header">
+                    <button class="icon-button" id="reviewBackButton" type="button" aria-label="Back to all fields">←</button>
+                    <div><span class="eyebrow">AI ANSWER REVIEW</span><h1>Review suggestions</h1><p>Edit an answer or ask AI to improve it before applying.</p></div>
+                </div>
+                <div class="review-count" id="aiReviewCount"></div>
+                <div class="ai-review-list" id="aiReviewList"></div>
+                <div class="actions review-actions">
+                    <button class="primary-button" id="applyAiButton" type="button">Apply AI suggestions</button>
+                    <p>Only reviewed answers are entered. Accepted answers and story context are saved for similar future questions.</p>
+                </div>
             </div>
         </section>
 
@@ -63,4 +77,3 @@
     <script src="sidepanel.js"></script>
 </body>
 </html>
-

@@ -34,7 +34,13 @@ const fieldQuestion = field => normalized([
 ].filter(Boolean).join(" "));
 
 const optionFor = (field, candidates) => {
-    if (!field.options.length) return clean(candidates.find(value => value !== undefined && value !== null));
+    if (!field.options.length) {
+        const candidate = candidates.find(value => value !== undefined && value !== null && clean(value));
+        if (typeof candidate === "boolean") {
+            return field.type === "checkbox" ? String(candidate) : (candidate ? "Yes" : "No");
+        }
+        return clean(candidate);
+    }
     for (const candidate of candidates.filter(value => value !== undefined && value !== null && clean(value))) {
         if (typeof candidate === "boolean") {
             const answer = getBooleanFormAnswer(candidate, field.options);
@@ -91,7 +97,7 @@ const planField = (field, profile) => {
         return result(field, "skip", "", "system", "This is not an application answer field.");
     }
     if (field.type === "password") return result(field, "ask_user", "", "security", "Passwords are never autofilled by JobPilot.");
-    if (field.type === "file") return result(field, "ask_user", "", "resume", "Upload your selected résumé manually in the browser.");
+    if (field.type === "file") return result(field, "skip", "", "Primary résumé", "The JobPilot extension attaches your primary résumé during Autofill.", { resumeAttachment: true });
     if (containsAny(question, ["signature", "certify", "attest", "truthful", "electronic signature"])) {
         return result(field, "ask_user", "", "legal", "A signature or legal certification requires your review.");
     }
@@ -147,7 +153,9 @@ const planField = (field, profile) => {
     if (containsAny(question, ["veteran status", "protected veteran", "veteran classification"])) return fill(field, [eeoc.veteran_status?.answer, ...(eeoc.veteran_status?.form_options || [])], "Profile · Equal Employment", "Matched saved veteran status.", { sensitive: true });
     if (containsAny(question, ["disability status", "have a disability", "disability self identification"])) return fill(field, [eeoc.disability_status?.answer, ...(eeoc.disability_status?.form_options || [])], "Profile · Equal Employment", "Matched saved disability answer.", { sensitive: true });
     if (containsAny(question, ["gender", "gender identity"])) return fill(field, [eeoc.gender?.answer, ...(eeoc.gender?.form_options || [])], "Profile · Equal Employment", "Matched saved gender answer.", { sensitive: true });
-    if (containsAny(question, ["race", "ethnicity", "racial ethnic"])) return fill(field, [eeoc.race?.answer, ...(eeoc.race?.form_options || [])], "Profile · Equal Employment", "Matched saved race or ethnicity answer.", { sensitive: true });
+    if (containsAny(question, ["hispanic", "latino", "latina", "latinx"])) return fill(field, [eeoc.hispanic_latino?.answer, ...(eeoc.hispanic_latino?.form_options || [])], "Profile · Equal Employment", "Matched saved Hispanic or Latino answer.", { sensitive: true });
+    if (containsAny(question, ["ethnicity", "racial ethnic"])) return fill(field, [eeoc.hispanic_latino?.answer, ...(eeoc.hispanic_latino?.form_options || []), eeoc.race?.answer, ...(eeoc.race?.form_options || [])], "Profile · Equal Employment", "Matched saved ethnicity answer.", { sensitive: true });
+    if (containsAny(question, ["race", "racial identity"])) return fill(field, [eeoc.race?.answer, ...(eeoc.race?.form_options || [])], "Profile · Equal Employment", "Matched saved race answer.", { sensitive: true });
     if (containsAny(question, ["sexual orientation"])) return fill(field, [eeoc.sexual_orientation?.answer, ...(eeoc.sexual_orientation?.form_options || [])], "Profile · Equal Employment", "Matched saved sexual orientation answer.", { sensitive: true });
     if (containsAny(question, ["transgender"])) return fill(field, [eeoc.transgender_status?.answer, ...(eeoc.transgender_status?.form_options || [])], "Profile · Equal Employment", "Matched saved transgender answer.", { sensitive: true });
 

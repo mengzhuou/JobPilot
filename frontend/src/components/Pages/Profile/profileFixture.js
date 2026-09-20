@@ -69,6 +69,7 @@ const profileFixture = {
         ["Requires employment sponsorship", "No"],
         ["Citizenship status", "U.S. lawful permanent resident"],
         ["Gender", "Female"],
+        ["Hispanic or Latino", "No"],
         ["Race", "Asian"],
         ["Veteran status", "Not a protected veteran"],
         ["Disability", "No"],

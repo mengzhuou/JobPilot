@@ -36,6 +36,7 @@ const totalExperienceYears = experience => {
 const optionValues = (answer, fallbackOptions = []) => [...new Set([answer, ...fallbackOptions].filter(Boolean))];
 const booleanAnswer = value => /^yes$/i.test(text(value));
 const choice = (answers, label) => answers[key(label)];
+const firstChoice = (answers, ...labels) => firstValue(...labels.map(label => choice(answers, label)));
 
 const validateEditableProfile = profile => {
     const personal = profile?.personal || {};
@@ -124,6 +125,7 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
         },
         eeoc: {
             gender: { answer: choice(equalEmployment, "gender"), form_options: optionValues(choice(equalEmployment, "gender"), fallback.eeoc?.gender?.form_options) },
+            hispanic_latino: { answer: firstChoice(equalEmployment, "hispanic or latino", "hispanic/latino", "ethnicity"), form_options: optionValues(firstChoice(equalEmployment, "hispanic or latino", "hispanic/latino", "ethnicity"), fallback.eeoc?.hispanic_latino?.form_options) },
             race: { answer: choice(equalEmployment, "race"), form_options: optionValues(choice(equalEmployment, "race"), fallback.eeoc?.race?.form_options) },
             veteran_status: { answer: choice(equalEmployment, "veteran status"), form_options: optionValues(choice(equalEmployment, "veteran status"), fallback.eeoc?.veteran_status?.form_options) },
             sexual_orientation: { answer: choice(equalEmployment, "sexual orientation"), form_options: optionValues(choice(equalEmployment, "sexual orientation"), fallback.eeoc?.sexual_orientation?.form_options) },

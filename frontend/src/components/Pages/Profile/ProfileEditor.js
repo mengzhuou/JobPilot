@@ -11,6 +11,7 @@ const EEO_OPTIONS = {
     "Requires employment sponsorship":["Yes","No"],
     "Citizenship status":["U.S. citizen","U.S. lawful permanent resident","Protected individual","Other"],
     Gender:["Female","Male","Non-binary","Choose not to disclose"],
+    "Hispanic or Latino":["Yes","No","Choose not to disclose"],
     Race:["Asian","Black or African American","White","Two or more races","Choose not to disclose"],
     "Veteran status":["Not a protected veteran","Protected veteran","Choose not to disclose"],
     Disability:["No","Yes","Choose not to disclose"],

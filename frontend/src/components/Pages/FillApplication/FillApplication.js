@@ -216,6 +216,7 @@ const FillApplication = () => {
     }, [isAdmin, job.jobUrl]);
 
     useEffect(() => {
+        if (!isStarting && !isRunning) return undefined;
         const syncStatus = async () => {
             try {
                 const result = await getApplicationStatus();
@@ -234,7 +235,7 @@ const FillApplication = () => {
         };
         const statusTimer = setInterval(syncStatus, 1000);
         return () => clearInterval(statusTimer);
-    }, [jobUrl]);
+    }, [jobUrl, isRunning, isStarting]);
 
     const applicationPayload = {
         jobUrl,
@@ -273,6 +274,13 @@ const FillApplication = () => {
                 || requestError.message
                 || "Failed to start Playwright.");
         }
+    };
+
+    const openWithExtension = () => {
+        if (!jobUrl.trim() || hasReported) return;
+        setError("");
+        window.open(jobUrl.trim(), "_blank", "noopener,noreferrer");
+        setStatus("extension");
     };
 
     const stopApplication = async () => {
@@ -420,14 +428,15 @@ const FillApplication = () => {
                 </section>}
 
                 <label className="application-url-label">
-                    <span className="application-url-heading">Application URL <span className="autofill-help-icon" tabIndex="0" aria-label="How Autofill works"><FontAwesomeIcon icon={faCircleInfo}/><span className="autofill-help-tooltip" role="tooltip"><b>How Autofill works</b><span>JobPilot opens the official application in a controlled browser. Review every filled field and complete any verification yourself, then return here to confirm your application.</span></span></span></span>
+                    <span className="application-url-heading">Application URL <span className="autofill-help-icon" tabIndex="0" aria-label="How Autofill works"><FontAwesomeIcon icon={faCircleInfo}/><span className="autofill-help-tooltip" role="tooltip"><b>How Autofill works</b><span>Open the application in Chrome, click the pinned JobPilot extension, and review every answer before submitting. The legacy browser agent remains available only as a fallback.</span></span></span></span>
                     <div className={`job-url-section${isAdmin ? "" : " no-report"}`}>
                         <input type="url" maxLength={MAX_INPUT_LENGTH} value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isStarting || isRunning} />
                         {isStarting ? <Button disabled>Starting…</Button>
                             : isRunning ? <Button onClick={stopApplication}>Finish</Button>
-                                : <Button onClick={startApplication} disabled={hasReported}>{hasReported ? "Reported" : "Start Autofill"}</Button>}
+                                : <Button onClick={openWithExtension} disabled={hasReported}>{hasReported ? "Reported" : "Open with extension"}</Button>}
                         {isAdmin && <button className="report-job-button" type="button" disabled={hasReported} onClick={()=>setShowReportDialog(true)}>{hasReported ? "Reported" : "Report job"}</button>}
                     </div>
+                    {!hasReported && !isStarting && !isRunning && <button className="legacy-autofill-link" type="button" onClick={startApplication}>Extension cannot fill this site? Use legacy browser autofill</button>}
                 </label>
 
                 {reportStatus && <div className="autofill-report-status" role="status">{reportStatus}</div>}
@@ -439,7 +448,7 @@ const FillApplication = () => {
 
                 {error && <div className="autofill-error" role="alert">{error}</div>}
 
-                {isRunning && <button className="finished-link" type="button" onClick={() => setShowConfirmation(true)}>I finished applying</button>}
+                {(isRunning || status === "extension") && <button className="finished-link" type="button" onClick={() => setShowConfirmation(true)}>I finished applying</button>}
             </section>
 
             {skillNotice && <div className="skill-snackbar" role="status" aria-live="polite"><FontAwesomeIcon icon={faCircleCheck}/><span>{skillNotice}</span></div>}
