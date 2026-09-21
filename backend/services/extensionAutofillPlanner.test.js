@@ -62,6 +62,18 @@ assert.equal(byKey.resume.action, "skip");
 assert.equal(byKey.resume.resumeAttachment, true);
 assert.deepEqual(plan.summary, { total: 10, ready: 6, needsReview: 2, skipped: 2 });
 
+const demographicFields = [
+    { fieldKey: "gender", label: "Gender", type: "radio", options: ["Male", "Female", "Decline to self-identify"] },
+    { fieldKey: "race", label: "Race", type: "radio", options: ["Hispanic or Latino", "Asian (Not Hispanic or Latino)", "Decline to self-identify"] },
+];
+const savedDemographics = createDeterministicFillPlan({ fields: demographicFields, profile: { ...profile, eeoc: {
+    gender: { answer: "Female" }, race: { answer: "Asian (Not Hispanic or Latino)" },
+} } });
+assert.deepEqual(savedDemographics.answers.map(answer => answer.value), ["Female", "Asian (Not Hispanic or Latino)"]);
+assert.ok(savedDemographics.answers.every(answer => answer.action === "fill" && answer.sensitive));
+const unsavedDemographics = createDeterministicFillPlan({ fields: demographicFields, profile: { ...profile, eeoc: {} } });
+assert.ok(unsavedDemographics.answers.every(answer => answer.action === "ask_user" && !answer.value), "Never infer demographic answers from other profile information");
+
 for (const [title, label] of [["Bachelor of Science in Computer Science", "Bachelor's Degree"], ["B.S.", "Bachelor's Degree"], ["Master of Science", "Master's Degree"], ["MBA", "Master of Business Administration (M.B.A.)"]]) {
     const degreeProfile = { ...profile, education: { highest_level: title } };
     const degreeField = { fieldKey: "degree", label: "Degree", type: "combobox", hasError: true, filled: true };
@@ -74,3 +86,19 @@ for (const [title, label] of [["Bachelor of Science in Computer Science", "Bache
 const mismatchedDegree = createDeterministicFillPlan({ fields: [{ fieldKey: "degree", label: "Degree", type: "select", options: ["Bachelor of Arts", "Master's Degree"] }], profile }).answers[0];
 assert.equal(mismatchedDegree.action, "ask_user");
 console.log("Extension autofill planner checks passed.");
+const educationPlan = createDeterministicFillPlan({ profile: { ...profile, education: { ...profile.education, start_date: "2020-08", end_date: "2024-05" } }, fields: [
+    { fieldKey: "name-only", label: "Name", type: "text" },
+    { fieldKey: "start-month", label: "Education Start Date Month", type: "select", options: ["Month...", "January", "August"] },
+    { fieldKey: "end-year", label: "Education End Date Year", type: "select", options: ["Year...", "2023", "2024"] },
+] });
+assert.deepEqual(educationPlan.answers.map(answer => answer.value), ["Avery Ng", "August", "2024"]);
+const incompleteDate = createDeterministicFillPlan({ profile: { ...profile, education: { start_date: "2020" } }, fields: [
+    { fieldKey: "month", label: "Education Start Date Month", type: "select", options: ["January", "August"] },
+] });
+assert.equal(incompleteDate.answers[0].action, "ask_user");
+const ashbyPlan = createDeterministicFillPlan({ profile, fields: [
+    { fieldKey: "ashby-location", label: "Location", type: "combobox" },
+    { fieldKey: "ashby-sponsor", label: "Will you now or in the future require Notion to sponsor an immigration case in order to employ you?", type: "select", options: ["Yes", "No"] },
+] });
+assert.equal(ashbyPlan.answers.find(answer => answer.fieldKey === "ashby-location").value, "Austin");
+assert.equal(ashbyPlan.answers.find(answer => answer.fieldKey === "ashby-sponsor").value, "No");

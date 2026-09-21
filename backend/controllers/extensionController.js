@@ -69,8 +69,8 @@ const aiPlan = asyncHandler(async (req, res) => {
     const fields = (Array.isArray(req.body?.fields) ? req.body.fields : [])
         .slice(0, 80)
         .map(safeField)
-        .filter(field => field.fieldKey && !field.filled);
-    if (!fields.length) return res.status(400).json({ message: "There are no unresolved fields to send to AI." });
+        .filter(field => field.fieldKey && !field.filled && ["text", "textarea"].includes(field.type) && !field.options.length);
+    if (!fields.length) return res.status(400).json({ message: "There are no unresolved written-answer fields to send to AI." });
 
     const editableProfile = await profileRepository.getByUserId(req.auth.userId);
     if (!editableProfile) return res.status(400).json({ message: "Complete your JobPilot Profile before using AI." });
@@ -97,6 +97,7 @@ const aiPlan = asyncHandler(async (req, res) => {
         fields: fields.map(field => ({ ...field, locatorKey: field.fieldKey, question: field.label })),
         ambiguityMode: "ask_user",
         guidance,
+        writingStyle: String(req.body?.writingStyle || "").slice(0, 1000),
         draftAnswers: Array.isArray(req.body?.draftAnswers) ? req.body.draftAnswers : [],
         candidateContext,
         answerMemories,

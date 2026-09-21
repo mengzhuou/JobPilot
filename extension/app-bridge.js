@@ -13,7 +13,7 @@
     // A synchronous DOM event preserves the button's user activation for Chrome's
     // sidePanel.open and optional site-permission request.
     window.addEventListener("jobpilot:launch", event => {
-        if (location.pathname !== "/autofill" || !navigator.userActivation.isActive) return;
+        if (!["/autofill", "/loops"].includes(location.pathname) || !navigator.userActivation.isActive) return;
         const { jobUrl, sessionId } = event.detail || {};
         request({ type: "JOBPILOT_LAUNCH", jobUrl, sessionId }, data => publish({ type: "launch-state", ...data }));
     });

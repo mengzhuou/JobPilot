@@ -38,6 +38,7 @@ const originalKey = process.env.OPENAI_API_KEY;
             options: [],
         }],
         guidance: "Make it warmer and mention that I gathered requirements directly in weekly client meetings.",
+        writingStyle: "Concise, first-person, no buzzwords.",
         draftAnswers: [
             { fieldKey: "client-question", value: "Original answer." },
             { fieldKey: "unrelated-field", value: "Must not be sent." },
@@ -51,12 +52,24 @@ const originalKey = process.env.OPENAI_API_KEY;
     });
 
     const userPrompt = JSON.parse(requestBody.input[1].content[0].text);
+    assert.equal(userPrompt.revision.writingStyle, "Concise, first-person, no buzzwords.");
     assert.equal(userPrompt.revision.guidance, "Make it warmer and mention that I gathered requirements directly in weekly client meetings.");
     assert.deepEqual(userPrompt.revision.currentDrafts, [{ fieldKey: "client-question", value: "Original answer." }]);
     assert.equal(userPrompt.primaryResume.text, "Built a customer reporting platform.");
     assert.equal(userPrompt.portfolio.text, "Portfolio project details.");
     assert.equal(userPrompt.previousAnswerMemories[0].userContext, "Weekly client interviews");
     assert.equal(answers[0].value, "A clearer grounded answer.");
+    requestBody = null;
+    const ignored = await createApplicationAnswerPlan({ fields: [
+        { fieldKey: "dropdown", type: "combobox" },
+        { fieldKey: "rating", type: "select" },
+        { fieldKey: "radio", type: "radio" },
+        { fieldKey: "file", type: "file" },
+        { fieldKey: "done", type: "textarea", filled: true },
+        { fieldKey: "choices", type: "text", options: ["Yes", "No"] },
+    ] });
+    assert.deepEqual(ignored, []);
+    assert.equal(requestBody, null, "Non-written fields must not call OpenAI");
     console.log("Application AI revision checks passed.");
 })().finally(() => {
     global.fetch = originalFetch;

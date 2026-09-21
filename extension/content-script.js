@@ -23,8 +23,29 @@
             "[class*='__single-value'], [class$='-singleValue'], [class*='__multi-value__label']"
         ) || []).map(node => node.textContent).join(", "));
     };
+    const ashbyField = element => element.closest(".ashby-application-form-field-entry, .ashby-application-form-input-radio-group, .ashby-application-form-input-checkbox-group");
+    const ashbyLabel = element => {
+        const field = ashbyField(element);
+        if (!field) return null;
+        if (element.matches('input[type="radio"], .ashby-application-form-input-yesno')) return field.querySelector('.ashby-application-form-question-title');
+        const associated = Array.from(element.labels || []).find(label => label.matches('.ashby-application-form-question-title'));
+        if (associated) return associated;
+        for (let node = element.parentElement; node && field.contains(node); node = node.parentElement) {
+            const label = node.querySelector(':scope > .ashby-application-form-question-title');
+            if (label) return label;
+        }
+        return field.querySelector('.ashby-application-form-question-title');
+    };
+    const ashbyQuestion = element => {
+        const label = cleanText(ashbyLabel(element)?.textContent);
+        const datePart = element.matches('select') && /^(Month|Year)/i.exec(element.options?.[0]?.textContent || '');
+        return datePart && /date/i.test(label) ? `Education ${label} ${datePart[1]}` : label;
+    };
+    const ashbyRequired = element => Boolean(ashbyLabel(element)?.matches('[class*="_required_"]'));
     const controlVisible = element => element.getAttribute("aria-hidden") !== "true"
-        && (visible(element) || (reactSelectRoot(element) && visible(selectControl(element))));
+        && (visible(element) || (reactSelectRoot(element) && visible(selectControl(element)))
+            || (ashbyField(element) && element.matches('input[type="radio"], input[type="checkbox"]')
+                && Array.from(element.labels || []).some(visible)));
     const fieldValue = (type, element) => {
         if (reactSelectRoot(element)) return selectedDisplay(element);
         if (type === "select") return cleanText(element.selectedOptions?.[0]?.textContent);
@@ -32,6 +53,7 @@
     };
     const textById = ids => cleanText(String(ids || "").split(/\s+/).map(id => document.getElementById(id)?.textContent || "").join(" "));
     const nearestText = element => {
+        if (ashbyQuestion(element)) return ashbyQuestion(element);
         const candidates = [];
         if (element.labels) candidates.push(...Array.from(element.labels).map(label => label.innerText));
         candidates.push(
@@ -54,7 +76,7 @@
         || element.value
     ).slice(0, 300) : "";
     const ERROR_SELECTOR = "[role='alert'], [aria-live='assertive'], .error-message, .field-error, .input-error, [class*='errorMessage'], [class*='error-message'], [data-testid*='error'], [id*='error']";
-    const FIELD_CONTROL_SELECTOR = "input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='combobox'], button[aria-haspopup='listbox'], [role='button'][aria-haspopup='listbox']";
+    const FIELD_CONTROL_SELECTOR = "input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='combobox'], button[aria-haspopup='listbox'], [role='button'][aria-haspopup='listbox'], .ashby-application-form-input-yesno";
     const leafControls = container => Array.from(container?.querySelectorAll?.(FIELD_CONTROL_SELECTOR) || [])
         .filter(item => !item.disabled && controlVisible(item))
         .filter(item => !(item.matches("[role='combobox']") && item.querySelector("input, textarea, select, button")));
@@ -70,7 +92,7 @@
         }
         return "";
     };
-    const fieldErrorMessage = (element, elements = [element]) => {
+    const fieldErrorMessage = (element, elements = [element], selectedCheckboxGroup = false) => {
         const describedIds = elements.flatMap(item => [item?.getAttribute?.("aria-describedby"), item?.getAttribute?.("aria-errormessage")]
             .filter(Boolean).flatMap(ids => ids.split(/\s+/))).filter(Boolean);
         const describedNodes = [...new Set(describedIds)].map(id => document.getElementById(id)).filter(Boolean);
@@ -79,6 +101,7 @@
             .map(node => node.innerText || node.textContent).join(" "));
         if (describedErrorText && describedErrorText.length <= 500) return describedErrorText;
         const nativeMessage = elements.map(item => {
+            if (selectedCheckboxGroup && item.validity?.valueMissing && !item.validity?.customError) return "";
             try { return item?.validity?.valid === false ? cleanText(item.validationMessage) : ""; }
             catch { return ""; }
         }).find(Boolean);
@@ -112,16 +135,19 @@
     };
     const selectedRadioValue = elements => optionLabel(elements.find(element => element.checked) || null);
     const isFilled = (type, element, elements = []) => {
-        if (type === "radio") return elements.some(item => item.checked);
+        if (type === "radio" || type === "checkbox-group") return elements.some(item => item.checked);
+        if (type === "yesno") return Boolean(element.querySelector('button[aria-pressed="true"]'));
         if (type === "checkbox") return Boolean(element.checked);
         if (type === "file") return Boolean(element.files?.length);
         if (type === "select" || type === "combobox") {
+            if (type === "select" && (!element.value || element.selectedOptions?.[0]?.disabled)) return false;
             const value = fieldValue(type, element);
             return Boolean(value && !/^(select|choose|please select|--)/i.test(value));
         }
         return Boolean(cleanText(element.value || element.textContent));
     };
     const typeFor = element => {
+        if (element.matches(".ashby-application-form-input-yesno")) return "yesno";
         if (element.matches("select")) return "select";
         if (element.getAttribute("role") === "combobox" || element.getAttribute("aria-haspopup") === "listbox") return "combobox";
         if (element.matches("textarea")) return "textarea";
@@ -134,19 +160,53 @@
         const elements = Array.from(document.querySelectorAll(
             FIELD_CONTROL_SELECTOR
         )).filter(element => !element.disabled && (controlVisible(element) || typeFor(element) === "file"))
+            .filter(element => !element.matches(".ashby-application-form-input-yesno input, .ashby-application-form-autofill-input-root input"))
             .filter(element => !(element.matches("[role='combobox']") && element.querySelector("input, textarea, select, button")))
             .slice(0, MAX_FIELDS * 2);
         const handledRadioNames = new Set();
+        const handledCheckboxes = new Set();
         const fields = [];
 
         elements.forEach((element, index) => {
             if (fields.length >= MAX_FIELDS) return;
             const type = typeFor(element);
             if (["submit", "button", "reset", "image"].includes(type)) return;
+            if (type === "yesno") {
+                const key = stableKey(element, index);
+                const errorMessage = ownedErrorText(element);
+                registry.set(key, { type, element, elements: [element], label: nearestText(element), errorMessage });
+                fields.push({ fieldKey: key, label: nearestText(element), type: "select", options: ["Yes", "No"],
+                    required: ashbyRequired(element),
+                    filled: isFilled(type, element) && !errorMessage, currentValue: cleanText(element.querySelector('button[aria-pressed="true"]')?.textContent),
+                    hasError: Boolean(errorMessage), errorMessage });
+                return;
+            }
+            if (type === "checkbox" && element.name) {
+                if (handledCheckboxes.has(element)) return;
+                const container = element.closest(".ashby-application-form-field-entry, fieldset, [role='group'], .field, .form-field, .application-question");
+                const group = elements.filter(item => item.type === "checkbox" && (item.name === element.name || ashbyField(element) === ashbyField(item) && ashbyField(element))
+                    && item.form === element.form && container && container.contains(item));
+                const question = ashbyQuestion(element) || cleanText(container?.querySelector("legend, :scope > label, [role='heading']")?.textContent);
+                // Only an explicitly shared question/name establishes a choice group.
+                // Separate acknowledgements remain independently required.
+                if (group.length > 1 && question && !/agree|consent|certif|acknowledge|confirm|terms|privacy/i.test(question)) {
+                    group.forEach(item => handledCheckboxes.add(item));
+                    const key = stableKey(element, index);
+                    const checked = group.some(item => item.checked);
+                    const groupError = Array.from(container.querySelectorAll(ERROR_SELECTOR)).find(node => visible(node) && cleanText(node.textContent));
+                    const errorMessage = cleanText(groupError?.textContent) || fieldErrorMessage(element, group, checked);
+                    registry.set(key, { type: "checkbox-group", element, elements: group, errorMessage, label: question });
+                    fields.push({ fieldKey: key, label: question, name: element.name, type: "checkbox-group", options: group.map(optionLabel),
+                        required: group.some(item => item.required || item.getAttribute("aria-required") === "true") || question.includes("*"),
+                        filled: checked && !errorMessage, currentValue: group.filter(item => item.checked).map(optionLabel).join(", "),
+                        hasError: Boolean(errorMessage), errorMessage });
+                    return;
+                }
+            }
             if (type === "radio" && element.name) {
-                if (handledRadioNames.has(element.name)) return;
-                handledRadioNames.add(element.name);
-                const group = elements.filter(item => typeFor(item) === "radio" && item.name === element.name);
+                if (handledRadioNames.has(element)) return;
+                const group = elements.filter(item => typeFor(item) === "radio" && item.name === element.name && item.form === element.form);
+                group.forEach(item => handledRadioNames.add(item));
                 const key = stableKey(element, index);
                 const errorMessage = fieldErrorMessage(element, group);
                 registry.set(key, { type, element, elements: group, errorMessage, label: nearestText(element) });
@@ -157,7 +217,7 @@
                     autocomplete: cleanText(element.autocomplete),
                     name: cleanText(element.name),
                     type,
-                    required: group.some(item => item.required || item.getAttribute("aria-required") === "true"),
+                    required: group.some(item => item.required || item.getAttribute("aria-required") === "true") || ashbyRequired(element),
                     filled: isFilled(type, element, group) && !errorMessage,
                     currentValue: selectedRadioValue(group),
                     options: group.map(optionLabel).filter(Boolean),
@@ -180,7 +240,7 @@
                 name: cleanText(element.name),
                 type,
                 context: type === "file" ? fileContext(element) : "",
-                required: Boolean(element.required || element.getAttribute("aria-required") === "true"),
+                required: Boolean(element.required || element.getAttribute("aria-required") === "true" || ashbyRequired(element)),
                 filled: isFilled(type, element) && !errorMessage,
                 currentValue: type === "checkbox"
                     ? (element.checked ? optionLabel(element) || "Yes" : "")
@@ -274,7 +334,7 @@
         if (ids.length) return ids.map(id => document.getElementById(id)).filter(node => node && visible(node));
         const root = reactSelectRoot(element);
         if (root) return Array.from(root.querySelectorAll("[role='listbox'], [class*='__menu-list']")).filter(visible);
-        const group = element.closest(".field, .form-field, .select__container") || element.parentElement;
+        const group = element.closest(".ashby-application-form-field-entry, .field, .form-field, .select__container") || element.parentElement;
         return Array.from(group?.querySelectorAll("[role='listbox']") || []).filter(visible);
     };
     const autocompleteOptions = element => autocompleteMenus(element).flatMap(menu =>
@@ -402,10 +462,18 @@
     const fillEntry = async (entry, answer) => {
         const { element, elements, type } = entry;
         if (!element?.isConnected) return { status: "failed", message: "The field is no longer on the page." };
-        const reportedError = fieldErrorMessage(element, elements);
+        const reportedError = fieldErrorMessage(element, elements, type === "checkbox-group" && elements.some(item => item.checked));
         if (isFilled(type, element, elements) && !reportedError) return { status: "skipped", message: "Already filled." };
         const value = cleanText(answer.value);
 
+        if (type === "yesno") {
+            const answer = comparableOption(value);
+            const button = Array.from(element.querySelectorAll("button[data-option]")).find(node => comparableOption(node.dataset.option) === answer);
+            if (!button) return { status: "failed", message: "No equivalent Yes/No option was found." };
+            button.click();
+            await wait(100);
+            return { status: button.getAttribute("aria-pressed") === "true" ? "filled" : "failed" };
+        }
         if (type === "checkbox") {
             if (!element.checked && /^(true|yes|acknowledge|acknowledge confirm)$/i.test(normalized(value))) clickReactAware(element);
             else if (element.checked && reportedError) {
@@ -415,12 +483,13 @@
             }
             return element.checked ? { status: "filled" } : { status: "failed", message: "The checkbox could not be selected." };
         }
-        if (type === "radio") {
+        if (type === "radio" || type === "checkbox-group") {
             const labels = elements.map(optionLabel);
             const match = semanticMatch(labels, value);
             const index = labels.indexOf(match);
             if (index < 0) return { status: "failed", message: "No equivalent radio option was found." };
             clickReactAware(elements[index]);
+            await wait(80);
             return { status: elements[index].checked ? "filled" : "failed" };
         }
         if (type === "select") {
@@ -450,7 +519,7 @@
         const started = Date.now();
         let message = "";
         do {
-            message = entry?.element?.isConnected ? fieldErrorMessage(entry.element, entry.elements) : "";
+            message = entry?.element?.isConnected ? fieldErrorMessage(entry.element, entry.elements, entry.type === "checkbox-group" && entry.elements.some(item => item.checked)) : "";
             if (!message) return "";
             await wait(100);
         } while (Date.now() - started < timeout);
@@ -531,13 +600,40 @@
         }
     };
 
+    const submitControls = () => Array.from(document.querySelectorAll("button, input[type='submit'], [role='button']"))
+        .filter(node => visible(node) && !node.disabled && node.getAttribute("aria-disabled") !== "true")
+        .filter(node => /^(submit(?:\s+(?:my\s+)?application)?|send application|apply now)$/i.test(cleanText(node.innerText || node.value || node.getAttribute("aria-label"))))
+        .filter(node => node.form || node.closest("form") || /application/i.test(cleanText(node.innerText || node.value)));
+    const submissionState = fields => ({
+        available: submitControls().length === 1,
+        ready: fields.length > 0 && !fields.some(field => (field.required && !field.filled)
+            || (field.hasError && (field.required || cleanText(field.currentValue))))
+            && submitControls().length === 1 && !pageUnavailable(),
+    });
+    let submitting = false;
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message?.type === "JOBPILOT_PING") {
             sendResponse({ ready: true });
             return false;
         }
         if (message?.type === "JOBPILOT_SCAN_FIELDS") {
-            sendResponse({ fields: scanFields(), job: jobMetadata(), unavailable: pageUnavailable() });
+            const fields = scanFields();
+            sendResponse({ fields, submission: submissionState(fields), job: jobMetadata(), unavailable: pageUnavailable() });
+            return false;
+        }
+        if (message?.type === "JOBPILOT_SUBMIT_FORM") {
+            const fields = scanFields();
+            const button = submitControls()[0];
+            if (submitting || !submissionState(fields).ready || !button || (button.form && !button.form.noValidate && !button.formNoValidate && !button.form.reportValidity())) {
+                sendResponse({ submitted: false, error: "Review required fields and validation errors on the application, then rescan." });
+                return false;
+            }
+            submitting = true;
+            // This is only invoked by the extension's explicit Submit button.
+            // Use the site's handler and validation, never form.submit().
+            sendResponse({ submitted: true });
+            button.click();
+            setTimeout(() => { submitting = false; }, 10000);
             return false;
         }
         if (message?.type === "JOBPILOT_APPLY_PLAN") {

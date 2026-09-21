@@ -4,8 +4,8 @@ const { createApplicationLifecycle } = require("../application-lifecycle");
 const { submissionEvidence } = require("../submission-monitor");
 const manifest = require("../manifest.json");
 
-function setup() {
-    const stored = {}, calls = [], tabs = new Map([[1, { id: 1, windowId: 8, url: "http://localhost:3000/autofill?jobId=42" }]]);
+function setup(mode = "loop") {
+    const stored = {}, calls = [], tabs = new Map([[1, { id: 1, windowId: 8, url: `http://localhost:3000/${mode === "loop" ? "loops" : "autofill"}?jobId=42` }]]);
     let nextId = 10;
     const copy = value => structuredClone(value);
     const chrome = {
@@ -39,6 +39,16 @@ test("launch opens panel and broadcasts a rescan, including embedded forms", asy
     assert(t.calls.some(([kind]) => kind === "panel"));
     assert(t.calls.some(([kind, m]) => kind === "broadcast" && m.type === "JOBPILOT_RESCAN_REQUEST" && m.tabId === 10));
     assert(t.calls.some(([kind, id, m, options]) => kind === "message" && id === 10 && m.type === "JOBPILOT_TRACK_APPLICATION" && options.frameId === 4));
+});
+test("regular Autofill never automatically closes tabs or enables extension submission", async () => {
+    const t = setup("autofill"); await t.launch();
+    assert.equal(await t.lifecycle.modeForTab(10), "autofill");
+    await assert.rejects(t.lifecycle.prepareSubmit(10), /reserved for Loop/);
+    await t.observed("JOBPILOT_APPLICATION_FORM_SEEN");
+    await t.observed("JOBPILOT_APPLICATION_SUBMIT_ATTEMPT");
+    await t.observed("JOBPILOT_APPLICATION_SUBMITTED");
+    assert(t.tabs.has(10) && t.tabs.has(1));
+    assert(!t.calls.some(([kind]) => kind === "remove"));
 });
 test("success closes only job tab, returns to app, and waits for saved acknowledgement", async () => {
     const t = setup(); const session = await t.launch();
@@ -98,6 +108,7 @@ test("worker restart keeps session tracking, and permission denial opens no tab"
 test("success evidence excludes job descriptions, validation failures, and URL-only redirects", () => {
     const inspect = (messages, hasApplicationForm = false, url = "https://example.org/confirmation") => submissionEvidence({ messages, hasApplicationForm, url });
     assert(inspect(["Thank you for applying!"]));
+    assert(inspect(["Thank you for applying to NewsBreak."], false, "https://job-boards.greenhouse.io/newsbreak/confirmation"));
     assert(inspect(["Your application has been received."]));
     assert(inspect(["Thank you"]));
     assert.equal(inspect(["Application submitted"], true), "");
@@ -105,4 +116,15 @@ test("success evidence excludes job descriptions, validation failures, and URL-o
     assert.equal(inspect(["This field is required"]), "");
     assert.equal(inspect([]), "");
     assert.equal(inspect(["Thank you"], false, "https://example.org/jobs/1"), "");
+});
+test("extension Submit persists an attempt but never records success before confirmation", async () => {
+    const t = setup();
+    await assert.rejects(t.lifecycle.prepareSubmit(10), /Open this job/);
+    await t.launch();
+    await t.lifecycle.prepareSubmit(10);
+    assert.equal((await t.lifecycle.status(t.app)).status, "open");
+    assert(t.tabs.has(10) && t.tabs.has(1));
+    await t.observed("JOBPILOT_APPLICATION_SUBMITTED");
+    assert.equal((await t.lifecycle.status(t.app)).status, "submitted");
+    assert(!t.tabs.has(10) && t.tabs.has(1));
 });

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import ProfileEditor from './ProfileEditor';
 import { PersonalLocations } from './ProfileFields';
 import { getProfileLocations } from '../../../connector';
+import { ACTIVE_IMMIGRATION_CASE, INTERVIEW_LANGUAGE } from './profileQuestions';
 
 jest.mock('../../../connector', () => ({ getProfileLocations: jest.fn() }));
 const user = {
@@ -29,7 +30,7 @@ test('both Update buttons respect required education fields', () => {
     render(<ProfileEditor section="education" value={[{school:'Georgia Tech',degree:'',details:[]}]} onSave={save} onCancel={()=>{}} />);
     screen.getAllByRole('button',{name:'Update'}).forEach(button=>user.click(button));
     expect(save).not.toHaveBeenCalled();
-    user.type(screen.getByLabelText(/Major \/ Degree/),'Computer Science');
+    user.type(screen.getByLabelText(/Degree \/ Qualification/),'Computer Science');
     user.click(screen.getAllByRole('button',{name:'Update'})[0]);
     expect(save).toHaveBeenCalledTimes(1);
 });
@@ -51,7 +52,7 @@ test('preferences save multiple employment types and locations', () => {
     const locations = screen.getByRole('combobox',{name:'Preferred application location'});
     user.type(locations,'Atlanta, GA{enter}');
     user.click(screen.getAllByRole('button',{name:'Update'})[1]);
-    expect(save).toHaveBeenCalledWith([["Seeking",['Full-time','Internship']],["Office preference","Remote only"],["Preferred application location",['Dallas, TX','Atlanta, GA']]]);
+    expect(save).toHaveBeenCalledWith([["Seeking",['Full-time','Internship']],["Office preference","Remote only"],["Preferred application location",['Dallas, TX','Atlanta, GA']],[INTERVIEW_LANGUAGE,'']]);
 });
 
 test('postal suggestions never overwrite a manually entered code', async () => {
@@ -76,7 +77,7 @@ test('education offers school and degree suggestions and accepts decimal GPA onl
     render(<ProfileEditor section="education" value={[{school:'',degree:'',gpa:'',details:[]}]} onSave={save} onCancel={()=>{}} />);
     user.type(screen.getByRole('combobox',{name:/School Name/}),'Georgia Institute');
     user.click(screen.getByRole('option',{name:'Georgia Institute of Technology'}));
-    user.type(screen.getByRole('combobox',{name:/Major \/ Degree/}),'Bachelor of Science in Computer');
+    user.type(screen.getByRole('combobox',{name:/Degree \/ Qualification/}),'Bachelor of Science in Computer');
     user.click(screen.getByRole('option',{name:'Bachelor of Science in Computer Science'}));
     const gpa = screen.getByLabelText('GPA');
     user.type(gpa,'3.95abc');
@@ -94,4 +95,35 @@ test('GPA can be cleared without restoring the old imported value', () => {
     expect(screen.getByLabelText('GPA').value).toBe('');
     user.click(screen.getAllByRole('button',{name:'Update'})[0]);
     expect(save).toHaveBeenCalledWith([expect.objectContaining({gpa:''})]);
+});
+
+test('older profiles can save a separate major and preserve education dates', () => {
+    const save = jest.fn();
+    render(<ProfileEditor section="education" value={[{school:'Example University',degree:'Bachelor of Science',from:'Aug 2022',to:'Dec 2024'}]} onSave={save} onCancel={()=>{}}/>);
+    expect(screen.getByLabelText('Start Date').value).toBe('2022-08');
+    expect(screen.getByLabelText('End Date').value).toBe('2024-12');
+    user.type(screen.getByLabelText('Field of Study / Major'),'Computer Science');
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save).toHaveBeenCalledWith([expect.objectContaining({degree:'Bachelor of Science',fieldOfStudy:'Computer Science',from:'Aug 2022',to:'Dec 2024'})]);
+});
+
+test('interview language is added once to older profiles and custom preferences persist', () => {
+    const save = jest.fn();
+    render(<ProfileEditor section="preferences" value={[]} onSave={save} onCancel={()=>{}}/>);
+    user.type(screen.getByRole('combobox',{name:INTERVIEW_LANGUAGE}),'Elixir');
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save).toHaveBeenCalledWith([[INTERVIEW_LANGUAGE,'Elixir']]);
+});
+
+test('active immigration case is blank by default, independent of sponsorship, and can be cleared', () => {
+    const save = jest.fn();
+    render(<ProfileEditor section="equalEmployment" value={[["Requires employment sponsorship","No"]]} onSave={save} onCancel={()=>{}}/>);
+    const activeCase = screen.getByRole('combobox',{name:ACTIVE_IMMIGRATION_CASE});
+    expect(activeCase.value).toBe('');
+    fireEvent.change(activeCase,{target:{value:'Yes'}});
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,'Yes']]);
+    fireEvent.change(activeCase,{target:{value:''}});
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,'']]);
 });

@@ -3,7 +3,7 @@ const elements = Object.fromEntries([
     "pairingCode", "connectButton", "jobTitle", "jobCompany", "rescanButton", "statusCard",
     "statusTitle", "statusMessage", "summaryView", "readyCount", "reviewCount", "skippedCount",
     "fieldSection", "fieldCount", "fieldList", "actionsView", "fillButton", "aiButton", "toast",
-    "reviewBackButton", "aiReviewCount", "aiReviewList", "applyAiButton",
+    "reviewBackButton", "aiReviewCount", "aiReviewList", "applyAiButton", "submitButton", "submitHelp",
 ].map(id => [id, document.getElementById(id)]));
 
 const state = {
@@ -14,6 +14,7 @@ const state = {
     aiAnswers: [],
     unresolvedFields: [],
 };
+document.getElementById("extensionVersion").textContent = `Application assistant · v${chrome.runtime.getManifest().version}`;
 
 const send = message => new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(message, response => {
@@ -67,6 +68,8 @@ const fieldClass = answer => {
     if (outcome?.status === "filled") return "filled";
     if (outcome?.status === "failed") return "failed";
     const scanned = state.scan?.fields.find(field => field.fieldKey === answer.fieldKey);
+    if (scanned?.hasError && String(scanned.currentValue || "").trim()) return "failed";
+    if (scanned && !scanned.filled) return scanned.required ? "failed" : "review";
     if (scanned?.hasError) return "failed";
     if (answer.aiSuggestion) return answer.action === "fill" && answer.value ? "review" : "skipped";
     if (answer.action === "fill") return "ready";
@@ -79,6 +82,7 @@ const statusFor = (answer, className) => {
     if (outcome?.status === "filled") return "Filled on this page";
     if (outcome?.status === "failed") return outcome.message || "Could not fill this field";
     const scanned = state.scan?.fields.find(field => field.fieldKey === answer.fieldKey);
+    if (scanned && !scanned.filled && !scanned.hasError) return `${scanned.required ? "Required field is empty." : "Optional field is empty."}${answer.action === "fill" ? " Saved answer ready to fill." : ""}`;
     if (scanned?.hasError) return scanned.errorMessage || "The application reports this field is invalid; Autofill will retry it.";
     if (answer.aiSuggestion && answer.value) return "AI suggestion ready for your review";
     if (answer.action === "fill") return answer.reason || "Ready from Profile";
@@ -115,7 +119,7 @@ const renderFields = () => {
 
         const icon = document.createElement("span");
         icon.className = "field-icon";
-        icon.textContent = answer.aiSuggestion && !state.results.has(answer.fieldKey) ? "✦" : iconFor(className);
+        icon.textContent = iconFor(className);
         const copy = document.createElement("span");
         copy.className = "field-copy";
         const title = document.createElement("strong");
@@ -155,7 +159,7 @@ const updateAiButton = () => {
     elements.aiButton.disabled = state.unresolvedFields.length === 0;
     elements.aiButton.textContent = state.unresolvedFields.length
         ? `✦ Generate AI suggestions for ${state.unresolvedFields.length} field${state.unresolvedFields.length === 1 ? "" : "s"}`
-        : "No unresolved fields";
+        : "No written answers need AI";
 };
 
 const refineAiAnswer = async (index, guidance, button) => {
@@ -271,6 +275,10 @@ function renderAiReview() {
 }
 
 const renderPlan = summary => {
+    const isLoop = state.scan?.mode === "loop";
+    show(document.getElementById("loopStyleSettings"), isLoop);
+    show(elements.submitButton, isLoop);
+    show(elements.aiButton, isLoop);
     const calculated = summary || {
         ready: state.plan.filter(answer => answer.action === "fill").length,
         needsReview: state.plan.filter(answer => answer.action === "ask_user").length,
@@ -283,6 +291,8 @@ const renderPlan = summary => {
     show(elements.fieldSection, true);
     show(elements.actionsView, true);
     elements.fillButton.disabled = calculated.ready === 0;
+    show(elements.fillButton, calculated.ready > 0);
+    elements.actionsView.insertBefore(elements.submitButton, calculated.ready ? elements.aiButton : elements.fillButton);
     elements.fillButton.textContent = calculated.ready ? `Fill ${calculated.ready} ready field${calculated.ready === 1 ? "" : "s"}` : "No Profile fields ready";
     updateAiButton();
     renderFields();
@@ -290,6 +300,8 @@ const renderPlan = summary => {
 
 let scanGeneration = 0;
 const scanAndPlan = async () => {
+    show(document.getElementById("loopStyleSettings"), false);
+    elements.submitButton.disabled = true;
     const generation = ++scanGeneration;
     state.results.clear();
     state.aiAnswers = [];
@@ -333,8 +345,16 @@ const scanAndPlan = async () => {
             }
             return answer;
         });
-        state.unresolvedFields = state.scan.fields.filter(field => state.plan.find(answer => answer.fieldKey === field.fieldKey)?.action === "ask_user");
+        state.unresolvedFields = state.scan.fields.filter(field =>
+            ["text", "textarea"].includes(field.type) && !field.filled && !field.options?.length
+            && state.plan.find(answer => answer.fieldKey === field.fieldKey)?.action === "ask_user");
         renderPlan();
+        elements.submitButton.disabled = !scan.submission?.ready;
+        elements.submitHelp.textContent = scan.mode !== "loop"
+            ? "Review and submit on the job page. Application confirmation stays manual."
+            : scan.submission?.ready
+            ? "Required fields are complete. Review your answers; Submit sends this application to the employer."
+            : "Complete required fields and resolve errors, then rescan. Optional fields may remain blank.";
         const ready = state.plan.filter(answer => answer.action === "fill").length;
         setStatus(
             "Review before filling",
@@ -342,6 +362,7 @@ const scanAndPlan = async () => {
             "success"
         );
         if (plan.missingProfileFields?.length) toast(`Profile could be stronger: ${plan.missingProfileFields.join(", ")}.`);
+        if (scan.inaccessibleFrames?.length) toast("Some embedded frames could not be read. Check Chrome site access for the embedded application, then rescan. CAPTCHA stays manual.");
     } catch (error) {
         if (generation !== scanGeneration) return;
         state.plan = [];
@@ -350,6 +371,7 @@ const scanAndPlan = async () => {
 };
 
 const applyAnswers = async answers => {
+    elements.submitButton.disabled = true;
     if (!answers.length) return false;
     setStatus("Autofilling your application", "Keep this tab open while JobPilot applies the answers you reviewed.");
     elements.fillButton.disabled = true;
@@ -385,6 +407,7 @@ const applyAnswers = async answers => {
 };
 
 const generateAiSuggestions = async () => {
+    if (state.scan?.mode !== "loop") return;
     if (!state.unresolvedFields.length) return;
     elements.aiButton.disabled = true;
     elements.aiButton.textContent = "Generating suggestions…";
@@ -440,6 +463,27 @@ elements.disconnectButton.addEventListener("click", async () => {
     toast("This Chrome extension is disconnected from JobPilot.");
 });
 elements.rescanButton.addEventListener("click", scanAndPlan);
+const styleInput = document.getElementById("writingStyle");
+chrome.storage.local.get("jobpilot.aiWritingStyle").then(values => { styleInput.value = values["jobpilot.aiWritingStyle"] || ""; });
+document.getElementById("saveWritingStyle").addEventListener("click", async () => {
+    try {
+        await chrome.storage.local.set({ "jobpilot.aiWritingStyle": styleInput.value.trim().slice(0, 1000) });
+        document.getElementById("writingStyleStatus").textContent = "Style saved for future Loop AI answers. No AI request was made.";
+    } catch { document.getElementById("writingStyleStatus").textContent = "Unable to save your style. Please retry."; }
+});
+elements.submitButton.addEventListener("click", async () => {
+    elements.submitButton.disabled = true;
+    elements.submitButton.textContent = "Submitting…";
+    try {
+        const result = await send({ type: "JOBPILOT_SUBMIT", tabId: state.scan?.tabId, jobUrl: state.scan?.job?.url });
+        if (!result.submitted) throw new Error(result.error || "The application could not be submitted.");
+        setStatus("Waiting for submission confirmation", "JobPilot will record this job and close the tabs only after the website confirms receipt. If a CAPTCHA or error appears, complete it on the job page.");
+    } catch (error) { toast(error.message); }
+    finally {
+        elements.submitButton.textContent = "Submit application";
+        // Stay disabled until an explicit rescan; never automatically retry a submission.
+    }
+});
 let launchScanTimer;
 chrome.runtime.onMessage.addListener(message => {
     if (message.type !== "JOBPILOT_RESCAN_REQUEST") return;

@@ -2,13 +2,15 @@ import React, { useEffect, useState } from "react";
 import { SuggestField, PersonalLocations, TECH_SKILLS, OFFICE_OPTIONS, SEEKING_OPTIONS, asSelections } from './ProfileFields';
 
 import { SCHOOLS, DEGREES, JOB_TITLES } from './profileSuggestions';
+import { ACTIVE_IMMIGRATION_CASE, INTERVIEW_LANGUAGE, INTERVIEW_LANGUAGES, withApplicationQuestions } from './profileQuestions';
 const COMPANY_OPTIONS = ["Walmart Global Tech", "Travelers", "MessageGears"];
 let entryId = 0;
 const entry = item => ({ ...item, _editorId: ++entryId });
-const prepare = (section, value) => ['education','experience'].includes(section) ? value.map(entry) : value;
+const prepare = (section, value) => ['education','experience'].includes(section) ? value.map(entry) : ['preferences','equalEmployment'].includes(section) ? withApplicationQuestions(section, value) : value;
 const EEO_OPTIONS = {
     "Authorized to work in the United States":["Yes","No"],
     "Requires employment sponsorship":["Yes","No"],
+    [ACTIVE_IMMIGRATION_CASE]:["Yes","No"],
     "Citizenship status":["U.S. citizen","U.S. lawful permanent resident","Protected individual","Other"],
     Gender:["Female","Male","Non-binary","Choose not to disclose"],
     "Hispanic or Latino":["Yes","No","Choose not to disclose"],
@@ -26,7 +28,7 @@ const toMonth = value => {
     return Number.isNaN(parsed.getTime()) ? "" : `${parsed.getFullYear()}-${String(parsed.getMonth()+1).padStart(2,"0")}`;
 };
 const Field = ({ label, value, onChange, type="text", required=false, disabled=false, list, placeholder="" }) => <label className="profile-editor-field"><span>{required && <b>*</b>}{label}</span><input type={type} required={required} disabled={disabled} pattern={type === "text" && required ? ".*\\S.*" : undefined} maxLength={200} list={list} placeholder={placeholder} value={type === "month" ? toMonth(value) : value || ""} onChange={event => onChange(event.target.value)}/></label>;
-const SelectField = ({ label, value, onChange, options, required=false }) => <label className="profile-editor-field"><span>{required && <b>*</b>}{label}</span><select required={required} value={value || ""} onChange={event => onChange(event.target.value)}><option value="" disabled>Choose an answer</option>{[...new Set([...options, ...(value ? [value] : [])])].map(option=><option key={option}>{option}</option>)}</select></label>;
+const SelectField = ({ label, value, onChange, options, required=false }) => <label className="profile-editor-field"><span>{required && <b>*</b>}{label}</span><select required={required} value={value || ""} onChange={event => onChange(event.target.value)}><option value="" disabled={required}>Choose an answer</option>{[...new Set([...options, ...(value ? [value] : [])])].map(option=><option key={option}>{option}</option>)}</select></label>;
 
 const ProfileEditor = ({ section, value, onCancel, onSave, saving }) => {
     const [draft, setDraft] = useState(() => prepare(section, value));
@@ -52,7 +54,8 @@ const ProfileEditor = ({ section, value, onCancel, onSave, saving }) => {
                     {draft.map((item,index)=><section className="education-edit-card" key={item._editorId} aria-label={`Education ${index+1}`}>
                         <div className="education-card-heading"><span className="education-number">{String(index+1).padStart(2,'0')}</span><div><h3>Education {index+1}</h3><p>School, qualification and attendance</p></div><button type="button" className="education-remove" onClick={()=>removeItem(index)} aria-label={`Remove education ${index+1}`}>Remove</button></div>
                         <SuggestField label="School Name" value={item.school} onChange={next=>itemChange(index,"school",next)} options={[...new Set([...SCHOOLS,...draft.map(entry=>entry.school).filter(Boolean)])]} required/>
-                        <SuggestField label="Major / Degree" value={item.degree} onChange={next=>itemChange(index,"degree",next)} options={DEGREES} required/>
+                        <SuggestField label="Degree / Qualification" value={item.degree} onChange={next=>itemChange(index,"degree",next)} options={DEGREES} required/>
+                        <Field label="Field of Study / Major" value={item.fieldOfStudy} onChange={next=>itemChange(index,"fieldOfStudy",next)} placeholder="e.g. Computer Science"/>
                         <div className="editor-grid education-location-row">
                             <SuggestField label="Location" kind="locations" value={item.location} onChange={next=>itemChange(index,"location",next)}/>
                             <label className="profile-editor-field"><span>GPA <small>(optional)</small></span><input aria-label="GPA" type="text" inputMode="decimal" pattern="[0-9]+([.][0-9]+)?" maxLength={6} placeholder="e.g. 3.95" value={item.gpa ?? item.details?.[0]?.replace("GPA ","") ?? ""} onChange={event=>{if (/^\d*(\.\d*)?$/.test(event.target.value)) itemChange(index,"gpa",event.target.value);}}/></label>
@@ -66,12 +69,13 @@ const ProfileEditor = ({ section, value, onCancel, onSave, saving }) => {
 
                 {section === "skills" && <SuggestField label="Search or add technical skills" multiple value={draft} options={TECH_SKILLS} onChange={setDraft} helperText="Choose a suggestion, or type a custom skill and press Enter."/>}
                 {section === "preferences" && draft.map(([question,answer],index) => {
+                    if (question === INTERVIEW_LANGUAGE) return <SuggestField key={question} label={question} value={answer} options={INTERVIEW_LANGUAGES} onChange={next=>rowChange(index,next)} helperText="Used for interview-language questions only. Leave blank if you have no saved preference."/>;
                     if (/seeking/i.test(question)) return <SuggestField key={question} label={question} multiple freeSolo={false} value={asSelections(answer,true)} options={SEEKING_OPTIONS} onChange={next=>rowChange(index,next)}/>;
                     if (/office/i.test(question)) return <SelectField key={question} label={question} value={answer} options={OFFICE_OPTIONS} onChange={next=>rowChange(index,next)}/>;
                     if (/location/i.test(question)) return <SuggestField key={question} label={question} multiple kind="locations" value={asSelections(answer)} onChange={next=>rowChange(index,next)} helperText="Select a city, or type a location and press Enter. Add as many as you need."/>;
                     return <Field key={question} label={question} value={answer} onChange={next=>rowChange(index,next)} type={question.includes("date") ? "date" : "text"}/>;
                 })}
-                {section === "equalEmployment" && <div className="eeo-editor">{draft.map(([question,answer],index)=><SelectField key={question} label={question} value={answer} onChange={next=>rowChange(index,next)} options={EEO_OPTIONS[question] || [answer,"Choose not to disclose"]} required/>)}</div>}
+                {section === "equalEmployment" && <div className="eeo-editor">{draft.map(([question,answer],index)=><SelectField key={question} label={question} value={answer} onChange={next=>rowChange(index,next)} options={EEO_OPTIONS[question] || [answer,"Choose not to disclose"]} required={question !== ACTIVE_IMMIGRATION_CASE}/>)}<p className="field-tip">An active immigration case is separate from needing sponsorship. Leave it unanswered if unsure; Autofill will ask you to review it.</p></div>}
             </form>
             <footer><button className="secondary" type="button" onClick={onCancel} disabled={saving}>Cancel</button><button className="primary" type="submit" form="profile-edit-form" disabled={saving}>{saving ? "Updating…" : "Update"}</button></footer>
         </aside>

@@ -8,7 +8,7 @@ let latestLaunch;
 const captureLaunch = event => { latestLaunch = event.detail; };
 const receive = (status, extra = {}) => act(() => window.dispatchEvent(new MessageEvent("message", {
     source: window, origin: window.location.origin,
-    data: { source: "jobpilot-extension", type: "launch-state", ...latestLaunch, status, ...extra },
+    data: { source: "jobpilot-extension", type: "launch-state", ...latestLaunch, status, mode: "loop", ...extra },
 })));
 beforeEach(() => {
     jest.useFakeTimers(); sessionStorage.clear(); localStorage.clear();
@@ -46,6 +46,14 @@ test("verified success saves once, then requests Autofill tab closure", async ()
     expect(confirmJobApplication).toHaveBeenCalledWith(payload);
     expect(window.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "saved", sessionId: latestLaunch.sessionId }), window.location.origin);
     expect(result.current.showConfirmation).toBe(false);
+});
+test("regular Autofill leaves submission confirmation for the user", async () => {
+    const { result } = renderHook(() => useExtensionApplication(payload));
+    act(() => result.current.openWithExtension());
+    receive("submitted", { mode: "autofill" });
+    await act(async () => { jest.advanceTimersByTime(300); });
+    expect(confirmJobApplication).not.toHaveBeenCalled();
+    expect(result.current.showConfirmation).toBe(true);
 });
 test("save failure leaves the dialog open for retry and never closes the app", async () => {
     confirmJobApplication.mockRejectedValueOnce(new Error("offline"));

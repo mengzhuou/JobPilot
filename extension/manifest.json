@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Autofill",
-  "version": "0.2.1",
+  "version": "0.2.9",
   "description": "Review and autofill job applications using your JobPilot Profile.",
   "minimum_chrome_version": "116",
   "permissions": [

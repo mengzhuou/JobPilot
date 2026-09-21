@@ -122,7 +122,16 @@ const planField = (field, profile) => {
         return fill(field, [true, "Yes", "Acknowledge/Confirm"], "acknowledgement", "Acknowledgement requested on the application.");
     }
 
-    if (containsAny(question, ["visa sponsorship", "employment sponsorship", "immigration sponsorship", "require sponsorship", "need sponsorship", "future sponsorship"])) {
+    if (/\b(active|pending|ongoing|open)\s+(?:immigration|visa)\s+(?:case|application|petition)\b/.test(question)) {
+        if (!workAuthorization.has_saved_active_immigration_case_answer) return result(field, "ask_user", "", "Profile · Work authorization", "Save your active immigration case answer in Profile before autofilling it.", { sensitive: true });
+        const activeCase = Boolean(workAuthorization.active_immigration_case);
+        return fill(field, [activeCase, activeCase ? "Yes" : "No", String(activeCase)], "Profile · Work authorization", "Matched your saved active immigration case answer.", { sensitive: true });
+    }
+    if (/\binterview\w*\b/.test(question) && /\b(?:programming|coding)\b/.test(question) && /\blanguage\b/.test(question) && /\b(?:prefer\w*|choose|choice|use)\b/.test(question)) {
+        if (!clean(profile.job_preferences?.preferred_interview_language)) return result(field, "ask_user", "", "Profile · Job preferences", "Save your preferred interview programming language in Profile before autofilling it.");
+        return fill(field, profile.job_preferences?.preferred_interview_language, "Profile · Job preferences", "Matched your saved interview programming language.");
+    }
+    if (containsAny(question, ["visa sponsorship", "employment sponsorship", "immigration sponsorship", "require sponsorship", "need sponsorship", "future sponsorship", "sponsor an immigration case"])) {
         if (!workAuthorization.has_saved_sponsorship_answer) {
             return result(field, "ask_user", "", "Profile · Work authorization", "Save your sponsorship answer in Profile before autofilling it.", { sensitive: true });
         }
@@ -139,7 +148,7 @@ const planField = (field, profile) => {
 
     if (containsAny(question, ["first name", "given name"]) || field.autocomplete === "given-name") return fill(field, candidate.first_name, "Profile · Personal", "Matched first name.");
     if (containsAny(question, ["last name", "family name", "surname"]) || field.autocomplete === "family-name") return fill(field, candidate.last_name, "Profile · Personal", "Matched last name.");
-    if ((containsAny(question, ["full name", "legal name", "your name", "candidate name"]) || field.autocomplete === "name") && !containsAny(question, ["company name", "school name"])) return fill(field, candidate.name, "Profile · Personal", "Matched full name.");
+    if ((containsAny(question, ["full name", "legal name", "your name", "candidate name"]) || normalized(field.label) === "name" || field.autocomplete === "name") && !containsAny(question, ["company name", "school name"])) return fill(field, candidate.name, "Profile · Personal", "Matched full name.");
     if (containsAny(question, ["email", "e mail"]) || field.type === "email" || field.autocomplete === "email") return fill(field, candidate.email, "Profile · Personal", "Matched email address.");
     if (containsAny(question, ["phone", "mobile", "telephone"]) || field.type === "tel" || field.autocomplete === "tel") return fill(field, candidate.phone, "Profile · Personal", "Matched phone number.");
     if (containsAny(question, ["linkedin"])) return fill(field, links.linkedin, "Profile · Links", "Matched LinkedIn profile.");
@@ -148,12 +157,19 @@ const planField = (field, profile) => {
 
     if (containsAny(question, ["postal code", "zip code", "zipcode"]) || field.autocomplete === "postal-code") return fill(field, location.postal_code, "Profile · Address", "Matched postal code.");
     if (containsAny(question, ["street address", "address line 1", "address 1"]) || field.autocomplete === "address-line1") return fill(field, location.address_line_1, "Profile · Address", "Matched street address.");
-    if (containsAny(question, ["city", "current location", "where are you currently located"]) || field.autocomplete === "address-level2") return fill(field, [location.city, `${location.city}, ${location.state}`, answers.preferred_application_location], "Profile · Address", "Matched city or current location.", {
+    if (containsAny(question, ["city", "current location", "where are you currently located"]) || normalized(field.label) === "location" || field.autocomplete === "address-level2") return fill(field, [location.city, `${location.city}, ${location.state}`, answers.preferred_application_location], "Profile · Address", "Matched city or current location.", {
         optionContext: { city: clean(location.city), state: clean(location.state), country: clean(location.country) },
     });
     if (containsAny(question, ["state", "province", "region"]) || field.autocomplete === "address-level1") return fill(field, location.state, "Profile · Address", "Matched state or region.");
     if (containsAny(question, ["country"]) || field.autocomplete === "country-name") return fill(field, location.country, "Profile · Address", "Matched country.");
 
+    if (/^education (start|end) date (month|year)$/.test(normalized(field.label))) {
+        const parts = normalized(field.label).split(" ");
+        const date = /^(\d{4})(?:-(\d{2}))?/.exec(clean(parts[1] === "start" ? education.start_date : education.end_date));
+        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const value = parts[3] === "year" ? date?.[1] : months[Number(date?.[2]) - 1];
+        return fill(field, [value], "Profile · Education", "Matched saved education date.");
+    }
     if (containsAny(question, ["school", "university", "college"]) && !containsAny(question, ["graduate school"])) return fill(field, education.school, "Profile · Education", "Matched school.");
     if (containsAny(question, ["degree", "education level", "highest level of education"])) {
         const label = degreeLabel(education.highest_level);

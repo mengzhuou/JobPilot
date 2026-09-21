@@ -62,7 +62,7 @@ export default function useExtensionApplication(payload) {
             persist({ ...record, status: message.status });
             setStatus(message.status === "open" ? "extension" : message.status);
             if (message.status === "closed" && record.status !== "closed") setShowConfirmation(true);
-            if (message.status === "submitted" && !attemptedAutoSave.current.has(record.sessionId)) {
+            if (message.status === "submitted" && message.mode === "loop" && !attemptedAutoSave.current.has(record.sessionId)) {
                 attemptedAutoSave.current.add(record.sessionId);
                 setShowConfirmation(true);
                 autoTimer = window.setTimeout(confirmApplied, 300);

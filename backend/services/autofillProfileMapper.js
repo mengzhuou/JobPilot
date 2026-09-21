@@ -11,6 +11,24 @@ const flattenSkills = value => Array.isArray(value) ? value : Object.values(valu
 const profileLink = (links, label) => rows(links)
     .find(link => key(link?.label) === label)?.href || "";
 
+// Imported profiles use month names; editor saves use ISO months. Never default
+// an absent year/month to today's date (or invent an end date for Present).
+const educationMonth = value => {
+    const raw = text(value);
+    if (/^\d{4}$/.test(raw)) return raw;
+    const iso = /^(\d{4})-(\d{1,2})(?:-\d{2})?$/.exec(raw);
+    if (iso) return Number(iso[2]) >= 1 && Number(iso[2]) <= 12 ? `${iso[1]}-${iso[2].padStart(2, '0')}` : '';
+    const named = /^([A-Za-z]+)\s+(\d{4})$/.exec(raw);
+    const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    const month = named ? months.findIndex(name => [name, name.slice(0,3), ...(name === 'september' ? ['sept'] : [])].includes(named[1].toLowerCase())) : -1;
+    return month >= 0 ? `${named[2]}-${String(month+1).padStart(2,'0')}` : '';
+};
+const educationMajor = education => {
+    if (education.fieldOfStudy !== undefined) return text(education.fieldOfStudy);
+    // Compatibility for old combined degree titles, not a guess from the school.
+    return /^(?:bachelor|master|doctor|associate)[\w\s.'’-]*?\s+in\s+(.+)$/i.exec(text(education.degree))?.[1] || '';
+};
+
 const monthDate = value => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
@@ -53,7 +71,7 @@ const validateEditableProfile = profile => {
 
 /**
  * Translates the editable account Profile into the field names consumed by the
- * Playwright agent. The account Profile wins for every field it exposes.
+ * extension autofill planner. The account Profile wins for every field it exposes.
  * profile.json only supplies site-specific option phrases and answers that do
  * not have an editable Profile field yet.
  */
@@ -88,7 +106,8 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
             },
         },
         education: {
-            school: text(education.school), highest_level: text(education.degree), field_of_study: text(education.degree),
+            start_date: educationMonth(education.from), end_date: education.current ? '' : educationMonth(education.to),
+            school: text(education.school), highest_level: text(education.degree), field_of_study: educationMajor(education),
             undergraduate_gpa: text(education.gpa),
             // Keep recruiting-site degree choices as compatibility aliases, not as the source of facts.
             highest_level_form_options: optionValues(education.degree, fallback.education?.highest_level_form_options),
@@ -113,6 +132,7 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
             applying_for_full_time: /full[ -]?time/i.test(text(choice(preferences, "seeking"))),
             earliest_start_date: text(choice(preferences, "earliest start date")),
             office_days_per_week_form_option: text(choice(preferences, "office preference")),
+            preferred_interview_language: text(choice(preferences, "preferred programming language for interviews")),
         },
         work_authorization: {
             us_citizen_or_permanent_resident: /citizen|permanent resident/i.test(text(citizenship)),
@@ -120,6 +140,8 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
             requires_employment_sponsorship: needsSponsorship,
             has_saved_authorization_answer: Boolean(text(choice(equalEmployment, "authorized to work in the united states"))),
             has_saved_sponsorship_answer: Boolean(text(choice(equalEmployment, "requires employment sponsorship"))),
+            active_immigration_case: booleanAnswer(choice(equalEmployment, "Currently have an active immigration case (e.g. H-1B extension or green card)")),
+            has_saved_active_immigration_case_answer: /^(yes|no)$/i.test(text(choice(equalEmployment, "Currently have an active immigration case (e.g. H-1B extension or green card)"))),
             authorized_to_work_form_options: optionValues(authorized ? "Yes" : "No", fallback.work_authorization?.authorized_to_work_form_options),
             citizenship_status_form_options: optionValues(citizenship, fallback.work_authorization?.citizenship_status_form_options),
         },

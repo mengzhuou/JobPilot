@@ -6,6 +6,7 @@ import { createExtensionPairingCode, getExtensionConnections, getUserProfile, re
 import profileFixture from "./profileFixture";
 import ProfileEditor from "./ProfileEditor";
 import { formatProfileMonth } from "./profileDates";
+import { withApplicationQuestions } from "./profileQuestions";
 import "./Profile.scss";
 import "./ProfileRefinements.scss";
 import "./ProfileExtension.scss";
@@ -13,10 +14,11 @@ import "./ProfileExtension.scss";
 const tabs = [["extension","Chrome Extension"],["personal","Personal"],["education","Education"],["experience","Work Experience"],["skills","Skills"],["preferences","Preferences"],["equal-employment","Equal Employment"]];
 const EQUAL_EMPLOYMENT_FIELDS = ["Authorized to work in the United States","Requires employment sponsorship","Citizenship status","Gender","Hispanic or Latino","Race","Veteran status","Disability","Sexual orientation","Transgender experience"];
 const normalizeProfile = profile => {
-    const equalEmployment = Array.isArray(profile.equalEmployment) ? profile.equalEmployment : [];
+    const equalEmployment = withApplicationQuestions('equalEmployment', profile.equalEmployment);
     const existing = new Map(equalEmployment.map(row => [String(row?.[0] || "").toLowerCase(), row]));
     return {
         ...profile,
+        preferences: withApplicationQuestions('preferences', profile.preferences),
         skills:Array.isArray(profile.skills) ? profile.skills : [...new Set(Object.values(profile.skills || {}).flat())],
         equalEmployment: [
             ...EQUAL_EMPLOYMENT_FIELDS.map(label => existing.get(label.toLowerCase()) || [label, ""]),
@@ -34,7 +36,13 @@ const SocialIcon = ({ type }) => {
 };
 
 const SectionTitle = ({ icon, title, section, onEdit }) => <div className="profile-section-title"><div><FontAwesomeIcon icon={icon}/><h2>{title}</h2></div><button className="profile-edit" type="button" title={`Edit ${title}`} aria-label={`Edit ${title}`} onClick={() => onEdit(section)}><FontAwesomeIcon icon={faPen}/></button></div>;
-const Timeline = ({ items }) => <div className="profile-timeline">{items.map((item,index)=><article className="profile-timeline-item" key={`${item.company || item.school}-${item.from}-${index}`}><div className="profile-period"><span>{formatProfileMonth(item.from)}</span><b>→</b><span>{formatProfileMonth(item.to)}</span></div><div className="profile-timeline-content"><div className="profile-role-heading"><div><h3>{item.company || item.school}</h3><p>{item.title || item.degree}</p></div>{item.location && <span>{item.location}</span>}</div>{item.gpa ? <p className="profile-detail">GPA {item.gpa}</p> : item.details?.filter(detail=>item.gpa === undefined || !/^GPA\s/i.test(detail)).map(detail=><p className="profile-detail" key={detail}>{detail}</p>)}{item.bullets?.length>0&&<ul>{item.bullets.map((bullet,bulletIndex)=><li key={bulletIndex}>{bullet}</li>)}</ul>}</div></article>)}</div>;
+const Timeline = ({ items }) => <div className="profile-timeline">{items.map((item,index)=><article className="profile-timeline-item" key={`${item.company || item.school}-${item.from}-${index}`}>
+    <div className="profile-period"><span>{formatProfileMonth(item.from)}</span><b>→</b><span>{formatProfileMonth(item.to)}</span></div>
+    <div className="profile-timeline-content"><div className="profile-role-heading"><div><h3>{item.company || item.school}</h3><p>{item.title || item.degree}</p>{item.fieldOfStudy && <p>Field of Study: {item.fieldOfStudy}</p>}</div>{item.location && <span>{item.location}</span>}</div>
+        {item.gpa ? <p className="profile-detail">GPA {item.gpa}</p> : item.details?.filter(detail=>item.gpa === undefined || !/^GPA\s/i.test(detail)).map(detail=><p className="profile-detail" key={detail}>{detail}</p>)}
+        {item.bullets?.length>0&&<ul>{item.bullets.map((bullet,bulletIndex)=><li key={bulletIndex}>{bullet}</li>)}</ul>}
+    </div>
+</article>)}</div>;
 const DetailCards = ({ rows, className="" }) => <div className={`profile-detail-grid ${className}`}>{rows.map(([question,answer])=><article key={question}><span>{question}</span><strong>{Array.isArray(answer) ? answer.join(" · ") : answer}</strong></article>)}</div>;
 
 const Profile = () => {

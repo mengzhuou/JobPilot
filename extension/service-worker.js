@@ -89,14 +89,14 @@ const activeTab = async () => {
 
 const sendToFrame = (tabId, frameId, message) => chrome.tabs.sendMessage(tabId, message, { frameId });
 
-const ensureContentScript = async tab => {
+const ensureContentScript = async (tab, frameId = 0) => {
     try {
-        await sendToFrame(tab.id, 0, { type: "JOBPILOT_PING" });
+        await sendToFrame(tab.id, frameId, { type: "JOBPILOT_PING" });
         return;
     } catch (error) {
         try {
             await chrome.scripting.executeScript({
-                target: { tabId: tab.id, allFrames: true },
+                target: { tabId: tab.id, frameIds: [frameId] },
                 files: ["content-script.js"],
             });
         } catch (injectionError) {
@@ -110,20 +110,33 @@ const scanActiveTab = async () => {
     await ensureContentScript(tab);
     const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id }).catch(() => [{ frameId: 0 }]);
     const responses = await Promise.all((frames || [{ frameId: 0 }]).map(async frame => {
+        // CAPTCHA frames are not application questions and must stay manual.
+        if (/recaptcha|hcaptcha|challenges\.cloudflare/i.test(frame.url || "")) return null;
         try {
+            await ensureContentScript(tab, frame.frameId);
             const response = await sendToFrame(tab.id, frame.frameId, { type: "JOBPILOT_SCAN_FIELDS" });
             return response ? { ...response, frameId: frame.frameId } : null;
         } catch (error) {
-            return null;
+            return { frameId: frame.frameId, inaccessible: true };
         }
     }));
-    const successful = responses.filter(Boolean);
+    const successful = responses.filter(response => response && !response.inaccessible);
     if (!successful.length) throw new Error("JobPilot could not inspect this application page.");
     const top = successful.find(response => response.frameId === 0) || successful[0];
     return {
         tabId: tab.id,
+        inaccessibleFrames: responses.filter(response => response?.inaccessible).map(response => response.frameId),
+        mode: await applicationLifecycle.modeForTab(tab.id),
         job: { ...top.job, url: tab.url || top.job?.url || "" },
         unavailable: successful.some(response => response.unavailable),
+        submission: {
+            ready: successful.filter(response => response.submission?.available).length === 1
+                && !responses.some(response => response?.inaccessible)
+                && successful.some(response => response.submission?.ready)
+                && !successful.some(response => (response.fields || []).some(field => (field.required && !field.filled)
+                    || (field.hasError && (field.required || String(field.currentValue || "").trim())))),
+            frameId: successful.find(response => response.submission?.available)?.frameId,
+        },
         fields: successful.flatMap(response => (response.fields || []).map(field => ({
             ...field,
             fieldKey: `${response.frameId}::${field.fieldKey}`,
@@ -250,6 +263,14 @@ const handleMessage = async (message, sender) => {
             return { connected: false };
         case "JOBPILOT_SCAN":
             return scanActiveTab();
+        case "JOBPILOT_SUBMIT": {
+            if (sender.tab || sender.url !== chrome.runtime.getURL("sidepanel.html")) throw new Error("Submit must be requested from the JobPilot side panel.");
+            const scan = await scanActiveTab();
+            if (scan.tabId !== message.tabId || scan.job.url !== message.jobUrl) throw new Error("The active job changed. Rescan before submitting.");
+            if (scan.unavailable || !scan.submission.ready) throw new Error("Complete required fields and resolve errors, then rescan.");
+            await applicationLifecycle.prepareSubmit(scan.tabId);
+            return sendToFrame(scan.tabId, scan.submission.frameId, { type: "JOBPILOT_SUBMIT_FORM" });
+        }
         case "JOBPILOT_BUILD_PLAN":
             return apiRequest("/api/extension/fill-plan", {
                 method: "POST",
@@ -259,16 +280,21 @@ const handleMessage = async (message, sender) => {
             return { results: await applyToActiveTab(message.answers, message.fileFields || []) };
         case "JOBPILOT_FOCUS":
             return focusInActiveTab(message.fieldKey);
-        case "JOBPILOT_AI_PLAN":
+        case "JOBPILOT_AI_PLAN": {
+            const tab = await activeTab();
+            if (await applicationLifecycle.modeForTab(tab.id) !== "loop") throw new Error("AI generation is reserved for Loop applications.");
+            const style = String((await chrome.storage.local.get("jobpilot.aiWritingStyle"))["jobpilot.aiWritingStyle"] || "").slice(0, 1000);
             return apiRequest("/api/extension/ai-plan", {
                 method: "POST",
                 body: {
                     fields: message.fields,
                     job: message.job,
                     guidance: message.guidance,
+                    writingStyle: style,
                     draftAnswers: message.draftAnswers,
                 },
             });
+        }
         case "JOBPILOT_SAVE_ANSWER_MEMORY":
             return apiRequest("/api/extension/answer-memory", {
                 method: "POST",

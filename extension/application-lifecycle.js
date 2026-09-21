@@ -15,12 +15,12 @@ const createApplicationLifecycle = chrome => {
         if (!sender.tab?.id || sender.frameId !== 0) return false;
         let url;
         try { url = new URL(sender.url || sender.tab.url); } catch { return false; }
-        return url.pathname === "/autofill" && chrome.runtime.getManifest().content_scripts
+        return ["/autofill", "/loops"].includes(url.pathname) && chrome.runtime.getManifest().content_scripts
             .filter(script => script.js.includes("app-bridge.js"))
             .some(script => script.matches.some(pattern => pattern === `${url.origin}/*`));
     };
     const emit = session => chrome.tabs.sendMessage(session.originTabId, {
-        type: "JOBPILOT_LAUNCH_STATE", session: { sessionId: session.sessionId, status: session.status, jobUrl: session.jobUrl },
+        type: "JOBPILOT_LAUNCH_STATE", session: { sessionId: session.sessionId, status: session.status, jobUrl: session.jobUrl, mode: session.mode || "autofill" },
     }, { frameId: 0 }).catch(() => {});
     const rescan = session => chrome.runtime.sendMessage({ type: "JOBPILOT_RESCAN_REQUEST", tabId: session.jobTabId, windowId: session.windowId }).catch(() => {});
     const returnToApp = async session => {
@@ -48,12 +48,13 @@ const createApplicationLifecycle = chrome => {
             if (previous && previous.jobTabId !== tab.id) await chrome.storage.session.remove(jobKey(previous.jobTabId));
             const session = { sessionId: message.sessionId, originTabId: sender.tab.id, originUrl: sender.url || sender.tab.url,
                 jobTabId: tab.id, jobUrl: url.href, windowId: tab.windowId, status: "open",
+                mode: new URL(sender.url || sender.tab.url).pathname === "/loops" ? "loop" : "autofill",
                 formSeen: previous?.jobTabId === tab.id && Boolean(previous.formSeen),
                 submitAttempted: previous?.jobTabId === tab.id && Boolean(previous.submitAttempted) };
             await save(session);
             await emit(session);
             await ready(tab.id);
-            return { sessionId: session.sessionId, status: session.status, jobUrl: session.jobUrl };
+            return { sessionId: session.sessionId, status: session.status, jobUrl: session.jobUrl, mode: session.mode };
         })();
     };
     const ready = async tabId => {
@@ -81,6 +82,7 @@ const createApplicationLifecycle = chrome => {
         if (!session.formSeen || !session.submitAttempted || !message.evidence) return {};
         session.status = "submitted";
         await save(session); // Persist before closing: onRemoved must not overwrite success.
+        if (session.mode !== "loop") { await emit(session); return { submitted: true }; }
         await returnToApp(session);
         await chrome.tabs.remove(session.jobTabId).catch(() => {});
         await emit(session);
@@ -90,7 +92,7 @@ const createApplicationLifecycle = chrome => {
         if (!isApp(sender)) return null;
         const session = await read(originKey(sender.tab.id));
         return session && session.originUrl === (sender.url || sender.tab.url)
-            ? { sessionId: session.sessionId, status: session.status, jobUrl: session.jobUrl } : null;
+            ? { sessionId: session.sessionId, status: session.status, jobUrl: session.jobUrl, mode: session.mode || "autofill" } : null;
     };
     const saved = async (message, sender) => {
         if (!isApp(sender)) throw new Error("Invalid application confirmation source.");
@@ -112,6 +114,15 @@ const createApplicationLifecycle = chrome => {
         const origin = await read(originKey(tabId));
         if (origin) await chrome.storage.session.remove([originKey(tabId), jobKey(origin.jobTabId)]);
     });
-    return { launch, ready, observed, status, saved, removed };
+    const prepareSubmit = tabId => serial(tabId, async () => {
+        const session = await read(jobKey(tabId));
+        if (!session || session.status !== "open") throw new Error("Open this job using Open with extension in JobPilot so your application can be recorded.");
+        if (session.mode !== "loop") throw new Error("Extension submission is reserved for Loop applications. Submit on the job page instead.");
+        session.formSeen = true;
+        session.submitAttempted = true;
+        await save(session);
+    });
+    const modeForTab = async tabId => (await read(jobKey(tabId)))?.mode || "autofill";
+    return { launch, ready, observed, status, saved, removed, prepareSubmit, modeForTab };
 };
 if (typeof module !== "undefined") module.exports = { createApplicationLifecycle };

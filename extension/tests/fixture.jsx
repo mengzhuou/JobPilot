@@ -23,6 +23,16 @@ const cities = [
 const GreenhouseControl = props => <div onMouseUp={props.selectProps.onMouseUp} onKeyUp={props.selectProps.onKeyUp}>
     <components.Control {...props}/>
 </div>;
+function AshbyFixture() {
+    const [answer, setAnswer] = useState("");
+    return <div>
+        <div className="ashby-application-form-field-entry"><label className="ashby-application-form-question-title _required_test" htmlFor="ashby-name">Full Name</label><div><input id="ashby-name" required/></div></div>
+        <div className="ashby-application-form-field-entry"><label className="ashby-application-form-question-title _required_test">Will you require Notion to sponsor an immigration case?</label>
+            <div className="ashby-application-form-input-yesno">{["Yes", "No"].map(text => <button type="button" key={text} data-option={text.toLowerCase()} aria-pressed={answer === text} onClick={() => setAnswer(text)}>{text}</button>)}<input type="checkbox" style={{display:"none"}}/></div>
+        </div>
+        <div className="ashby-application-form-field-entry"><label className="ashby-application-form-question-title">Veteran Status</label>{["I am not a protected veteran", "I decline to self-identify"].map((text,i) => <label key={text}><input type="radio" name="ashby-vet" id={`ashby-vet-${i}`}/>{text}</label>)}</div>
+    </div>;
+}
 function Dropdown({ id, label, options, asyncOptions, searchable = true, broken = false, valueLabel, buffered = "", delayed = false, placement = "auto" }) {
     const [value, setValue] = useState(null);
     const [error, setError] = useState(true);
@@ -49,6 +59,7 @@ function Dropdown({ id, label, options, asyncOptions, searchable = true, broken 
     </div>;
 }
 function Fixture({ only, broken, searchable = true, cityOptions = cities, buffered, delayed, placement, sponsorOptions, degreeOptions }) {
+    if (only === "ashby") return <AshbyFixture/>;
     return <form onSubmit={event => { event.preventDefault(); submissions++; }}>
         <div className="field" style={{ display: "flex", gap: 16 }}>
             {(!only || only === "country") && <Dropdown id="country" label="Country" options={countries} valueLabel="+1"/>}
@@ -57,9 +68,18 @@ function Fixture({ only, broken, searchable = true, cityOptions = cities, buffer
         {(!only || only === "city") && <Dropdown id="city" label="Location (City)" options={cityOptions} asyncOptions delayed={delayed} placement={placement}/>}
         {(!only || only === "sponsor") && <Dropdown id="sponsor" label="Will you require immigration sponsorship?" options={sponsorOptions || [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} searchable={searchable} broken={broken} buffered={buffered}/>}
         <label htmlFor="plain-city">City (plain text)</label><input id="plain-city"/>
+        {only === "checkboxes" && <>
+            <fieldset><legend>How did you hear about us? *</legend>
+                {["Website", "Career Fair", "Conference"].map((label, i) => <label key={label}><input type="checkbox" name="source[]" required defaultChecked={i === 0}/>{label}</label>)}
+            </fieldset>
+            <fieldset><legend>Required acknowledgements</legend>
+                <label><input id="consent" type="checkbox" name="consent[]" required/>Accept privacy policy</label>
+                <label><input type="checkbox" name="consent[]" required/>Confirm accuracy</label>
+            </fieldset>
+        </>}
         {only === "degree" && <Dropdown id="degree" label="Degree" buffered={buffered} asyncOptions options={degreeOptions || [{ value: "associate", label: "Associate's Degree" }, { value: "bachelor", label: "Bachelor's Degree" }, { value: "master", label: "Master's Degree" }]}/>}
         <div id="decoy" role="listbox"><div role="option">No</div><div role="option">United States +1</div></div>
-        <button id="outside" type="button">Outside focus target</button><button type="submit">Submit (must never be clicked)</button>
+        <button id="outside" type="button">Outside focus target</button><button type="submit">Submit application</button>
     </form>;
 }
 async function mount(props = {}) {
@@ -75,6 +95,64 @@ const fill = async (id, value, extra = {}) => {
     return (await send({ type: "JOBPILOT_APPLY_PLAN", answers: [{ fieldKey: id, value, action: "fill", ...extra }] })).results[0];
 };
 const tests = [
+    ["Standalone Ashby EEOC fieldsets detect and fill hidden radio controls", async () => {
+        flushSync(() => root.render(<>{[["Gender", ["Male", "Female"]], ["Race", ["Hispanic or Latino", "Asian (Not Hispanic or Latino)"]], ["Veteran Status", ["I am not a protected veteran", "I decline to self-identify"]]].map(([question, options], g) =>
+            <fieldset key={question} className="ashby-application-form-input-radio-group">
+                <label className="ashby-application-form-question-title">{question}</label>
+                <div className="ashby-application-form-question-description">Explanatory text, not the question.</div>
+                {options.map((label, i) => <div key={label}><span><input id={`eeoc-${g}-${i}`} name={`eeoc-${g}`} type="radio" style={{opacity:0}}/></span><label htmlFor={`eeoc-${g}-${i}`}>{label}</label></div>)}
+            </fieldset>)}</>));
+        const fields = await scan();
+        check(fields.length === 3 && fields.map(f => f.label).join('|') === 'Gender|Race|Veteran Status', 'Demographic questions missing or mislabeled');
+        for (const [id, value] of [['eeoc-0-0', 'Female'], ['eeoc-1-0', 'Asian (Not Hispanic or Latino)'], ['eeoc-2-0', 'I am not a protected veteran']]) {
+            check((await fill(id, value)).status === 'filled', `${id} did not commit saved choice`);
+        }
+        check((await scan()).every(f => f.filled), 'EEOC selections were lost on rescan');
+        check((await fill('eeoc-0-0','Male')).status === 'skipped', 'Existing demographic choice was overwritten');
+    }],
+    ["Nested Ashby education uses local labels and empty dates remain unfilled", async () => {
+        flushSync(() => root.render(<div className="ashby-application-form-field-entry">
+            <label className="ashby-application-form-question-title _required_test">Education History</label>
+            <div><label className="ashby-application-form-question-title" htmlFor="degree-nested">Degree</label><input id="degree-nested"/></div>
+            <div><label className="ashby-application-form-question-title">Start Date</label><div><select id="month-nested" defaultValue=""><option value="" disabled>Month...</option><option value="1">January</option></select></div></div>
+        </div>));
+        const fields = await scan();
+        check(fields.find(field => field.fieldKey === "degree-nested")?.label === "Degree", "Education History swallowed Degree label");
+        const month = fields.find(field => field.fieldKey === "month-nested");
+        check(month.label === "Education Start Date Month" && !month.filled && !month.required, "Optional empty date is misclassified");
+        check((await fill("degree-nested", "Bachelor of Science")).status === "filled", "Nested degree failed to fill");
+    }],
+    ["Radio groups with the same name in separate forms stay independent", async () => {
+        flushSync(() => root.render(<>{["one", "two"].map(id => <form key={id}><fieldset><legend>Choice</legend><label><input id={`${id}-yes`} type="radio" name="choice" value="Yes"/>Yes</label><label><input type="radio" name="choice" value="No"/>No</label></fieldset></form>)}</>));
+        const fields = await scan();
+        check(fields.filter(field => field.type === "radio").length === 2, "Independent forms merged");
+        await fill("two-yes", "Yes");
+        check(document.getElementById("two-yes").checked && !document.getElementById("one-yes").checked, "Wrong form radio was selected");
+    }],
+    ["Ashby question labels and button-based No answers are scanned, committed and skipped", async () => {
+        await mount({ only: "ashby" });
+        document.querySelectorAll('input[name="ashby-vet"]').forEach(input => { input.style.opacity = "0"; });
+        let fields = await scan();
+        const sponsor = fields.find(field => field.label.includes("sponsor an immigration case"));
+        check(sponsor?.type === "select" && sponsor.required && !sponsor.filled, "Ashby Yes/No group missing");
+        check(fields.find(field => field.fieldKey === "ashby-vet-0")?.label === "Veteran Status", "Radio option replaced the question");
+        check((await fill(sponsor.fieldKey, "No")).status === "filled", "Ashby No button did not commit");
+        fields = await scan();
+        check(fields.find(field => field.fieldKey === sponsor.fieldKey)?.currentValue === "No", "No was treated as empty/false");
+        check((await fill(sponsor.fieldKey, "Yes")).status === "skipped", "Existing No answer was overwritten");
+        check((await fill("ashby-vet-0", "I am not a protected veteran")).status === "filled", "Ashby veteran option failed");
+    }],
+    ["Selected checkbox question is one filled answer, not errors for unchecked alternatives", async () => {
+        await mount({ only: "checkboxes" });
+        const fields = await scan();
+        const group = fields.find(field => field.type === "checkbox-group");
+        check(group?.filled && !group.hasError && group.currentValue === "Website", "Selected source group incorrectly reports missing options");
+        check(group.options.length === 3, "Checkbox choices were lost");
+        check(!fields.some(field => field.label === "Career Fair"), "Unchecked choice is still a separate required question");
+        check(fields.find(field => field.fieldKey === "consent")?.hasError, "Independent required consent was suppressed");
+        document.querySelector('input[name="source[]"]').click();
+        check((await scan()).find(field => field.type === "checkbox-group")?.hasError, "Empty required group must still report an error");
+    }],
     ["Full degree title commits Bachelor's Degree and clears validation after blur", async () => {
         await mount({ only: "degree", buffered: "Bachelor of Science in Computer Science" });
         const outcome = await fill("degree", "Bachelor of Science in Computer Science", { optionContext: { degreeLabel: "Bachelor's Degree" } });
@@ -173,6 +251,19 @@ const tests = [
         check(outcome.status === "failed" && !selected.city, "An ambiguous city was guessed");
     }],
     ["Nothing submits the application", async () => { check(submissions === 0, "Form was submitted"); }],
+    ["Submit is blocked with errors and enabled only after committed required answers", async () => {
+        await mount({ only: "sponsor" });
+        let snapshot = await send({ type: "JOBPILOT_SCAN_FIELDS" });
+        check(!snapshot.submission.ready, "Invalid form enabled Submit");
+        check(!(await send({ type: "JOBPILOT_SUBMIT_FORM" })).submitted && submissions === 0, "Invalid form submitted");
+        await fill("sponsor", "No");
+        snapshot = await send({ type: "JOBPILOT_SCAN_FIELDS" });
+        check(snapshot.submission.ready, "Complete form did not enable Submit");
+        check(snapshot.fields.some(field => field.fieldKey === "plain-city" && !field.required && !field.filled), "Fixture must include an empty optional field");
+        check((await send({ type: "JOBPILOT_SUBMIT_FORM" })).submitted, "Explicit submit failed");
+        check(submissions === 1, "Site submit handler was not invoked exactly once");
+        check(!(await send({ type: "JOBPILOT_SUBMIT_FORM" })).submitted && submissions === 1, "Double submit was not blocked");
+    }],
 ];
 document.getElementById("run").onclick = async () => {
     const results = document.getElementById("results");

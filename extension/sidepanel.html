@@ -11,7 +11,7 @@
         <header class="app-header">
             <div class="brand">
                 <img src="icons/icon48.png" alt="">
-                <div><strong>JobPilot</strong><span>Application assistant</span></div>
+                <div><strong>JobPilot</strong><span id="extensionVersion">Application assistant</span></div>
             </div>
             <button class="icon-button hidden" id="disconnectButton" type="button" title="Disconnect extension" aria-label="Disconnect extension">↪</button>
         </header>
@@ -29,6 +29,12 @@
         </section>
 
         <section class="workspace hidden" id="workspaceView">
+            <section id="loopStyleSettings" class="job-card hidden" style="display:block">
+                <label for="writingStyle"><strong>AI writing style</strong></label>
+                <textarea id="writingStyle" rows="3" maxlength="1000" placeholder="For example: concise, friendly, first person; use specific examples and avoid buzzwords." style="width:100%;box-sizing:border-box;margin-top:10px"></textarea>
+                <button class="secondary-button compact" id="saveWritingStyle" type="button">Save style</button>
+                <p id="writingStyleStatus" role="status">Saved on this browser for future Loop AI answers. Saving does not call AI.</p>
+            </section>
             <div class="panel-view" id="mainView">
                 <div class="job-card">
                     <div><span class="eyebrow">CURRENT APPLICATION</span><h1 id="jobTitle">Scanning page…</h1><p id="jobCompany"></p></div>
@@ -53,8 +59,9 @@
 
                 <div class="actions hidden" id="actionsView">
                     <button class="primary-button" id="fillButton" type="button">Fill ready fields</button>
-                    <button class="ai-button" id="aiButton" type="button"><span>✦</span> Generate AI suggestions</button>
-                    <p>Click any field to find it on the application. JobPilot never submits the form.</p>
+                    <button class="ai-button hidden" id="aiButton" type="button"><span>✦</span> Generate AI suggestions</button>
+                    <button class="primary-button hidden" id="submitButton" type="button" disabled>Submit application</button>
+                    <p id="submitHelp">Complete required fields and resolve errors, then rescan. Submit sends the application to the employer only when you click it.</p>
                 </div>
             </div>
 
