@@ -81,3 +81,10 @@ The extension is pre-enabled for Greenhouse, Ashby, Lever, Workday, SmartRecruit
 5. Package only runtime assets (manifest, runtime JavaScript, sidepanel HTML/CSS, and icons), excluding tests and node_modules, and submit the package in the Chrome Web Store developer dashboard.
 
 The Chrome Web Store listing will also require screenshots, the 128px icon, a support contact, and a public privacy policy URL. Those account-owned publication steps cannot be performed by the repository itself.
+# v0.2.10 compatibility and Profile update
+
+- Large scan requests are compacted and split into bounded batches. The backend accepts up to 2 MB on extension routes and returns an actionable 413 message for larger bodies; ordinary API routes retain their existing limit.
+- Application detection runs only where Chrome grants site access. It detects supported/custom application forms, debounces changes, and rescans an open panel without interrupting AI review or an active fill. No AI generation, field filling, or submission is triggered by detection.
+- Chrome requires a user gesture to open a closed side panel. A detected application shows a dismissible **Open JobPilot** prompt; clicking it opens the panel and rescans. Dismissal is remembered for that page. There is no automatic reopening that bypasses Chrome's restriction.
+- Profile strength opens the matching editor and excludes all optional employment/demographic answers from scoring. Employment choices can be left blank or cleared; seed-profile answers never replace a blank or declined demographic answer.
+- Restart the backend and reload the unpacked extension, then refresh already-open application tabs. Additional runtime files `request-payload.js` and `application-detector.js` must be included when packaging.

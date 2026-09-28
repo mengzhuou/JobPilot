@@ -300,6 +300,7 @@ const renderPlan = summary => {
 
 let scanGeneration = 0;
 const scanAndPlan = async () => {
+    state.scanning=true;
     show(document.getElementById("loopStyleSettings"), false);
     elements.submitButton.disabled = true;
     const generation = ++scanGeneration;
@@ -367,12 +368,15 @@ const scanAndPlan = async () => {
         if (generation !== scanGeneration) return;
         state.plan = [];
         setStatus("JobPilot needs your attention", error.message, "error");
+    } finally {
+        if(generation===scanGeneration)state.scanning=false;
     }
 };
 
 const applyAnswers = async answers => {
     elements.submitButton.disabled = true;
     if (!answers.length) return false;
+    state.applying=true;
     setStatus("Autofilling your application", "Keep this tab open while JobPilot applies the answers you reviewed.");
     elements.fillButton.disabled = true;
     elements.aiButton.disabled = true;
@@ -400,6 +404,7 @@ const applyAnswers = async answers => {
         setStatus("Autofill stopped", error.message, "error");
         return false;
     } finally {
+        state.applying=false;
         elements.fillButton.disabled = false;
         elements.aiButton.disabled = false;
         updateAiApplyButton();
@@ -411,6 +416,7 @@ const generateAiSuggestions = async () => {
     if (!state.unresolvedFields.length) return;
     elements.aiButton.disabled = true;
     elements.aiButton.textContent = "Generating suggestions…";
+    state.generating=true;
     setStatus("AI is drafting answers", "Nothing will be entered until you review and apply the suggestions.");
     try {
         const response = await send({ type: "JOBPILOT_AI_PLAN", fields: state.unresolvedFields, job: state.scan.job });
@@ -432,6 +438,7 @@ const generateAiSuggestions = async () => {
     } catch (error) {
         setStatus("AI suggestions unavailable", error.message, "error");
     } finally {
+        state.generating=false;
         updateAiButton();
     }
 };
@@ -490,6 +497,7 @@ chrome.runtime.onMessage.addListener(message => {
     window.clearTimeout(launchScanTimer);
     launchScanTimer = window.setTimeout(async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if(message.automatic && (state.scanning || state.applying || state.generating || (state.scan?.tabId===tab?.id && !elements.reviewView.classList.contains('hidden')))) return;
         if (state.connected && tab?.id === message.tabId && tab.windowId === message.windowId) await scanAndPlan();
     }, 150);
 });

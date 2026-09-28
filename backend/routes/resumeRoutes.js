@@ -1,5 +1,6 @@
 const express = require("express");
 const multer = require("multer");
+const rateLimit = require('express-rate-limit');
 const requireAuth = require("../middleware/requireAuth");
 const controller = require("../controllers/resumeController");
 
@@ -11,6 +12,7 @@ router.get("/", controller.list);
 router.post("/", upload.single("file"), controller.create);
 router.patch("/:id", controller.update);
 router.post("/:id/primary", controller.makePrimary);
+router.post("/:id/parse-profile", rateLimit({windowMs:60*1000,max:5,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false,message:{message:'Please wait before parsing another résumé.'}}), controller.parseProfile);
 router.get("/:id/download", controller.download);
 router.delete("/:id", controller.remove);
 

@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBriefcase, faCheck, faCircleQuestion, faCode, faCopy, faEnvelope, faGlobe, faGraduationCap, faLocationDot, faLock, faPen, faPhone, faPlug, faRotate, faSliders, faTrash, faUser } from "@fortawesome/free-solid-svg-icons";
-import { createExtensionPairingCode, getExtensionConnections, getUserProfile, revokeExtensionConnection, updateUserProfileSection } from "../../../connector";
-import profileFixture from "./profileFixture";
+import { createExtensionPairingCode, getExtensionConnections, getUserProfile, getResumes, revokeExtensionConnection, updateUserProfileSection } from "../../../connector";
 import ProfileEditor from "./ProfileEditor";
+import ProfileStrength from './ProfileStrengthCard';
+import EmptyProfilePrompt from './EmptyProfilePrompt';
+import {profileStrength} from './profileCompleteness';
 import { formatProfileMonth } from "./profileDates";
 import { withApplicationQuestions } from "./profileQuestions";
 import "./Profile.scss";
@@ -13,12 +15,21 @@ import "./ProfileExtension.scss";
 
 const tabs = [["extension","Chrome Extension"],["personal","Personal"],["education","Education"],["experience","Work Experience"],["skills","Skills"],["preferences","Preferences"],["equal-employment","Equal Employment"]];
 const EQUAL_EMPLOYMENT_FIELDS = ["Authorized to work in the United States","Requires employment sponsorship","Citizenship status","Gender","Hispanic or Latino","Race","Veteran status","Disability","Sexual orientation","Transgender experience"];
+const emptyProfile = {
+    personal: {links: ['LinkedIn', 'GitHub', 'Portfolio'].map(label => ({label, href: '', value: ''}))},
+    education: [], experience: [], skills: [],
+    preferences: [['Seeking', []], ['Office preference', ''], ['Preferred locations', []]], equalEmployment: [],
+};
 const normalizeProfile = profile => {
     const equalEmployment = withApplicationQuestions('equalEmployment', profile.equalEmployment);
     const existing = new Map(equalEmployment.map(row => [String(row?.[0] || "").toLowerCase(), row]));
     return {
         ...profile,
-        preferences: withApplicationQuestions('preferences', profile.preferences),
+        personal: {...profile.personal, links: profile.personal?.links?.length ? profile.personal.links : emptyProfile.personal.links},
+        preferences: withApplicationQuestions('preferences', [
+            ...(profile.preferences || []),
+            ...emptyProfile.preferences.filter(([label]) => !(profile.preferences || []).some(([existingLabel]) => existingLabel.toLowerCase() === label.toLowerCase())),
+        ]),
         skills:Array.isArray(profile.skills) ? profile.skills : [...new Set(Object.values(profile.skills || {}).flat())],
         equalEmployment: [
             ...EQUAL_EMPLOYMENT_FIELDS.map(label => existing.get(label.toLowerCase()) || [label, ""]),
@@ -47,7 +58,10 @@ const DetailCards = ({ rows, className="" }) => <div className={`profile-detail-
 
 const Profile = () => {
     const location = useLocation();
-    const [profile, setProfile] = useState(() => normalizeProfile(profileFixture));
+    const navigate = useNavigate();
+    const [profileLoaded,setProfileLoaded]=useState(false);
+    const [hasResume,setHasResume]=useState(null);
+    const [profile, setProfile] = useState(() => normalizeProfile(emptyProfile));
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
     const [notice, setNotice] = useState("");
@@ -57,7 +71,18 @@ const Profile = () => {
     const [copied, setCopied] = useState(false);
     const editorValue = useMemo(() => editing ? profile[editing] : null, [editing, profile]);
 
-    useEffect(() => { let active=true; getUserProfile().then(data => active && setProfile(normalizeProfile(data))).catch(error => { if(error.response?.status !== 404) setNotice("Profile data could not be loaded. Showing the local preview."); }); return () => { active=false; }; }, []);
+    useEffect(() => {
+        let active=true;
+        getUserProfile().then(data => {if(active){setProfile(normalizeProfile(data));setProfileLoaded(true);}}).catch(error => {
+            if (!active) return;
+            if (error.response?.status === 404) {
+                setProfileLoaded(true);
+                setNotice('Start with any section below to create your application profile.');
+            } else setNotice('Your profile could not be loaded. Please reload before editing.');
+        });
+        return () => { active=false; };
+    }, []);
+    useEffect(()=>{let active=true;getResumes().then(rows=>{if(active)setHasResume(rows.some(row=>row.is_primary));}).catch(()=>{});return()=>{active=false;};},[]);
     useEffect(() => { let active=true; getExtensionConnections().then(data => active && setConnections(data)).catch(() => {}); return () => { active=false; }; }, []);
     useEffect(() => {
         const rawHandoff = sessionStorage.getItem("jobpilot.profileResumeHandoff");
@@ -71,7 +96,7 @@ const Profile = () => {
     const saveSection = async value => {
         setSaving(true); setNotice("");
         const nextValue = editing === "personal" ? { ...value, name:[value.firstName,value.middleName,value.lastName].filter(Boolean).join(" "), address:[value.addressLine,value.city,value.state,value.country,value.postalCode].filter(Boolean).join(", ") } : value;
-        try { const updated = await updateUserProfileSection(editing, nextValue); setProfile(normalizeProfile(updated)); setEditing(null); setNotice("Profile updated."); }
+        try { const updated = await updateUserProfileSection(editing, nextValue); setProfile(normalizeProfile(updated)); setProfileLoaded(true); setEditing(null); setNotice("Profile updated."); }
         catch (error) { setNotice(error.response?.data?.message || "Unable to update the profile."); }
         finally { setSaving(false); }
     };
@@ -94,11 +119,12 @@ const Profile = () => {
     };
 
     return <main className="profile-page">
+        <EmptyProfilePrompt eligible={profileLoaded && profileStrength(profile,hasResume).score===0} onUpload={()=>navigate('/resumes',{state:{uploadAndParse:true}})}/>
         <header className="profile-page-heading"><span>Application identity</span><h1>Profile</h1><p>The information JobPilot uses to understand your background and complete applications.</p></header>
         <div className="profile-privacy"><FontAwesomeIcon icon={faLock}/><span>Your profile data is private and used for your job applications.</span><span className="profile-privacy-help"><button type="button" aria-label="Learn how JobPilot protects your profile data"><FontAwesomeIcon icon={faCircleQuestion}/></button><span role="tooltip">Your profile data is used only to match jobs and complete applications you choose to open. JobPilot does not share it with recruiters or other third parties without your consent.</span></span><small>Stored securely in your account</small></div>
         <nav className="profile-tabs" aria-label="Profile sections">{tabs.map(([id,label])=><a key={id} href={`#${id}`}>{label}</a>)}</nav>
         {notice && <p className="profile-notice" role="status">{notice}</p>}
-        <div className="profile-card">
+        <div className="profile-with-strength"><ProfileStrength profile={profile} hasResume={hasResume} loaded={profileLoaded} onEdit={setEditing} onResumes={()=>navigate('/resumes', {state:{editFromProfile:true}})}/><div className="profile-card">
             <section className="profile-section-card profile-extension" id="extension">
                 <div className="profile-section-title"><div><FontAwesomeIcon icon={faPlug}/><h2>Chrome Autofill Extension</h2></div><span className="profile-extension-badge">Optional</span></div>
                 <div className="profile-extension-layout">
@@ -125,7 +151,7 @@ const Profile = () => {
             <section className="profile-section-card" id="preferences"><SectionTitle icon={faSliders} title="Job Preferences" section="preferences" onEdit={setEditing}/><DetailCards rows={profile.preferences}/></section>
             <section className="profile-section-card sensitive" id="equal-employment"><SectionTitle icon={faLock} title="Equal Employment" section="equalEmployment" onEdit={setEditing}/><p className="profile-sensitive-note"><FontAwesomeIcon icon={faLock}/> These answers are sensitive. JobPilot uses them only when an application specifically requests them.</p><DetailCards rows={profile.equalEmployment} className="sensitive-cards"/></section>
         </div>
-        {editing && <ProfileEditor section={editing} value={editorValue} onCancel={() => setEditing(null)} onSave={saveSection} saving={saving}/>}
+        </div>{editing && <ProfileEditor section={editing} value={editorValue} onCancel={() => setEditing(null)} onSave={saveSection} saving={saving}/>}
     </main>;
 };
 

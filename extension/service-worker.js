@@ -1,11 +1,18 @@
 const DEFAULT_BACKEND_URL = "http://localhost:3500";
 importScripts("application-lifecycle.js");
+importScripts("request-payload.js");
 const applicationLifecycle = createApplicationLifecycle(chrome);
+const installDetector = async tabId => {
+    const frames=await chrome.webNavigation.getAllFrames({tabId}).catch(()=>[{frameId:0}]);
+    await Promise.all((frames||[]).filter(frame=>!/recaptcha|hcaptcha|challenges\.cloudflare/i.test(frame.url||'')).map(frame=>chrome.scripting.executeScript({target:{tabId,frameIds:[frame.frameId]},files:['application-detector.js']}).catch(()=>{})));
+};
 chrome.tabs.onUpdated.addListener((tabId, change) => {
     if (change.status === "complete") applicationLifecycle.ready(tabId).catch(console.error);
+    if (change.status === 'complete') installDetector(tabId).catch(()=>{});
 });
 chrome.webNavigation.onCompleted.addListener(details => {
     if (details.frameId !== 0) applicationLifecycle.ready(details.tabId).catch(console.error);
+    if (details.frameId !== 0 && !/recaptcha|hcaptcha|challenges\.cloudflare/i.test(details.url||'')) chrome.scripting.executeScript({target:{tabId:details.tabId,frameIds:[details.frameId]},files:['application-detector.js']}).catch(()=>{});
 });
 chrome.tabs.onRemoved.addListener(tabId => applicationLifecycle.removed(tabId).catch(console.error));
 const STORAGE_KEYS = Object.freeze({
@@ -45,7 +52,9 @@ const apiRequest = async (path, { method = "GET", body, requiresToken = true } =
     const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
     if (!response.ok) {
         if (response.status === 401 && requiresToken) await storageRemove([STORAGE_KEYS.token, STORAGE_KEYS.expiresAt]);
-        throw new Error(payload.message || `JobPilot request failed (${response.status}).`);
+        const error = new Error(response.status === 413 ? "This application has too much data for one request. Try Rescan with the latest JobPilot extension; oversized questions may need manual entry." : payload.message || `JobPilot request failed (${response.status}).`);
+        error.status = response.status;
+        throw error;
     }
     return payload;
 };
@@ -271,11 +280,21 @@ const handleMessage = async (message, sender) => {
             await applicationLifecycle.prepareSubmit(scan.tabId);
             return sendToFrame(scan.tabId, scan.submission.frameId, { type: "JOBPILOT_SUBMIT_FORM" });
         }
-        case "JOBPILOT_BUILD_PLAN":
-            return apiRequest("/api/extension/fill-plan", {
-                method: "POST",
-                body: { fields: message.fields },
-            });
+        case "JOBPILOT_BUILD_PLAN": {
+            const answers=[],missing=new Set();
+            const requestBatch = async fields => {
+                try {return [await apiRequest('/api/extension/fill-plan',{method:'POST',body:{fields}})];}
+                catch(error){
+                    if(error.status !== 413 || fields.length<=1) throw error;
+                    const half=Math.ceil(fields.length/2);
+                    return [...await requestBatch(fields.slice(0,half)),...await requestBatch(fields.slice(half))];
+                }
+            };
+            for(const fields of applicationFieldBatches(message.fields)) for(const plan of await requestBatch(fields)) {
+                answers.push(...plan.answers);(plan.missingProfileFields||[]).forEach(item=>missing.add(item));
+            }
+            return {answers,missingProfileFields:[...missing],summary:{total:answers.length,ready:answers.filter(a=>a.action==='fill').length,needsReview:answers.filter(a=>a.action==='ask_user').length,skipped:answers.filter(a=>a.action==='skip').length}};
+        }
         case "JOBPILOT_APPLY":
             return { results: await applyToActiveTab(message.answers, message.fileFields || []) };
         case "JOBPILOT_FOCUS":
@@ -287,7 +306,7 @@ const handleMessage = async (message, sender) => {
             return apiRequest("/api/extension/ai-plan", {
                 method: "POST",
                 body: {
-                    fields: message.fields,
+                    fields: (message.fields || []).map(compactApplicationField),
                     job: message.job,
                     guidance: message.guidance,
                     writingStyle: style,
@@ -308,6 +327,19 @@ const handleMessage = async (message, sender) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!String(message?.type || "").startsWith("JOBPILOT_")) return false;
     if (message.type === "JOBPILOT_RESCAN_REQUEST") return false;
+    if (['JOBPILOT_APPLICATION_DETECTED','JOBPILOT_PANEL_STATUS','JOBPILOT_OPEN_DETECTED'].includes(message.type)) {
+        if (!sender.tab?.id) return false;
+        // Keep open() directly in the content-script click's message handler;
+        // awaiting any discovery work first can lose Chrome's user gesture.
+        const opening=message.type==='JOBPILOT_OPEN_DETECTED' ? chrome.sidePanel.open({windowId:sender.tab.windowId}) : Promise.resolve();
+        opening.then(async()=>{
+            const contexts=await chrome.runtime.getContexts({contextTypes:['SIDE_PANEL']}).catch(()=>[]);
+            const panelOpen=contexts.some(context=>context.windowId===sender.tab.windowId);
+            if(message.type!=='JOBPILOT_PANEL_STATUS') await chrome.runtime.sendMessage({type:'JOBPILOT_RESCAN_REQUEST',automatic:message.type==='JOBPILOT_APPLICATION_DETECTED',tabId:sender.tab.id,windowId:sender.tab.windowId}).catch(()=>{});
+            sendResponse({ok:true,data:{panelOpen}});
+        }).catch(()=>sendResponse({ok:false,error:'Click the JobPilot toolbar icon to open the side panel.'}));
+        return true;
+    }
     handleMessage(message, sender)
         .then(data => sendResponse({ ok: true, data }))
         .catch(error => sendResponse({ ok: false, error: error.message || "JobPilot extension error." }));

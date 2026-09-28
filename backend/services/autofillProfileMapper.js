@@ -1,4 +1,5 @@
 const fallbackProfile = require("./profile.json");
+const { findEquivalentFormOption } = require('./applicationAgentUtils');
 
 const text = value => String(value ?? "").trim();
 const key = value => text(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -164,6 +165,20 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
         ...mapped.application_answers,
         preferred_application_location: preferredLocation || fallback.application_answers?.preferred_application_location || "",
     };
+    // Optional means truly optional: compatibility aliases from the seed profile
+    // must never supply an answer the user left blank or explicitly cleared.
+    for (const [category,answer] of Object.entries(mapped.eeoc)) {
+        const saved=text(answer.answer);
+        if (!saved) {answer.form_options=[];continue;}
+        if (/decline|not to disclose|prefer not|not wish/i.test(saved)) {
+            answer.form_options=[saved,'Choose not to disclose','Decline to state','Decline to self-identify','I do not wish to answer','Prefer not to say'];
+            continue;
+        }
+        answer.form_options=answer.form_options.filter(option=>findEquivalentFormOption([option],saved));
+        if(category==='gender' && /^(female|male)$/i.test(saved))answer.form_options.push(/^female$/i.test(saved)?'Woman':'Man');
+        if(category==='hispanic_latino' && /^(yes|no)$/i.test(saved))answer.form_options.push(/^yes$/i.test(saved)?'Hispanic or Latino':'Not Hispanic or Latino');
+        if(category==='race' && /^no$/i.test(text(mapped.eeoc.hispanic_latino.answer)))answer.form_options.push(`${saved} (Not Hispanic or Latino)`);
+    }
     return { profile: mapped, missing: validateEditableProfile(editableProfile) };
 };
 

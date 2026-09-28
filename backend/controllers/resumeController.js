@@ -85,4 +85,16 @@ const remove = async (req, res, next) => {
     } catch (error) { return next(error); }
 };
 
-module.exports = { list, create, update, makePrimary, download, remove };
+const parseProfile = async (req,res,next) => {
+    try {
+        const resume=await repository.findFile(req.auth.userId,req.params.id);
+        if (!resume) return res.status(404).json({message:'Resume not found.'});
+        let text;
+        try { text=await extractResumeText({fileData:resume.file_data,mimeType:resume.mime_type}); }
+        catch { return res.status(422).json({message:'This résumé could not be read. Upload a text-based PDF or DOCX to parse. Your saved résumé has not been removed.'}); }
+        const parsed=await require('../services/resumeProfileService').parseResumeProfile(text);
+        const profile=await require('../repositories/userProfileRepository').importResume(req.auth.userId,parsed);
+        return res.json({profile});
+    } catch(error) { next(error); }
+};
+module.exports = { list, create, update, makePrimary, download, remove, parseProfile };

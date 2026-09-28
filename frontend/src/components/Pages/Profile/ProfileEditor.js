@@ -2,24 +2,12 @@ import React, { useEffect, useState } from "react";
 import { SuggestField, PersonalLocations, TECH_SKILLS, OFFICE_OPTIONS, SEEKING_OPTIONS, asSelections } from './ProfileFields';
 
 import { SCHOOLS, DEGREES, JOB_TITLES } from './profileSuggestions';
-import { ACTIVE_IMMIGRATION_CASE, INTERVIEW_LANGUAGE, INTERVIEW_LANGUAGES, withApplicationQuestions } from './profileQuestions';
+import { INTERVIEW_LANGUAGE, INTERVIEW_LANGUAGES, withApplicationQuestions } from './profileQuestions';
+import EmploymentChoices from './EmploymentChoices';
 const COMPANY_OPTIONS = ["Walmart Global Tech", "Travelers", "MessageGears"];
 let entryId = 0;
 const entry = item => ({ ...item, _editorId: ++entryId });
 const prepare = (section, value) => ['education','experience'].includes(section) ? value.map(entry) : ['preferences','equalEmployment'].includes(section) ? withApplicationQuestions(section, value) : value;
-const EEO_OPTIONS = {
-    "Authorized to work in the United States":["Yes","No"],
-    "Requires employment sponsorship":["Yes","No"],
-    [ACTIVE_IMMIGRATION_CASE]:["Yes","No"],
-    "Citizenship status":["U.S. citizen","U.S. lawful permanent resident","Protected individual","Other"],
-    Gender:["Female","Male","Non-binary","Choose not to disclose"],
-    "Hispanic or Latino":["Yes","No","Choose not to disclose"],
-    Race:["Asian","Black or African American","White","Two or more races","Choose not to disclose"],
-    "Veteran status":["Not a protected veteran","Protected veteran","Choose not to disclose"],
-    Disability:["No","Yes","Choose not to disclose"],
-    "Sexual orientation":["Heterosexual","Bisexual","Gay","Lesbian","Choose not to disclose"],
-    "Transgender experience":["No","Yes","Choose not to disclose"],
-};
 
 const toMonth = value => {
     if (!value || value === "Present") return "";
@@ -43,7 +31,7 @@ const ProfileEditor = ({ section, value, onCancel, onSave, saving }) => {
     const bulletChange = (itemIndex, bulletIndex, next) => setDraft(current => current.map((item,index) => index === itemIndex ? {...item,bullets:item.bullets.map((bullet,index2) => index2 === bulletIndex ? next : bullet)} : item));
 
     return <div className="profile-editor-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onCancel()}>
-        <aside className="profile-editor" role="dialog" aria-modal="true" aria-labelledby="profile-editor-title">
+        <aside className={`profile-editor ${section === 'equalEmployment' ? 'employment-editor' : ''}`} role="dialog" aria-modal="true" aria-labelledby="profile-editor-title">
             <header><button type="button" onClick={onCancel} aria-label="Close profile editor">‹</button><h2 id="profile-editor-title">{section === "equalEmployment" ? "Equal Employment" : section === "experience" ? "Work Experience" : section[0].toUpperCase()+section.slice(1)}</h2><button className="header-update" type="submit" form="profile-edit-form" disabled={saving}>{saving ? "Updating…" : "Update"}</button></header>
             <p className="profile-editor-sync">ⓘ Updates to your profile will be synced to Autofill Information for future applications.</p>
             <form id="profile-edit-form" className="profile-editor-content" onSubmit={event => { event.preventDefault(); if (!saving && event.currentTarget.reportValidity()) onSave(['education','experience'].includes(section) ? draft.map(({_editorId, ...item}) => item) : draft); }}>
@@ -75,7 +63,7 @@ const ProfileEditor = ({ section, value, onCancel, onSave, saving }) => {
                     if (/location/i.test(question)) return <SuggestField key={question} label={question} multiple kind="locations" value={asSelections(answer)} onChange={next=>rowChange(index,next)} helperText="Select a city, or type a location and press Enter. Add as many as you need."/>;
                     return <Field key={question} label={question} value={answer} onChange={next=>rowChange(index,next)} type={question.includes("date") ? "date" : "text"}/>;
                 })}
-                {section === "equalEmployment" && <div className="eeo-editor">{draft.map(([question,answer],index)=><SelectField key={question} label={question} value={answer} onChange={next=>rowChange(index,next)} options={EEO_OPTIONS[question] || [answer,"Choose not to disclose"]} required={question !== ACTIVE_IMMIGRATION_CASE}/>)}<p className="field-tip">An active immigration case is separate from needing sponsorship. Leave it unanswered if unsure; Autofill will ask you to review it.</p></div>}
+                {section === "equalEmployment" && <EmploymentChoices rows={draft} onChange={rowChange}/>}
             </form>
             <footer><button className="secondary" type="button" onClick={onCancel} disabled={saving}>Cancel</button><button className="primary" type="submit" form="profile-edit-form" disabled={saving}>{saving ? "Updating…" : "Update"}</button></footer>
         </aside>

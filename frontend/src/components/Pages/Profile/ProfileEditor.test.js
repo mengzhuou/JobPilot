@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ProfileEditor from './ProfileEditor';
 import { PersonalLocations } from './ProfileFields';
@@ -118,12 +118,28 @@ test('interview language is added once to older profiles and custom preferences 
 test('active immigration case is blank by default, independent of sponsorship, and can be cleared', () => {
     const save = jest.fn();
     render(<ProfileEditor section="equalEmployment" value={[["Requires employment sponsorship","No"]]} onSave={save} onCancel={()=>{}}/>);
-    const activeCase = screen.getByRole('combobox',{name:ACTIVE_IMMIGRATION_CASE});
-    expect(activeCase.value).toBe('');
-    fireEvent.change(activeCase,{target:{value:'Yes'}});
+    const activeCase = screen.getAllByRole('group',{name:ACTIVE_IMMIGRATION_CASE}).find(node=>node.tagName==='DIV');
+    expect(within(activeCase).getByRole('button',{name:'Yes'})).toHaveAttribute('aria-pressed','false');
+    fireEvent.click(within(activeCase).getByRole('button',{name:'Yes'}));
     user.click(screen.getAllByRole('button',{name:'Update'})[0]);
     expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,'Yes']]);
-    fireEvent.change(activeCase,{target:{value:''}});
+    fireEvent.click(screen.getByRole('button',{name:`Clear ${ACTIVE_IMMIGRATION_CASE}`}));
     user.click(screen.getAllByRole('button',{name:'Update'})[0]);
     expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,'']]);
+});
+
+test('all employment fields may remain blank and decline choices are absent',()=>{
+    const save=jest.fn();
+    render(<ProfileEditor section="equalEmployment" value={[["Gender",""],["Race",""],["Authorized to work in the United States",""]]} onSave={save} onCancel={()=>{}}/>);
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save).toHaveBeenCalled();
+    expect(screen.queryByRole('checkbox',{name:/Decline/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:/Decline/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('option',{name:/disclose|decline/i})).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox',{name:'Race'}),{target:{value:'Asian'}});
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save.mock.calls.at(-1)[0]).toContainEqual(['Race','Asian']);
+    fireEvent.click(screen.getByRole('button',{name:'Clear Race'}));
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save.mock.calls.at(-1)[0]).toContainEqual(['Race','']);
 });

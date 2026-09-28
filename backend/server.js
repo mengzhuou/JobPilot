@@ -76,6 +76,9 @@ app.use(cors({
     exposedHeaders: ["X-JobPilot-Filename"],
 }));
 
+// Large native select menus (school/country lists) exceed Express's default
+// 100 KB. Bound extension bodies separately; other endpoints keep the default.
+app.use('/api/extension', express.json({limit:'2mb'}));
 app.use(express.json());
 app.use(cookieParser());
 

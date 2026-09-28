@@ -39,7 +39,7 @@ const safeField = field => ({
     hasError: Boolean(field?.hasError),
     errorMessage: clean(field?.errorMessage).slice(0, MAX_FIELD_TEXT),
     options: Array.isArray(field?.options)
-        ? field.options.map(clean).filter(Boolean).slice(0, 60)
+        ? field.options.slice(0,2000).map(value=>clean(value).slice(0,200)).filter(Boolean)
         : [],
 });
 

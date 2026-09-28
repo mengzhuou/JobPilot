@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Autofill",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Review and autofill job applications using your JobPilot Profile.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -60,7 +60,7 @@
         "https://*.icims.com/*",
         "https://apply.workable.com/*"
       ],
-      "js": ["content-script.js", "submission-monitor.js"],
+      "js": ["content-script.js", "submission-monitor.js", "application-detector.js"],
       "run_at": "document_idle",
       "all_frames": true,
       "match_about_blank": true

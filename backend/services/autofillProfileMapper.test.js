@@ -80,3 +80,11 @@ for (const [from,to,expectedStart,expectedEnd] of [['2022-08','2024-12','2022-08
     assert.equal(mapped.education.field_of_study,'', 'An explicitly cleared major stays blank');
 }
 console.log("Autofill Profile mapping checks passed.");
+const blankEmployment=mapProfileForAutofill({...editableProfile,equalEmployment:[]}).profile;
+assert.ok(Object.values(blankEmployment.eeoc).every(answer=>answer.form_options.length===0));
+assert.ok(createDeterministicFillPlan({profile:blankEmployment,fields:[{fieldKey:'g',label:'Gender',type:'radio',options:['Female','Male']},{fieldKey:'r',label:'Race',type:'select',options:['Asian','White']}]}).answers.every(answer=>answer.action==='ask_user'&&!answer.value));
+const manyCountries=createDeterministicFillPlan({profile,fields:[{fieldKey:'country',label:'Country',type:'select',options:[...Array.from({length:250},(_,i)=>`Country ${i}`),'United States']}]}).answers[0];
+assert.equal(manyCountries.value,'United States');
+const declinedProfile=mapProfileForAutofill({...editableProfile,equalEmployment:[['Gender','Choose not to disclose'],['Race','Choose not to disclose'],['Hispanic or Latino','Choose not to disclose']]}).profile;
+const declinePlan=createDeterministicFillPlan({profile:declinedProfile,fields:[{fieldKey:'g',label:'Gender',type:'select',options:['Female','Male','Decline to self-identify']},{fieldKey:'h',label:'Are you Hispanic/Latino?',type:'radio',options:['Yes','No','Decline to state']}]}).answers;
+assert.deepEqual(declinePlan.map(answer=>answer.value),['Decline to self-identify','Decline to state']);
