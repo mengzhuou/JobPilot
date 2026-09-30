@@ -3,7 +3,7 @@ const {
     getCurrentUser,
     googleLogin,
     logout,
-    register, passwordLogin,
+    register, passwordLogin, saveOnboarding,
 } = require("../controllers/authController");
 const requireAuth = require("../middleware/requireAuth");
 
@@ -22,6 +22,7 @@ router.post('/login', authLimit, jsonOnly, accountLimit, passwordLogin);
 
 router.post("/google", authLimit, jsonOnly, googleLogin);
 router.get("/me", requireAuth, getCurrentUser);
+router.patch('/onboarding', requireAuth, jsonOnly, saveOnboarding);
 router.post("/logout", logout);
 
 module.exports = router;

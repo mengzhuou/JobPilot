@@ -1,0 +1,15 @@
+.guided-setup {
+    padding: 30px; color: #1e2c43;
+    .guided-setup-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.3px; color: #3564ad; }
+    progress { display: block; width: 100%; height: 5px; margin: 15px 0 25px; accent-color: #3564ad; }
+    h2 { font-size: 25px; margin: 0 0 14px; letter-spacing: -.5px; }
+    p { font-size: 14px; line-height: 1.75; color: #607086; }
+    button { font: inherit; cursor: pointer; border-radius: 9px; padding: 11px 16px; border: 1px solid #dbe3ef; background: white; color: #3564ad; }
+    button:focus-visible { outline: 3px solid #a9c5ee; outline-offset: 3px; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .guided-setup-open { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: #f5f8fd; margin: 20px 0; }
+    small { display: block; font-size: 11px; color: #738198; line-height: 1.6; margin-top: 18px; }
+}
+.guided-setup-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 26px; button:last-child { background: #3564ad; color: white; border-color: #3564ad; } }
+.guided-setup-dock { position: fixed; bottom: 18px; left: 18px; z-index: 1200; button { border: 1px solid #dbe3ef; border-radius: 12px; background: white; color: #3564ad; box-shadow: 0 6px 24px #24395720; padding: 13px 18px; font: inherit; cursor: pointer; } }
+@media(max-width:520px){.guided-setup{padding:24px;h2{font-size:22px;}}}

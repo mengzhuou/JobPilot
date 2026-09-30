@@ -63,7 +63,8 @@ const findUserById = async id => {
             picture_url,
             role,
             created_at,
-            last_login_at
+            last_login_at,
+            onboarding
         FROM jobpilot.users
         WHERE id = $1
         `,
@@ -74,6 +75,12 @@ const findUserById = async id => {
 };
 
 module.exports = {
+    updateOnboarding: async (id, state) => {
+        const result = await pool.query(`UPDATE jobpilot.users SET onboarding = CASE
+            WHEN onboarding->>'status' IN ('completed','skipped') THEN onboarding
+            ELSE $2::JSONB END WHERE id=$1 RETURNING onboarding`,[id,JSON.stringify(state)]);
+        return result.rows[0]?.onboarding;
+    },
     createPasswordUser,
     findUserByEmail,
     recordLogin,

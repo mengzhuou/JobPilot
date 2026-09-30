@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const {
     findUserById,
     upsertGoogleUser,
-    createPasswordUser, findUserByEmail, recordLogin,
+    createPasswordUser, findUserByEmail, recordLogin, updateOnboarding,
 } = require("../repositories/userRepository");
 const { hashPassword, verifyPassword, validPassword } = require('../services/passwordService');
 
@@ -19,6 +19,7 @@ const publicUser = user => ({
     lastName: user.last_name,
     picture: user.picture_url,
     role: user.role,
+    onboarding: user.onboarding || null,
 });
 
 const cookieOptions = () => ({
@@ -127,6 +128,17 @@ const logout = (req, res) => {
 };
 
 module.exports = {
+    saveOnboarding: async (req,res,next) => {
+        const {status,step}=req.body || {};
+        if(!['active','completed','skipped'].includes(status) || !Number.isInteger(step) || step<0 || step>10) {
+            return res.status(400).json({message:'Invalid onboarding step.'});
+        }
+        try {
+            const onboarding=await updateOnboarding(req.auth.userId,{status,step});
+            if(!onboarding)return res.status(404).json({message:'Account not found.'});
+            return res.json({onboarding});
+        } catch(error){return next(error);}
+    },
     register,
     passwordLogin,
     getCurrentUser,

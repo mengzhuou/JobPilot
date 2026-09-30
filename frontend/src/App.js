@@ -16,6 +16,7 @@ import ManualApplication from "./components/Pages/Management/ManualApplication";
 import ErrorPage from "./components/Pages/Management/ErrorPage";
 import Profile from "./components/Pages/Profile/Profile";
 import Loops from "./components/Pages/Loops/Loops";
+import GuidedSetup from './components/Functions/GuidedSetup/GuidedSetup';
 import Resumes from "./components/Pages/Resumes/Resumes";
 import ResumeParsingSnackbar from './components/Pages/Resumes/ResumeParsingSnackbar';
 import ProtectedRoute from "./ProtectedRoute";
@@ -62,6 +63,7 @@ const AppRoutes = () => {
             <GlobalInputLimit />
             {!isLoginPage && <TopNavBar />}
             {!isLoginPage && <ResumeParsingSnackbar />}
+            {!isLoginPage && <GuidedSetup />}
             <Routes>
                 <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="/login" element={<Login />} />

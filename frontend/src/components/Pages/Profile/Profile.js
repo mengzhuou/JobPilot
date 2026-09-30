@@ -7,8 +7,6 @@ import ProfileEditor from "./ProfileEditor";
 import ProfileHistory from './ProfileHistory';
 import ProfileStrength from './ProfileStrengthCard';
 import {connectExtension} from './connectExtension';
-import EmptyProfilePrompt from './EmptyProfilePrompt';
-import {profileStrength} from './profileCompleteness';
 import { withApplicationQuestions } from "./profileQuestions";
 import "./Profile.scss";
 import "./ProfileRefinements.scss";
@@ -64,6 +62,16 @@ const Profile = () => {
     const [extensionBusy, setExtensionBusy] = useState(false);
     const [copied, setCopied] = useState(false);
     const editorValue = useMemo(() => editing ? profile[editing] : null, [editing, profile]);
+    useEffect(()=>{
+        if(location.hash==='#extension')document.getElementById('extension')?.scrollIntoView?.({block:'start'});
+    },[location.hash]);
+    useEffect(()=>{
+        const section=location.state?.guidedSection;
+        if(profileLoaded && ['personal','education','experience','skills','preferences','equalEmployment'].includes(section)) {
+            setEditing(section);
+            navigate(location.pathname+location.search,{replace:true,state:{...location.state,guidedSection:null}});
+        }
+    },[profileLoaded,location,navigate]);
 
     useEffect(() => {
         let active=true;
@@ -122,7 +130,6 @@ const Profile = () => {
     };
 
     return <main className="profile-page">
-        <EmptyProfilePrompt eligible={profileLoaded && profileStrength(profile,hasResume).score===0} onUpload={()=>navigate('/resumes',{state:{uploadAndParse:true}})}/>
         <header className="profile-page-heading"><span>Application identity</span><h1>Profile</h1><p>The information JobPilot uses to understand your background and complete applications.</p></header>
         <div className="profile-privacy"><FontAwesomeIcon icon={faLock}/><span>Your profile data is private and used for your job applications.</span><span className="profile-privacy-help"><button type="button" aria-label="Learn how JobPilot protects your profile data"><FontAwesomeIcon icon={faCircleQuestion}/></button><span role="tooltip">Your profile data is used only to match jobs and complete applications you choose to open. JobPilot does not share it with recruiters or other third parties without your consent.</span></span><small>Stored securely in your account</small></div>
         <nav className="profile-tabs" aria-label="Profile sections">{tabs.map(([id,label])=><a key={id} href={`#${id}`}>{label}</a>)}</nav>

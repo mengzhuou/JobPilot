@@ -2,6 +2,7 @@ import axios from "axios";
 export const getProfileLocations = async params => (await api.get('/api/profile/locations', { params })).data.options;
 export const parseResumeProfile = async id => (await api.post(`/api/resumes/${id}/parse-profile`)).data.profile;
 export const getSignedInUser = async () => (await api.get('/api/auth/me')).data.user;
+export const saveOnboarding = async state => (await api.patch('/api/auth/onboarding',state)).data.onboarding;
 export const getFilterPresets = async () => (await api.get('/api/filter-presets')).data.presets;
 export const saveFilterPreset = async (name, filters) => (await api.post('/api/filter-presets', { name, filters })).data.preset;
 export const updateFilterPreset = async (id, name, filters) => (await api.put(`/api/filter-presets/${id}`, { name, filters })).data.preset;
