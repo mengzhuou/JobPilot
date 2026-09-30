@@ -1,0 +1,32 @@
+import React from 'react';
+import {render,screen,fireEvent,waitFor} from '@testing-library/react';
+import {MemoryRouter} from 'react-router-dom';
+import Login from './Login';
+const mockDispatch=jest.fn(),mockNavigate=jest.fn();
+jest.mock('react-redux',()=>({useDispatch:()=>mockDispatch,useSelector:fn=>fn({auth:{isAuthenticated:false}})}));
+jest.mock('react-router-dom',()=>({...jest.requireActual('react-router-dom'),useNavigate:()=>mockNavigate}));
+beforeEach(()=>{jest.clearAllMocks();global.fetch=jest.fn();});
+test('email registration submits credentials with cookies and preserves extension redirect',async()=>{
+    global.fetch.mockResolvedValue({ok:true,json:async()=>({user:{id:'1',email:'test@example.com'}})});
+    render(<MemoryRouter initialEntries={[{pathname:'/register',state:{from:'/profile?connectExtension=1'}}]}><Login/></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('First name'),{target:{value:'Test'}});
+    fireEvent.change(screen.getByLabelText('Last name'),{target:{value:'User'}});
+    fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'test@example.com'}});
+    fireEvent.change(screen.getByLabelText('Password'),{target:{value:'long unique passphrase'}});
+    fireEvent.click(screen.getByRole('button',{name:'Create account'}));
+    await waitFor(()=>expect(mockNavigate).toHaveBeenCalledWith('/profile?connectExtension=1',{replace:true}));
+    expect(global.fetch.mock.calls[0][0]).toMatch(/\/api\/auth\/register$/);
+    expect(global.fetch.mock.calls[0][1].credentials).toBe('include');
+});
+test('email login shows generic failure and allows password visibility toggle',async()=>{
+    global.fetch.mockResolvedValue({ok:false,json:async()=>({message:'Invalid email or password.'})});
+    render(<MemoryRouter initialEntries={['/login']}><Login/></MemoryRouter>);
+    expect(screen.queryByLabelText('First name')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'test@example.com'}});
+    fireEvent.change(screen.getByLabelText('Password'),{target:{value:'wrong password'}});
+    fireEvent.click(screen.getByRole('button',{name:'Show password'}));
+    expect(screen.getByLabelText('Password')).toHaveAttribute('type','text');
+    fireEvent.click(screen.getByRole('button',{name:'Log in'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.');
+    expect(mockDispatch).not.toHaveBeenCalled();
+});

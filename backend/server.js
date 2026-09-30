@@ -20,9 +20,9 @@ if (
     );
 }
 
-if (!process.env.GOOGLE_CLIENT_ID || !process.env.SESSION_SECRET) {
+if (!process.env.SESSION_SECRET) {
     throw new Error(
-        "GOOGLE_CLIENT_ID and SESSION_SECRET are required in backend/.env."
+        "SESSION_SECRET is required in backend/.env."
     );
 }
 

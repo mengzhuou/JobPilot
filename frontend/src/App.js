@@ -54,7 +54,7 @@ class App extends Component {
 
 const AppRoutes = () => {
     const location = useLocation();
-    const isLoginPage = ["/login", "/terms", "/privacy"].includes(location.pathname.replace(/\/$/, ""));
+    const isLoginPage = ["/login", "/register", "/terms", "/privacy"].includes(location.pathname.replace(/\/$/, ""));
 
     return (
         <>
@@ -65,6 +65,7 @@ const AppRoutes = () => {
             <Routes>
                 <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Login />} />
                 <Route path="/terms" element={<LegalPage type="terms" />} />
                 <Route path="/privacy" element={<LegalPage type="privacy" />} />
                 <Route
@@ -104,7 +105,7 @@ const GlobalInputLimit = () => {
         const limitInputs = root => {
             const inputs = root.matches?.("input") ? [root] : root.querySelectorAll?.("input") || [];
             inputs.forEach(input => {
-                if (limitedTypes.has((input.type || "text").toLowerCase())) input.maxLength = 199;
+                if (limitedTypes.has((input.type || "text").toLowerCase()) && !input.hasAttribute('maxlength')) input.maxLength = 199;
             });
         };
         limitInputs(document);

@@ -18,6 +18,19 @@
 .google-button-container { min-height: 44px; display: flex; justify-content: center; transition: opacity 160ms ease; }
 .google-button-container.is-loading { opacity: .55; pointer-events: none; }
 .login-error { margin: 0 0 18px; padding: 12px 14px; border: 1px solid #f0b9b9; border-radius: 10px; color: #8f2424; background: #fff3f3; font-size: 13px; line-height: 1.45; }
+.login-divider { margin: 24px 0; text-align: center; color: #68758a; font-size: 13px; }
+.email-auth-form {
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    input { box-sizing: border-box; display: block; width: 100%; min-width: 0; margin: 8px 0 18px; padding: 12px; border: 1px solid #cbd6e6; border-radius: 9px; font: inherit; background: #fff; color: #14213d; }
+    input:focus-visible, button:focus-visible { outline: 2px solid #326cc1; outline-offset: 2px; }
+    fieldset:disabled { opacity: .65; }
+    #password-guidance { font-size: 12px; color: #68758a; line-height: 1.5; margin: 8px 0 18px; }
+}
+.auth-name-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.auth-password-row { display: flex; border: 1px solid #cbd6e6; border-radius: 9px; margin-bottom: 16px; input { margin: 0; border: 0; } button { border: 0; background: transparent; color: #2459a6; padding: 0 12px; cursor: pointer; } }
+.email-auth-submit { width: 100%; border: 0; border-radius: 10px; padding: 13px; color: white; background: #3264b1; font: inherit; font-weight: 650; cursor: pointer; }
+.auth-switch { font-size: 13px; text-align: center; color: #68758a; a { color: #2459a6; } }
 .login-progress { margin: 14px 0 0; color: #4b6487; font-size: 13px; text-align: center; }
 .login-legal { margin: 26px 0 0; color: #8993a3; font-size: 12px; line-height: 1.55; text-align: center; }
 .login-legal a, .login-legal a:visited { color: #2459a6; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }

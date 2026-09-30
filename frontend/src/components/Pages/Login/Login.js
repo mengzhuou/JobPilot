@@ -14,6 +14,8 @@ const Login = () => {
     const isAuthenticated = useSelector(state => state.auth.isAuthenticated);
     const navigate = useNavigate();
     const location = useLocation();
+    const registering = location.pathname === '/register';
+    const [showPassword, setShowPassword] = useState(false);
     const destination = location.state?.from === '/profile?connectExtension=1' ? '/profile?connectExtension=1' : '/active-job-postings';
     const dispatch = useDispatch();
 
@@ -27,7 +29,6 @@ const Login = () => {
         const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 
         if (!clientId) {
-            setErrorMessage("Google sign-in is not configured.");
             return undefined;
         }
 
@@ -104,6 +105,24 @@ const Login = () => {
         };
     }, [dispatch, navigate, destination]);
 
+    const handleEmailSubmit = async event => {
+        event.preventDefault();
+        if (isSigningIn) return;
+        const form = event.currentTarget;
+        const values = Object.fromEntries(new FormData(form));
+        setErrorMessage('');setIsSigningIn(true);
+        try {
+            const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3500'}/api/auth/${registering ? 'register' : 'login'}`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body:JSON.stringify(values),
+            });
+            const body = await response.json().catch(()=>({}));
+            if (!response.ok) throw new Error(body.message || 'Unable to sign in. Please try again.');
+            form.reset();
+            dispatch(setStudentInfo(body.user));dispatch(loginSuccess());navigate(destination,{replace:true});
+        } catch(error) { setErrorMessage(error.message); }
+        finally { setIsSigningIn(false); }
+    };
+
     return (
         <main className="login-page">
             <section className="login-brand-panel" aria-label="JobPilot introduction">
@@ -134,8 +153,8 @@ const Login = () => {
                 <div className="login-card">
                     <div className="login-card-heading">
                         <p className="login-mobile-logo">JobPilot</p>
-                        <h2>Welcome back</h2>
-                        <p>Sign in to continue to your active job postings.</p>
+                        <h2>{registering ? 'Create your account' : 'Welcome back'}</h2>
+                        <p>{registering ? 'Start your next chapter with JobPilot.' : 'Sign in to continue to your active job postings.'}</p>
                     </div>
 
                     {errorMessage && (
@@ -147,6 +166,25 @@ const Login = () => {
                         ref={googleButtonRef}
                         aria-label="Sign in with Google"
                     />
+
+                    <p className="login-divider">{process.env.REACT_APP_GOOGLE_CLIENT_ID ? 'Or continue with your email' : 'Continue with your email'}</p>
+                    <form className="email-auth-form" onSubmit={handleEmailSubmit} key={registering ? 'register' : 'login'}>
+                        <fieldset disabled={isSigningIn}>
+                            {registering && <div className="auth-name-row">
+                                <label>First name<input name="firstName" autoComplete="given-name" required maxLength={80} /></label>
+                                <label>Last name<input name="lastName" autoComplete="family-name" required maxLength={80} /></label>
+                            </div>}
+                            <label>Email address<input name="email" type="email" autoComplete="email" required maxLength={254} /></label>
+                            <label htmlFor="account-password">Password</label>
+                            <div className="auth-password-row">
+                                <input id="account-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete={registering ? 'new-password' : 'current-password'} required minLength={registering ? 15 : undefined} maxLength={128} aria-describedby={registering ? 'password-guidance' : undefined} />
+                                <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={()=>setShowPassword(!showPassword)}>{showPassword ? 'Hide' : 'Show'}</button>
+                            </div>
+                            {registering && <p id="password-guidance">Use 15–128 characters. A unique passphrase works well.</p>}
+                            <button className="email-auth-submit" type="submit">{isSigningIn ? 'Please wait…' : registering ? 'Create account' : 'Log in'}</button>
+                        </fieldset>
+                    </form>
+                    <p className="auth-switch">{registering ? 'Already have an account? ' : 'New to JobPilot? '}<Link to={registering ? '/login' : '/register'} state={location.state} onClick={()=>{setErrorMessage('');setShowPassword(false);}}>{registering ? 'Log in' : 'Create an account'}</Link></p>
 
                     {isSigningIn && <p className="login-progress">Signing you in…</p>}
 

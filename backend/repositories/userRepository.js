@@ -1,4 +1,18 @@
 const { pool } = require("../config/postgres");
+const { randomUUID } = require('crypto');
+
+const createPasswordUser = async ({ email, firstName, lastName, passwordHash }) => {
+    const result = await pool.query(`INSERT INTO jobpilot.users
+        (auth_provider, provider_user_id, email, display_name, first_name, last_name, password_hash, last_login_at)
+        VALUES ('password', $1, $2, $3, $4, $5, $6, NOW()) RETURNING *`,
+        [randomUUID(), email, `${firstName} ${lastName}`, firstName, lastName, passwordHash]);
+    return result.rows[0];
+};
+const findUserByEmail = async email => {
+    const result = await pool.query('SELECT * FROM jobpilot.users WHERE LOWER(email)=$1', [email]);
+    return result.rows[0] || null;
+};
+const recordLogin = id => pool.query('UPDATE jobpilot.users SET last_login_at=NOW() WHERE id=$1', [id]);
 
 const upsertGoogleUser = async profile => {
     const result = await pool.query(
@@ -60,6 +74,9 @@ const findUserById = async id => {
 };
 
 module.exports = {
+    createPasswordUser,
+    findUserByEmail,
+    recordLogin,
     findUserById,
     upsertGoogleUser,
 };
