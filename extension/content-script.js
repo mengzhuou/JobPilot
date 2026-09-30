@@ -118,7 +118,7 @@
         let node = element.parentElement;
         for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
             const text = cleanText(node.innerText).slice(0, 500);
-            if (/\b(resume|résumé|curriculum vitae|cv|cover letter)\b/i.test(text)) return text;
+            if (/\b(resume|resume|curriculum vitae|cv|cover letter)\b/i.test(text)) return text;
         }
         return "";
     };
@@ -536,9 +536,9 @@
         const entry = registry.get(fieldKey);
         const element = entry?.element;
         if (!(element instanceof HTMLInputElement) || element.type !== "file" || !element.isConnected) {
-            return { status: "failed", message: "The résumé file input moved. Rescan and try again." };
+            return { status: "failed", message: "The resume file input moved. Rescan and try again." };
         }
-        if (element.files?.length) return { status: "skipped", message: "A résumé is already attached." };
+        if (element.files?.length) return { status: "skipped", message: "A resume is already attached." };
         try {
             const file = new File([base64ToBytes(fileData.base64)], fileData.fileName, { type: fileData.mimeType });
             const transfer = new DataTransfer();
@@ -548,9 +548,9 @@
             element.dispatchEvent(new Event("change", { bubbles: true }));
             return element.files?.length
                 ? { status: "filled", message: `Attached ${file.name}.` }
-                : { status: "failed", message: "The site did not accept the primary résumé." };
+                : { status: "failed", message: "The site did not accept the primary resume." };
         } catch (error) {
-            return { status: "failed", message: "The site did not accept the primary résumé." };
+            return { status: "failed", message: "The site did not accept the primary resume." };
         }
     };
 

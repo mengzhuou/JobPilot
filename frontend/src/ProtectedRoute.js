@@ -1,8 +1,9 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
 const ProtectedRoute = ({ element, requiredRole }) => {
+  const location = useLocation();
   const { isAuthenticated, isInitialized } = useSelector(state => state.auth);
   const role = useSelector(state => state.studentData?.role);
 
@@ -11,7 +12,7 @@ const ProtectedRoute = ({ element, requiredRole }) => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{from:location.pathname+location.search}} />;
   }
 
   if (requiredRole && role !== requiredRole) {

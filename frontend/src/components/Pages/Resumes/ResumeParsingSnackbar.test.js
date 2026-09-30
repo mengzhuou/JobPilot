@@ -1,0 +1,24 @@
+import React from 'react';
+import {render,screen,act,fireEvent} from '@testing-library/react';
+import {MemoryRouter,Routes,Route,Link} from 'react-router-dom';
+import ResumeParsingSnackbar from './ResumeParsingSnackbar';
+import {runResumeParsing,dismissParsing} from './resumeParsingTask';
+import {parseResumeProfile} from '../../../connector';
+jest.mock('../../../connector',()=>({parseResumeProfile:jest.fn()}));
+afterEach(()=>{dismissParsing();jest.useRealTimers();});
+test('progress survives navigation and tab blur; completion waits for acknowledgement',async()=>{
+    jest.useFakeTimers();let finish;
+    parseResumeProfile.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+    render(<MemoryRouter><ResumeParsingSnackbar/><Link to="/elsewhere">Elsewhere</Link><Routes><Route path="*" element={<p>Other page</p>}/></Routes></MemoryRouter>);
+    let task;act(()=>{task=runResumeParsing('id');});
+    fireEvent.click(screen.getByText('Elsewhere'));
+    fireEvent.blur(window);act(()=>jest.advanceTimersByTime(120000));fireEvent.focus(window);
+    expect(screen.getByText(/Parsing resume and filling/)).toBeInTheDocument();
+    await act(async()=>{finish({});await task;});
+    act(()=>jest.advanceTimersByTime(120000));
+    expect(screen.getByRole('button',{name:'View Profile'})).toHaveStyle({whiteSpace:'nowrap',minWidth:'112px'});
+    expect(screen.getByText(/Resume parsed successfully/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Dismiss notification'}));
+    act(()=>jest.advanceTimersByTime(1000));
+    expect(screen.queryByText(/Resume parsed successfully/)).not.toBeInTheDocument();
+});

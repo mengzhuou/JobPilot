@@ -50,7 +50,7 @@ const getMappedProfile = asyncHandler(async (req, res) => {
 
 const primaryResume = asyncHandler(async (req, res) => {
     const resume = await resumeRepository.findPrimaryFile(req.auth.userId);
-    if (!resume) return res.status(404).json({ message: "Choose a primary résumé in JobPilot before using Autofill." });
+    if (!resume) return res.status(404).json({ message: "Choose a primary resume in JobPilot before using Autofill." });
     const safeName = String(resume.file_name || "resume.pdf").replace(/[\r\n]/g, "_").slice(0, 240);
     res.setHeader("X-JobPilot-Filename", encodeURIComponent(safeName));
     res.type(resume.mime_type || "application/octet-stream");

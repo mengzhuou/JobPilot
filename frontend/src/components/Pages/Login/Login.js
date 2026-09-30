@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { setStudentInfo } from "../../redux/actions/studentActions";
 import { loginSuccess } from "../../redux/reducers/authSlice";
 import "./Login.scss";
@@ -13,13 +13,15 @@ const Login = () => {
     const [isSigningIn, setIsSigningIn] = useState(false);
     const isAuthenticated = useSelector(state => state.auth.isAuthenticated);
     const navigate = useNavigate();
+    const location = useLocation();
+    const destination = location.state?.from === '/profile?connectExtension=1' ? '/profile?connectExtension=1' : '/active-job-postings';
     const dispatch = useDispatch();
 
     useEffect(() => {
         if (isAuthenticated) {
-            navigate("/active-job-postings", { replace: true });
+            navigate(destination, { replace: true });
         }
-    }, [isAuthenticated, navigate]);
+    }, [isAuthenticated, navigate, destination]);
 
     useEffect(() => {
         const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
@@ -49,7 +51,7 @@ const Login = () => {
 
                 dispatch(setStudentInfo(body.user));
                 dispatch(loginSuccess());
-                navigate("/active-job-postings", { replace: true });
+                navigate(destination, { replace: true });
             } catch (error) {
                 setErrorMessage(error.message || "Unable to sign in with Google.");
                 setIsSigningIn(false);
@@ -100,7 +102,7 @@ const Login = () => {
         return () => {
             script.removeEventListener("load", renderGoogleButton);
         };
-    }, [dispatch, navigate]);
+    }, [dispatch, navigate, destination]);
 
     return (
         <main className="login-page">

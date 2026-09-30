@@ -2,7 +2,6 @@ const crypto = require("crypto");
 const { pool } = require("../config/postgres");
 
 const PAIRING_CODE_TTL_MINUTES = 10;
-const TOKEN_TTL_DAYS = 90;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const hashSecret = value => crypto
@@ -61,9 +60,9 @@ const exchangePairingCode = async (code, deviceName = "Chrome extension") => {
         const tokenResult = await client.query(
             `INSERT INTO jobpilot.extension_tokens
                 (user_id, token_hash, device_name, expires_at)
-             VALUES ($1::UUID, $2, $3, NOW() + ($4::TEXT || ' days')::INTERVAL)
+             VALUES ($1::UUID, $2, $3, NULL)
              RETURNING id, expires_at`,
-            [pairing.user_id, hashSecret(token), deviceName.slice(0, 100), TOKEN_TTL_DAYS]
+            [pairing.user_id, hashSecret(token), deviceName.slice(0, 100)]
         );
         await client.query(
             "UPDATE jobpilot.extension_pairing_codes SET consumed_at=NOW() WHERE id=$1::UUID",
@@ -89,7 +88,7 @@ const findActiveToken = async token => {
     const result = await pool.query(
         `UPDATE jobpilot.extension_tokens
          SET last_used_at=NOW()
-         WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at > NOW()
+         WHERE token_hash=$1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
          RETURNING id, user_id, device_name, expires_at`,
         [hashSecret(token)]
     );
@@ -100,7 +99,7 @@ const listConnections = async userId => {
     const result = await pool.query(
         `SELECT id, device_name, expires_at, last_used_at, created_at
          FROM jobpilot.extension_tokens
-         WHERE user_id=$1::UUID AND revoked_at IS NULL AND expires_at > NOW()
+         WHERE user_id=$1::UUID AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
          ORDER BY created_at DESC`,
         [userId]
     );

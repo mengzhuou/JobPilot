@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBriefcase, faCheck, faCircleQuestion, faCode, faCopy, faEnvelope, faGlobe, faGraduationCap, faLocationDot, faLock, faPen, faPhone, faPlug, faRotate, faSliders, faTrash, faUser } from "@fortawesome/free-solid-svg-icons";
+import { faBriefcase, faCheck, faCircleQuestion, faCode, faCopy, faEnvelope, faGlobe, faGraduationCap, faLocationDot, faLock, faPen, faPhone, faPlug, faRotate, faSliders, faUser } from "@fortawesome/free-solid-svg-icons";
 import { createExtensionPairingCode, getExtensionConnections, getUserProfile, getResumes, revokeExtensionConnection, updateUserProfileSection } from "../../../connector";
 import ProfileEditor from "./ProfileEditor";
 import ProfileStrength from './ProfileStrengthCard';
+import {connectExtension} from './connectExtension';
 import EmptyProfilePrompt from './EmptyProfilePrompt';
 import {profileStrength} from './profileCompleteness';
 import { formatProfileMonth } from "./profileDates";
@@ -81,7 +82,7 @@ const Profile = () => {
             } else setNotice('Your profile could not be loaded. Please reload before editing.');
         });
         return () => { active=false; };
-    }, []);
+    }, [location.key]);
     useEffect(()=>{let active=true;getResumes().then(rows=>{if(active)setHasResume(rows.some(row=>row.is_primary));}).catch(()=>{});return()=>{active=false;};},[]);
     useEffect(() => { let active=true; getExtensionConnections().then(data => active && setConnections(data)).catch(() => {}); return () => { active=false; }; }, []);
     useEffect(() => {
@@ -105,6 +106,15 @@ const Profile = () => {
         try { setPairing(await createExtensionPairingCode()); }
         catch (error) { setNotice(error.response?.data?.message || "Unable to create an extension pairing code."); }
         finally { setExtensionBusy(false); }
+    };
+    const connectBrowser = async () => {
+        setExtensionBusy(true);setNotice('');
+        try {
+            await connectExtension();
+            setNotice('Extension connected. You can now autofill applications in Chrome.');
+            setConnections(await getExtensionConnections());
+        } catch(error){setNotice(error.response?.data?.message || error.message || 'Unable to connect the extension.');}
+        finally{setExtensionBusy(false);}
     };
     const copyPairingCode = async () => {
         if (!pairing?.code) return;
@@ -131,18 +141,24 @@ const Profile = () => {
                     <div className="profile-extension-copy">
                         <h3>Autofill in the browser you already use</h3>
                         <p>Connect the JobPilot Chrome extension to review detected fields beside an application and fill them from this Profile. The extension never submits an application.</p>
-                        <ol><li>Load and pin the JobPilot extension in Chrome.</li><li>Generate a one-time code below.</li><li>Open the extension side panel and enter the code.</li></ol>
-                        <button className="profile-extension-action" type="button" disabled={extensionBusy} onClick={generatePairingCode}><FontAwesomeIcon icon={pairing ? faRotate : faPlug}/>{pairing ? "Generate a new code" : "Generate pairing code"}</button>
+                        <ol><li>Load and pin the JobPilot extension in Chrome.</li><li>Sign in to your JobPilot account in this browser.</li><li>Click Connect extension below. No code to copy.</li></ol>
+                        <button className="profile-extension-action" type="button" disabled={extensionBusy} onClick={connectBrowser}><FontAwesomeIcon icon={faPlug}/>{extensionBusy ? 'Connecting…' : 'Connect extension'}</button>
+                        <details className="profile-manual-pairing"><summary><span>Connect with a code instead</span><span className="pairing-chevron" aria-hidden="true">⌄</span></summary><div><p>Use this if browser sign-in is unavailable. Generate a code, then enter it in the extension’s connection settings.</p><button className="profile-extension-action" type="button" disabled={extensionBusy} onClick={generatePairingCode}><FontAwesomeIcon icon={pairing ? faRotate : faPlug}/>{pairing ? "Generate a new code" : "Generate pairing code"}</button></div></details>
                     </div>
                     <div className={`profile-pairing-card ${pairing ? "has-code" : ""}`}>
                         {pairing ? <>
                             <span>ONE-TIME PAIRING CODE</span>
                             <button className="profile-pairing-code" type="button" onClick={copyPairingCode} title="Copy pairing code"><strong>{pairing.code}</strong><FontAwesomeIcon icon={copied ? faCheck : faCopy}/></button>
                             <small>{copied ? "Copied. Paste it into the JobPilot side panel." : `Expires ${new Date(pairing.expiresAt).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}. It can be used once.`}</small>
-                        </> : <><FontAwesomeIcon icon={faLock}/><strong>No active pairing code</strong><small>Generate a short-lived code when the extension is ready.</small></>}
+                        </> : <><FontAwesomeIcon icon={faLock}/><strong>{connections.length ? 'Browser connection available' : 'Connect securely with your account'}</strong><small>Click Connect extension to authorize this Chrome browser. Connections can be revoked below.</small></>}
                     </div>
                 </div>
-                {connections.length > 0 && <div className="profile-extension-connections"><h3>Connected browsers</h3>{connections.map(connection=><div key={connection.id}><div><strong>{connection.device_name}</strong><span>{connection.last_used_at ? `Last used ${new Date(connection.last_used_at).toLocaleString()}` : `Connected ${new Date(connection.created_at).toLocaleString()}`}</span></div><button type="button" disabled={extensionBusy} onClick={()=>revokeConnection(connection.id)}><FontAwesomeIcon icon={faTrash}/> Revoke</button></div>)}</div>}
+                {connections.length > 0 &&
+                    <details className="profile-connection-manager"><summary><span><FontAwesomeIcon icon={faLock} /> Extension access <small>{connections.length} active {connections.length === 1 ? 'connection' : 'connections'}</small></span><span className="pairing-chevron" aria-hidden="true">⌄</span></summary><p>Manage access when you no longer use a connection. Reconnecting can create multiple sessions for the same browser.</p><div className="profile-extension-connections">{connections.map((connection, index) => <div key={connection.id}><div><strong>{connection.device_name} <small>Session {index + 1}</small></strong><span>{connection.last_used_at ? `Last used ${new Date(connection.last_used_at).toLocaleString()}` : `Connected ${new Date(connection.created_at).toLocaleString()}`}</span>
+                                </div>
+                            </div>)}
+                        </div>
+                    </details>}
             </section>
             <section className="profile-section-card" id="personal"><SectionTitle icon={faUser} title="Personal" section="personal" onEdit={setEditing}/><div className="profile-personal"><div className="profile-avatar">MO</div><div><h3>{profile.personal.name}</h3><div className="profile-contact-chips"><span><FontAwesomeIcon icon={faLocationDot}/>{profile.personal.address}</span><span><FontAwesomeIcon icon={faEnvelope}/>{profile.personal.email}</span><span><FontAwesomeIcon icon={faPhone}/>{profile.personal.phone}</span></div><div className="profile-links">{profile.personal.links?.map(link=><a key={link.label} href={link.href} target="_blank" rel="noreferrer" title={link.label} aria-label={`${link.label}: ${link.value}`}><SocialIcon type={link.label}/><span>{link.value}</span></a>)}</div></div></div></section>
             <section className="profile-section-card" id="education"><SectionTitle icon={faGraduationCap} title="Education" section="education" onEdit={setEditing}/><Timeline items={profile.education}/></section>

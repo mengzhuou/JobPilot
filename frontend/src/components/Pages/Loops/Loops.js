@@ -20,7 +20,7 @@ const Loops = () => {
     const submit = event => {
         event.preventDefault();
         if (!form.titles.length || !form.locations.length || !form.resume) {
-            setError("Add at least one job title, one location, and a résumé to continue.");
+            setError("Add at least one job title, one location, and a resume to continue.");
             return;
         }
         // Loop execution and persistence will be connected in a later phase.
@@ -39,14 +39,14 @@ const Loops = () => {
                         <SuggestField label="Job titles you’re seeking" multiple required value={form.titles} options={JOB_TITLES} onChange={titles => setForm(current => ({ ...current, titles }))} helperText="Add one or more roles, such as Software Engineer or Data Engineer."/>
                         <SuggestField label="Preferred locations" multiple required kind="locations" value={form.locations} onChange={locations => setForm(current => ({ ...current, locations }))} helperText="Add cities, states, or locations where you want to work."/>
                     </div>
-                    <label className="loop-resume"><span><FontAwesomeIcon icon={faFileArrowUp}/> Résumé <b>*</b></span><input type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => setForm(current => ({ ...current, resume: event.target.files?.[0] || null }))}/><small>{form.resume ? `${form.resume.name} selected` : "PDF, DOC, or DOCX. This file stays local in this preview."}</small></label>
+                    <label className="loop-resume"><span><FontAwesomeIcon icon={faFileArrowUp}/> Resume <b>*</b></span><input type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={event => setForm(current => ({ ...current, resume: event.target.files?.[0] || null }))}/><small>{form.resume ? `${form.resume.name} selected` : "PDF, DOC, or DOCX. This file stays local in this preview."}</small></label>
                     {error && <p className="loop-error" role="alert">{error}</p>}
                     <div className="loop-actions"><button type="button" className="loop-cancel" onClick={() => setIsCreating(false)}>Cancel</button><button type="submit" className="loop-submit">Create Loop</button></div>
                 </form>
             </> : <>
                 <header className="loops-heading loops-list-heading"><div><span>Job search automation</span><h1>My Loops</h1><p>Create focused job-search plans. Your active loops will appear here.</p></div><button className="loop-new" type="button" onClick={openCreate}><FontAwesomeIcon icon={faPlus}/> New Loop</button></header>
                 {reviews.length > 0 && <section className="loops-ai-reviews"><span>Application assistant</span><h2>Waiting for Review</h2><p>AI-assisted answers are waiting for you to verify in the application browser.</p><div>{reviews.map(review => <article key={review.id}><strong>{review.job_title || "Job application"}</strong><span>{review.company || "Company not provided"}</span><small>{(review.answers || []).length} suggested answers · {(review.unresolved_fields || []).length} questions need your input</small></article>)}</div></section>}
-                <section className="loops-empty" aria-live="polite"><div className="loops-empty-icon"><FontAwesomeIcon icon={faLayerGroup}/></div><h2>No loops yet</h2><p>Create your first loop to define the roles, locations, and résumé you want to use.</p><button type="button" onClick={openCreate}><FontAwesomeIcon icon={faBriefcase}/> Create a Loop</button></section>
+                <section className="loops-empty" aria-live="polite"><div className="loops-empty-icon"><FontAwesomeIcon icon={faLayerGroup}/></div><h2>No loops yet</h2><p>Create your first loop to define the roles, locations, and resume you want to use.</p><button type="button" onClick={openCreate}><FontAwesomeIcon icon={faBriefcase}/> Create a Loop</button></section>
             </>}
         </section>
     </main>;

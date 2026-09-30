@@ -34,6 +34,6 @@ test('empty loaded profiles can open every section editor',()=>{
         fireEvent.click(screen.getByRole('button',{name:new RegExp(label)}));
         expect(edit).toHaveBeenLastCalledWith(section);
     }
-    fireEvent.click(screen.getByRole('button',{name:/primary résumé/}));
+    fireEvent.click(screen.getByRole('button',{name:/primary resume/}));
     expect(resumes).toHaveBeenCalledTimes(1);
 });

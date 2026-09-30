@@ -612,7 +612,11 @@ const ActiveJobPostings = () => {
             {error && <div className="job-results-error">{error}</div>}
 
             {isLoading ? (
-                <div className="job-results-state">Loading active jobs...</div>
+                <div className="job-results-state job-loading" role="status" aria-live="polite">
+                    <div className="job-loading-cards" aria-hidden="true"><span /><span /><span /><i /></div>
+                    <strong>Finding your next opportunity</strong>
+                    <span>Loading active jobs…</span>
+                </div>
             ) : visibleJobs.length === 0 ? (
                 <div className="job-results-state">
                     No jobs match this display filter.

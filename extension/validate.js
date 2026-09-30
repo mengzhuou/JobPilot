@@ -18,6 +18,7 @@ const requiredFiles = [
     "sidepanel.css",
     "application-lifecycle.js",
     "request-payload.js",
+    "page-panel.js",
     ...manifest.content_scripts.flatMap(script => script.js),
     ...Object.values(manifest.icons || {}),
 ];

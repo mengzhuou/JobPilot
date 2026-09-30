@@ -92,3 +92,17 @@
     .profile-pairing-card { min-height: 145px; }
     .profile-pairing-code strong { font-size: 23px; }
 }
+.profile-manual-pairing, .profile-connection-manager {
+    margin-top: 20px; border: 1px solid #e0e7f1; border-radius: 12px; background: #f8faff; overflow: hidden;
+    summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; list-style: none; cursor: pointer; color: #344867; font-size: 13px; font-weight: 700; }
+    summary::-webkit-details-marker { display: none; }
+    summary:focus-visible { outline: 2px solid #3361ae; outline-offset: -3px; }
+    summary small { margin-left: 12px; color: #667085; font-size: 12px; font-weight: 500; }
+    .pairing-chevron { transition: transform .15s; font-size: 18px; }
+    &[open] > summary .pairing-chevron { transform: rotate(180deg); }
+}
+.profile-manual-pairing > div { padding: 0 16px 16px; }
+.profile-manual-pairing .profile-extension-action { margin-top: 12px; background: #fff; color: #3361ae; border: 1px solid #cfd9e7; }
+.profile-connection-manager > p { padding: 0 16px; color: #667085; font-size: 12px; line-height: 1.6; }
+.profile-connection-manager .profile-extension-connections { margin: 0; padding: 0 16px 16px; border: 0; display: grid; gap: 10px; max-height: 300px; overflow-y: auto; }
+.profile-connection-manager .profile-extension-connections strong small { color: #667085; font-weight: 400; font-size: 11px; }

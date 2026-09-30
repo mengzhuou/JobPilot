@@ -12,13 +12,13 @@ router.get("/", controller.list);
 router.post("/", upload.single("file"), controller.create);
 router.patch("/:id", controller.update);
 router.post("/:id/primary", controller.makePrimary);
-router.post("/:id/parse-profile", rateLimit({windowMs:60*1000,max:5,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false,message:{message:'Please wait before parsing another résumé.'}}), controller.parseProfile);
+router.post("/:id/parse-profile", rateLimit({windowMs:60*1000,max:5,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false,message:{message:'Please wait before parsing another resume.'}}), controller.parseProfile);
 router.get("/:id/download", controller.download);
 router.delete("/:id", controller.remove);
 
 router.use((error, req, res, next) => {
     if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json({ message: "Résumé files must be 10 MB or smaller." });
+        return res.status(400).json({ message: "Resume files must be 10 MB or smaller." });
     }
     return next(error);
 });

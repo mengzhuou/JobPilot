@@ -37,7 +37,7 @@ const create = async (req, res, next) => {
         try {
             extractedText = await extractResumeText({ fileData: file.buffer, mimeType: file.mimetype });
         } catch (error) {
-            extractionError = String(error.message || "Résumé text could not be extracted.").slice(0, 500);
+            extractionError = String(error.message || "Resume text could not be extracted.").slice(0, 500);
         }
         const resume = await repository.create(req.auth.userId, {
             fileName: path.basename(file.originalname), displayName, targetJobTitle,
@@ -91,7 +91,7 @@ const parseProfile = async (req,res,next) => {
         if (!resume) return res.status(404).json({message:'Resume not found.'});
         let text;
         try { text=await extractResumeText({fileData:resume.file_data,mimeType:resume.mime_type}); }
-        catch { return res.status(422).json({message:'This résumé could not be read. Upload a text-based PDF or DOCX to parse. Your saved résumé has not been removed.'}); }
+        catch { return res.status(422).json({message:'This resume could not be read. Upload a text-based PDF or DOCX to parse. Your saved resume has not been removed.'}); }
         const parsed=await require('../services/resumeProfileService').parseResumeProfile(text);
         const profile=await require('../repositories/userProfileRepository').importResume(req.auth.userId,parsed);
         return res.json({profile});

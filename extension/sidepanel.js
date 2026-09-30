@@ -1,5 +1,5 @@
 const elements = Object.fromEntries([
-    "connectionView", "workspaceView", "mainView", "reviewView", "disconnectButton", "backendUrl",
+    "connectionView", "workspaceView", "mainView", "reviewView", "backendUrl",
     "pairingCode", "connectButton", "jobTitle", "jobCompany", "rescanButton", "statusCard",
     "statusTitle", "statusMessage", "summaryView", "readyCount", "reviewCount", "skippedCount",
     "fieldSection", "fieldCount", "fieldList", "actionsView", "fillButton", "aiButton", "toast",
@@ -24,6 +24,7 @@ const send = message => new Promise((resolve, reject) => {
     });
 });
 const show = (element, visible = true) => element.classList.toggle("hidden", !visible);
+document.getElementById('collapseButton').addEventListener('click',()=>send({type:'JOBPILOT_PANEL_VISIBILITY',mode:'collapsed'}).catch(error=>toast(error.message)));
 const toast = message => {
     elements.toast.textContent = message;
     show(elements.toast, true);
@@ -36,6 +37,7 @@ const setStatus = (title, message, mode = "loading") => {
     elements.statusMessage.textContent = message;
     elements.statusCard.classList.toggle("error", mode === "error");
     elements.statusCard.classList.toggle("success", mode === "success");
+    elements.statusCard.classList.toggle("idle", mode === "idle");
 };
 const setView = view => {
     show(elements.mainView, view === "main");
@@ -60,7 +62,6 @@ const requestBackendPermission = async backendUrl => {
 const renderConnection = () => {
     show(elements.connectionView, !state.connected);
     show(elements.workspaceView, state.connected);
-    show(elements.disconnectButton, state.connected);
 };
 
 const fieldClass = answer => {
@@ -311,7 +312,7 @@ const scanAndPlan = async () => {
     show(elements.summaryView, false);
     show(elements.fieldSection, false);
     show(elements.actionsView, false);
-    setStatus("Inspecting this application", "Looking for fields JobPilot can safely complete.");
+    setStatus("Checking page compatibility", "Autofill runs only on application forms.");
     try {
         const scan = await send({ type: "JOBPILOT_SCAN" });
         if (generation !== scanGeneration) return;
@@ -319,12 +320,17 @@ const scanAndPlan = async () => {
         elements.jobTitle.textContent = state.scan.job?.title || "Application page";
         elements.jobCompany.textContent = state.scan.job?.company || new URL(state.scan.job?.url || "https://example.com").hostname;
         if (state.scan.unavailable) throw new Error("This application page appears to be unavailable.");
-        if (!state.scan.fields.length) throw new Error("No visible application fields were found on this page.");
+        if (scan.supported===false || !state.scan.fields.length) {
+            state.plan=[];
+            setStatus("Autofill isn’t supported on this site", "Open a job application form to enable autoscan.", "idle");
+            return;
+        }
+        setStatus("Inspecting this application", "Looking for fields JobPilot can safely complete.");
 
         const plan = await send({ type: "JOBPILOT_BUILD_PLAN", fields: state.scan.fields });
         if (generation !== scanGeneration) return;
         const pendingFileFields = state.scan.fields.filter(field => field.type === "file" && !field.filled);
-        const clearlyResumeFields = pendingFileFields.filter(field => /\b(resume|résumé|curriculum vitae|cv)\b/i.test(
+        const clearlyResumeFields = pendingFileFields.filter(field => /\b(resume|resume|curriculum vitae|cv)\b/i.test(
             `${field.label || ""} ${field.name || ""} ${field.context || ""}`
         ));
         const resumeFieldKeys = new Set((clearlyResumeFields.length
@@ -338,9 +344,9 @@ const scanAndPlan = async () => {
                 return {
                     ...answer,
                     action: "fill",
-                    value: "Primary résumé",
-                    source: "JobPilot · Primary résumé",
-                    reason: "Your primary résumé will be attached automatically.",
+                    value: "Primary resume",
+                    source: "JobPilot · Primary resume",
+                    reason: "Your primary resume will be attached automatically.",
                     resumeAttachment: true,
                 };
             }
@@ -359,7 +365,7 @@ const scanAndPlan = async () => {
         const ready = state.plan.filter(answer => answer.action === "fill").length;
         setStatus(
             "Review before filling",
-            `${ready} fields can be filled from your Profile and primary résumé. Click any field to locate it on the application.`,
+            `${ready} fields can be filled from your Profile and primary resume. Click any field to locate it on the application.`,
             "success"
         );
         if (plan.missingProfileFields?.length) toast(`Profile could be stronger: ${plan.missingProfileFields.join(", ")}.`);
@@ -443,6 +449,20 @@ const generateAiSuggestions = async () => {
     }
 };
 
+document.getElementById('signInButton').addEventListener('click',async event=>{
+    event.target.disabled=true;
+    try {
+        const backendUrl=elements.backendUrl.value.trim().replace(/\/$/,'');
+        await requestBackendPermission(backendUrl);
+        await send({type:'JOBPILOT_OPEN_SIGN_IN',backendUrl});
+        toast('Sign in on the JobPilot page, then click Connect extension.');
+    } catch(error){toast(error.message);}finally{event.target.disabled=false;}
+});
+chrome.runtime.onMessage.addListener(message=>{
+    if(message.type==='JOBPILOT_CONNECTED'){
+        restoreConnection().catch(error=>toast(error.message));
+    }
+});
 elements.pairingCode.addEventListener("input", event => { event.target.value = formatCode(event.target.value); });
 elements.connectButton.addEventListener("click", async () => {
     elements.connectButton.disabled = true;
@@ -462,12 +482,6 @@ elements.connectButton.addEventListener("click", async () => {
         elements.connectButton.disabled = false;
         elements.connectButton.textContent = "Connect JobPilot";
     }
-});
-elements.disconnectButton.addEventListener("click", async () => {
-    await send({ type: "JOBPILOT_DISCONNECT" }).catch(() => {});
-    state.connected = false;
-    renderConnection();
-    toast("This Chrome extension is disconnected from JobPilot.");
 });
 elements.rescanButton.addEventListener("click", scanAndPlan);
 const styleInput = document.getElementById("writingStyle");
@@ -494,11 +508,14 @@ elements.submitButton.addEventListener("click", async () => {
 let launchScanTimer;
 chrome.runtime.onMessage.addListener(message => {
     if (message.type !== "JOBPILOT_RESCAN_REQUEST") return;
+    const embedded=new URLSearchParams(location.search).has('embedded');
+    // Other application tabs must not cancel this panel's pending rescan.
+    if (embedded && state.scan?.tabId !== message.tabId) return;
     window.clearTimeout(launchScanTimer);
     launchScanTimer = window.setTimeout(async () => {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = embedded ? {id:state.scan?.tabId} : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
         if(message.automatic && (state.scanning || state.applying || state.generating || (state.scan?.tabId===tab?.id && !elements.reviewView.classList.contains('hidden')))) return;
-        if (state.connected && tab?.id === message.tabId && tab.windowId === message.windowId) await scanAndPlan();
+        if (state.connected && (embedded ? state.scan?.tabId === message.tabId : tab?.id === message.tabId && tab.windowId === message.windowId)) await scanAndPlan();
     }, 150);
 });
 elements.reviewBackButton.addEventListener("click", () => setView("main"));
@@ -527,13 +544,30 @@ elements.applyAiButton.addEventListener("click", async () => {
     if (applied) setView("main");
 });
 
+const restoreConnection = async () => {
+    const connection = await send({ type: "JOBPILOT_GET_CONNECTION" });
+    const wasConnected=state.connected;
+    state.connected = connection.connected;
+    elements.backendUrl.value = connection.backendUrl || "http://localhost:3500";
+    renderConnection();
+    if (!state.connected) {
+        ++scanGeneration;
+        state.scanning=false;
+        state.scan=null;
+        state.plan=[];
+        state.aiAnswers=[];
+        state.results.clear();
+        elements.fieldList.replaceChildren();
+    } else if (!wasConnected && !state.scanning) await scanAndPlan();
+};
+// Storage belongs to the extension, shared by native and embedded panels.
+// A missed runtime broadcast or a newly opened page must not require sign-in.
+chrome.storage.onChanged.addListener((changes,area)=>{
+    if(area==='local' && changes.jobpilotExtensionToken)restoreConnection().catch(error=>toast(error.message));
+});
 (async () => {
     try {
-        const connection = await send({ type: "JOBPILOT_GET_CONNECTION" });
-        state.connected = connection.connected;
-        elements.backendUrl.value = connection.backendUrl || "http://localhost:3500";
-        renderConnection();
-        if (state.connected) await scanAndPlan();
+        await restoreConnection();
     } catch (error) {
         toast(error.message);
     }

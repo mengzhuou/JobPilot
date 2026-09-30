@@ -9,7 +9,7 @@ test('only eligible profiles show the prompt and Go opens upload',async()=>{
     const {rerender}=render(<EmptyProfilePrompt eligible={false} onUpload={upload}/>);
     expect(getSignedInUser).not.toHaveBeenCalled();
     rerender(<EmptyProfilePrompt eligible onUpload={upload}/>);
-    fireEvent.click(await screen.findByRole('button',{name:'Go to résumés'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Go to resumes'}));
     expect(upload).toHaveBeenCalledTimes(1);
 });
 test('Not now dismisses without saving a permanent preference',async()=>{

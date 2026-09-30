@@ -139,7 +139,7 @@ const getResumeContext = async (userId, resume) => {
         await resumeRepository.saveExtractedText(userId, resume.id, { text });
         return { name: resume.display_name, targetJobTitle: resume.target_job_title, text: text.slice(0, 20000) };
     } catch (error) {
-        await resumeRepository.saveExtractedText(userId, resume.id, { error: String(error.message || "Résumé text could not be extracted.").slice(0, 500) });
+        await resumeRepository.saveExtractedText(userId, resume.id, { error: String(error.message || "Resume text could not be extracted.").slice(0, 500) });
         return { name: resume.display_name, targetJobTitle: resume.target_job_title, text: "" };
     }
 };

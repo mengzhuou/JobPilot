@@ -14,10 +14,10 @@ test('worker retries 413 in smaller batches and retains every plan answer',async
     assert.equal(result.answers.length,95);assert.equal(result.summary.ready,95);assert.equal(result.missingProfileFields.length,1);assert(sizes.some(size=>size===40));
 });
 
-test('detection requests a rescan without opening or filling; prompt click opens the panel',async()=>{
+test('detection opens the in-page assistant and rescans without filling; native open stays user-triggered',async()=>{
     let listener;const broadcasts=[],opens=[];
     const context=vm.createContext({console,URL,TextEncoder,importScripts(){},createApplicationLifecycle:()=>({}),chrome:{
-        tabs:{onUpdated:event,onRemoved:event},webNavigation:{onCompleted:event},
+        tabs:{onUpdated:event,onRemoved:event,sendMessage:async()=>({visible:true})},webNavigation:{onCompleted:event},scripting:{executeScript:async()=>{}},
         sidePanel:{open:async options=>opens.push(options)},
         runtime:{onInstalled:event,onMessage:{addListener:handler=>{listener=handler;}},getContexts:async()=>[],sendMessage:async message=>broadcasts.push(message)},
     }});

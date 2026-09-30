@@ -114,7 +114,7 @@ const planField = (field, profile) => {
         return result(field, "skip", "", "system", "This is not an application answer field.");
     }
     if (field.type === "password") return result(field, "ask_user", "", "security", "Passwords are never autofilled by JobPilot.");
-    if (field.type === "file") return result(field, "skip", "", "Primary résumé", "The JobPilot extension attaches your primary résumé during Autofill.", { resumeAttachment: true });
+    if (field.type === "file") return result(field, "skip", "", "Primary resume", "The JobPilot extension attaches your primary resume during Autofill.", { resumeAttachment: true });
     if (containsAny(question, ["signature", "certify", "attest", "truthful", "electronic signature"])) {
         return result(field, "ask_user", "", "legal", "A signature or legal certification requires your review.");
     }

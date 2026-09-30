@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Autofill",
-  "version": "0.2.10",
+  "version": "0.2.16",
   "description": "Review and autofill job applications using your JobPilot Profile.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -32,6 +32,7 @@
   "background": {
     "service_worker": "service-worker.js"
   },
+  "web_accessible_resources": [{"resources":["sidepanel.html","icons/icon48.png"],"matches":["https://*/*","http://*/*"]}],
   "side_panel": {
     "default_path": "sidepanel.html"
   },

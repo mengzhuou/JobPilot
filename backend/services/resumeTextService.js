@@ -24,7 +24,7 @@ const extractResumeText = async ({ fileData, mimeType }) => {
         const result = await mammoth.extractRawText({ buffer: Buffer.from(fileData) });
         return cleanText(result.value);
     }
-    throw Object.assign(new Error("Text extraction is not available for legacy .doc résumés. Upload PDF or DOCX for AI context."), { code: "UNSUPPORTED_RESUME_TEXT" });
+    throw Object.assign(new Error("Text extraction is not available for legacy .doc resumes. Upload PDF or DOCX for AI context."), { code: "UNSUPPORTED_RESUME_TEXT" });
 };
 
 module.exports = { extractResumeText, cleanResumeText: cleanText, MAX_RESUME_TEXT };

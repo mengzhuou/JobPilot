@@ -4,7 +4,7 @@ importScripts("request-payload.js");
 const applicationLifecycle = createApplicationLifecycle(chrome);
 const installDetector = async tabId => {
     const frames=await chrome.webNavigation.getAllFrames({tabId}).catch(()=>[{frameId:0}]);
-    await Promise.all((frames||[]).filter(frame=>!/recaptcha|hcaptcha|challenges\.cloudflare/i.test(frame.url||'')).map(frame=>chrome.scripting.executeScript({target:{tabId,frameIds:[frame.frameId]},files:['application-detector.js']}).catch(()=>{})));
+    await Promise.all((frames||[]).filter(frame=>!/recaptcha|hcaptcha|challenges\.cloudflare|^chrome-extension:/i.test(frame.url||'')).map(frame=>chrome.scripting.executeScript({target:{tabId,frameIds:[frame.frameId]},files:['application-detector.js']}).catch(()=>{})));
 };
 chrome.tabs.onUpdated.addListener((tabId, change) => {
     if (change.status === "complete") applicationLifecycle.ready(tabId).catch(console.error);
@@ -12,7 +12,7 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 });
 chrome.webNavigation.onCompleted.addListener(details => {
     if (details.frameId !== 0) applicationLifecycle.ready(details.tabId).catch(console.error);
-    if (details.frameId !== 0 && !/recaptcha|hcaptcha|challenges\.cloudflare/i.test(details.url||'')) chrome.scripting.executeScript({target:{tabId:details.tabId,frameIds:[details.frameId]},files:['application-detector.js']}).catch(()=>{});
+    if (details.frameId !== 0 && !/recaptcha|hcaptcha|challenges\.cloudflare|^chrome-extension:/i.test(details.url||'')) chrome.scripting.executeScript({target:{tabId:details.tabId,frameIds:[details.frameId]},files:['application-detector.js']}).catch(()=>{});
 });
 chrome.tabs.onRemoved.addListener(tabId => applicationLifecycle.removed(tabId).catch(console.error));
 const STORAGE_KEYS = Object.freeze({
@@ -51,7 +51,10 @@ const apiRequest = async (path, { method = "GET", body, requiresToken = true } =
     });
     const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
     if (!response.ok) {
-        if (response.status === 401 && requiresToken) await storageRemove([STORAGE_KEYS.token, STORAGE_KEYS.expiresAt]);
+        // An old in-flight request must not erase a newly connected session.
+        if (response.status === 401 && requiresToken && (await connectionSettings()).token === settings.token) {
+            await storageRemove([STORAGE_KEYS.token, STORAGE_KEYS.expiresAt]);
+        }
         const error = new Error(response.status === 413 ? "This application has too much data for one request. Try Rescan with the latest JobPilot extension; oversized questions may need manual entry." : payload.message || `JobPilot request failed (${response.status}).`);
         error.status = response.status;
         throw error;
@@ -77,7 +80,7 @@ const downloadPrimaryResume = async () => {
     });
     if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.message || `Primary résumé download failed (${response.status}).`);
+        throw new Error(payload.message || `Primary resume download failed (${response.status}).`);
     }
     const encodedName = response.headers.get("X-JobPilot-Filename") || "resume.pdf";
     let fileName = "resume.pdf";
@@ -89,10 +92,10 @@ const downloadPrimaryResume = async () => {
     };
 };
 
-const activeTab = async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+const activeTab = async (targetId, allowUnsupported=false) => {
+    const tab = targetId ? await chrome.tabs.get(targetId) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
     if (!tab?.id) throw new Error("No active browser tab was found.");
-    if (!/^https?:/i.test(tab.url || "")) throw new Error("Open a job application webpage before using JobPilot.");
+    if (!allowUnsupported && !/^https?:/i.test(tab.url || "")) throw new Error("Open a job application webpage before using JobPilot.");
     return tab;
 };
 
@@ -114,13 +117,20 @@ const ensureContentScript = async (tab, frameId = 0) => {
     }
 };
 
-const scanActiveTab = async () => {
-    const tab = await activeTab();
-    await ensureContentScript(tab);
+const scanActiveTab = async targetId => {
+    const tab = await activeTab(targetId,true);
+    if(!/^https?:/i.test(tab.url||''))return {tabId:tab.id,supported:false,fields:[],job:{url:tab.url}};
+    await installDetector(tab.id);
     const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id }).catch(() => [{ frameId: 0 }]);
+    const eligibility=await Promise.all((frames || [{frameId:0}]).map(async frame=>{
+        if(/recaptcha|hcaptcha|challenges\.cloudflare|^chrome-extension:/i.test(frame.url||''))return false;
+        try{return (await sendToFrame(tab.id,frame.frameId,{type:'JOBPILOT_APPLICATION_STATUS'}))?.supported===true;}catch{return false;}
+    }));
+    if(!eligibility.some(Boolean))return {tabId:tab.id,supported:false,fields:[],job:{url:tab.url}};
+    await ensureContentScript(tab);
     const responses = await Promise.all((frames || [{ frameId: 0 }]).map(async frame => {
         // CAPTCHA frames are not application questions and must stay manual.
-        if (/recaptcha|hcaptcha|challenges\.cloudflare/i.test(frame.url || "")) return null;
+        if (/recaptcha|hcaptcha|challenges\.cloudflare|^chrome-extension:/i.test(frame.url || "")) return null;
         try {
             await ensureContentScript(tab, frame.frameId);
             const response = await sendToFrame(tab.id, frame.frameId, { type: "JOBPILOT_SCAN_FIELDS" });
@@ -165,7 +175,7 @@ const attachResumeToActiveTab = async (tab, fileFields) => {
         const [frameText, ...keyParts] = String(field.fieldKey || "").split("::");
         const frameId = Number(frameText);
         if (!Number.isInteger(frameId) || !keyParts.length) {
-            return { fieldKey: field.fieldKey, status: "failed", message: "The résumé field could not be located." };
+            return { fieldKey: field.fieldKey, status: "failed", message: "The resume field could not be located." };
         }
         try {
             const response = await sendToFrame(tab.id, frameId, {
@@ -179,13 +189,13 @@ const attachResumeToActiveTab = async (tab, fileFields) => {
                 message: response?.message,
             };
         } catch (error) {
-            return { fieldKey: field.fieldKey, status: "failed", message: "The application rejected the résumé attachment." };
+            return { fieldKey: field.fieldKey, status: "failed", message: "The application rejected the resume attachment." };
         }
     }));
 };
 
-const applyToActiveTab = async (answers, fileFields = []) => {
-    const tab = await activeTab();
+const applyToActiveTab = async (answers, fileFields = [], targetId) => {
+    const tab = await activeTab(targetId);
     await ensureContentScript(tab);
     const grouped = (answers || []).reduce((all, answer) => {
         const [frameText, ...keyParts] = String(answer.fieldKey || "").split("::");
@@ -218,8 +228,8 @@ const applyToActiveTab = async (answers, fileFields = []) => {
     return [...responseGroups.flat(), ...fileResults];
 };
 
-const focusInActiveTab = async fieldKey => {
-    const tab = await activeTab();
+const focusInActiveTab = async (fieldKey, targetId) => {
+    const tab = await activeTab(targetId);
     await ensureContentScript(tab);
     const [frameText, ...keyParts] = String(fieldKey || "").split("::");
     const frameId = Number(frameText);
@@ -232,8 +242,46 @@ const focusInActiveTab = async fieldKey => {
     return response;
 };
 
+const isPanelSender = sender => Boolean(sender.url) && String(sender.url).split('?')[0] === chrome.runtime.getURL('sidepanel.html');
+const showPagePanel = async (tabId, mode) => {
+    await chrome.scripting.executeScript({target:{tabId,frameIds:[0]},files:['page-panel.js']});
+    return chrome.tabs.sendMessage(tabId,{type:'JOBPILOT_PAGE_PANEL',mode},{frameId:0});
+};
 const handleMessage = async (message, sender) => {
+    const panelTabId = isPanelSender(sender) ? sender.tab?.id : undefined;
     switch (message?.type) {
+        case 'JOBPILOT_PANEL_VISIBILITY': {
+            if(!isPanelSender(sender) || !['collapsed','closed'].includes(message.mode))throw new Error('Use the JobPilot panel controls.');
+            const tab=await activeTab(panelTabId);
+            await showPagePanel(tab.id,message.mode);
+            if(!panelTabId){
+                if(chrome.sidePanel.close)await chrome.sidePanel.close({windowId:tab.windowId});
+                else throw new Error('Use Chrome’s × button to close the native panel. Your floating launcher is ready.');
+            }
+            return {ok:true};
+        }
+        case 'JOBPILOT_CONNECT_ACCOUNT': {
+            const url=new URL(sender.url || 'about:blank');
+            const trusted=sender.tab?.id && sender.frameId===0 && url.pathname==='/profile' && chrome.runtime.getManifest().content_scripts.filter(script=>script.js.includes('app-bridge.js')).some(script=>script.matches.includes(`${url.origin}/*`));
+            if(!trusted)throw new Error('Connect only from your signed-in JobPilot Profile page.');
+            const settings=await connectionSettings();
+            if(new URL(settings.backendUrl).hostname!==url.hostname)throw new Error('The extension server and Profile website do not match. Check the server setting or use manual pairing.');
+            const payload=await apiRequest('/api/extension/exchange',{method:'POST',requiresToken:false,body:{code:message.code,deviceName:'JobPilot Chrome extension'}});
+            await storageSet({[STORAGE_KEYS.token]:payload.token,[STORAGE_KEYS.expiresAt]:payload.expiresAt});
+            await chrome.runtime.sendMessage({type:'JOBPILOT_CONNECTED'}).catch(()=>{});
+            return {connected:true,expiresAt:payload.expiresAt};
+        }
+        case 'JOBPILOT_OPEN_SIGN_IN': {
+            if(!isPanelSender(sender))throw new Error('Start sign-in from the extension panel.');
+            const backend=new URL(message.backendUrl || DEFAULT_BACKEND_URL);
+            if(backend.protocol!=='https:' && !(backend.protocol==='http:' && ['localhost','127.0.0.1'].includes(backend.hostname)))throw new Error('Use HTTPS for your JobPilot server.');
+            const origins=chrome.runtime.getManifest().content_scripts.filter(script=>script.js.includes('app-bridge.js')).flatMap(script=>script.matches).filter(pattern=>pattern.endsWith('/*')).map(pattern=>pattern.slice(0,-2));
+            const origin=origins.find(origin=>new URL(origin).hostname===backend.hostname);
+            if(!origin)throw new Error('This build does not include your JobPilot website. Use manual pairing or configure its app-bridge origin.');
+            await storageSet({[STORAGE_KEYS.backendUrl]:backend.origin});
+            await chrome.tabs.create({url:`${origin}/profile?connectExtension=1`});
+            return {opened:true};
+        }
         case "JOBPILOT_LAUNCH":
             return applicationLifecycle.launch(message, sender);
         case "JOBPILOT_LAUNCH_STATUS":
@@ -271,10 +319,10 @@ const handleMessage = async (message, sender) => {
             await storageRemove([STORAGE_KEYS.token, STORAGE_KEYS.expiresAt]);
             return { connected: false };
         case "JOBPILOT_SCAN":
-            return scanActiveTab();
+            return scanActiveTab(panelTabId);
         case "JOBPILOT_SUBMIT": {
-            if (sender.tab || sender.url !== chrome.runtime.getURL("sidepanel.html")) throw new Error("Submit must be requested from the JobPilot side panel.");
-            const scan = await scanActiveTab();
+            if (!isPanelSender(sender)) throw new Error("Submit must be requested from the JobPilot panel.");
+            const scan = await scanActiveTab(panelTabId);
             if (scan.tabId !== message.tabId || scan.job.url !== message.jobUrl) throw new Error("The active job changed. Rescan before submitting.");
             if (scan.unavailable || !scan.submission.ready) throw new Error("Complete required fields and resolve errors, then rescan.");
             await applicationLifecycle.prepareSubmit(scan.tabId);
@@ -296,11 +344,11 @@ const handleMessage = async (message, sender) => {
             return {answers,missingProfileFields:[...missing],summary:{total:answers.length,ready:answers.filter(a=>a.action==='fill').length,needsReview:answers.filter(a=>a.action==='ask_user').length,skipped:answers.filter(a=>a.action==='skip').length}};
         }
         case "JOBPILOT_APPLY":
-            return { results: await applyToActiveTab(message.answers, message.fileFields || []) };
+            return { results: await applyToActiveTab(message.answers, message.fileFields || [], panelTabId) };
         case "JOBPILOT_FOCUS":
-            return focusInActiveTab(message.fieldKey);
+            return focusInActiveTab(message.fieldKey,panelTabId);
         case "JOBPILOT_AI_PLAN": {
-            const tab = await activeTab();
+            const tab = await activeTab(panelTabId);
             if (await applicationLifecycle.modeForTab(tab.id) !== "loop") throw new Error("AI generation is reserved for Loop applications.");
             const style = String((await chrome.storage.local.get("jobpilot.aiWritingStyle"))["jobpilot.aiWritingStyle"] || "").slice(0, 1000);
             return apiRequest("/api/extension/ai-plan", {
@@ -335,6 +383,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         opening.then(async()=>{
             const contexts=await chrome.runtime.getContexts({contextTypes:['SIDE_PANEL']}).catch(()=>[]);
             const panelOpen=contexts.some(context=>context.windowId===sender.tab.windowId);
+            if(!panelOpen && message.type!=='JOBPILOT_OPEN_DETECTED')await showPagePanel(sender.tab.id,'auto');
             if(message.type!=='JOBPILOT_PANEL_STATUS') await chrome.runtime.sendMessage({type:'JOBPILOT_RESCAN_REQUEST',automatic:message.type==='JOBPILOT_APPLICATION_DETECTED',tabId:sender.tab.id,windowId:sender.tab.windowId}).catch(()=>{});
             sendResponse({ok:true,data:{panelOpen}});
         }).catch(()=>sendResponse({ok:false,error:'Click the JobPilot toolbar icon to open the side panel.'}));

@@ -17,6 +17,7 @@ import ErrorPage from "./components/Pages/Management/ErrorPage";
 import Profile from "./components/Pages/Profile/Profile";
 import Loops from "./components/Pages/Loops/Loops";
 import Resumes from "./components/Pages/Resumes/Resumes";
+import ResumeParsingSnackbar from './components/Pages/Resumes/ResumeParsingSnackbar';
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
 import store from "./components/redux/store";
@@ -60,6 +61,7 @@ const AppRoutes = () => {
             <TokenVerification />
             <GlobalInputLimit />
             {!isLoginPage && <TopNavBar />}
+            {!isLoginPage && <ResumeParsingSnackbar />}
             <Routes>
                 <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="/login" element={<Login />} />

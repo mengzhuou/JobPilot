@@ -44,7 +44,7 @@ const originalKey = process.env.OPENAI_API_KEY;
             { fieldKey: "unrelated-field", value: "Must not be sent." },
         ],
         candidateContext: {
-            resume: { name: "Primary résumé", text: "Built a customer reporting platform." },
+            resume: { name: "Primary resume", text: "Built a customer reporting platform." },
             portfolio: { url: "https://example.com", text: "Portfolio project details." },
             linkedInHistory: { experience: [{ company: "Example", title: "Engineer" }] },
         },
