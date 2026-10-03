@@ -20,6 +20,7 @@ const create = async (userId, resume) => {
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
+        await client.query('SELECT id FROM jobpilot.users WHERE id=$1::uuid FOR UPDATE', [userId]);
         const count = await client.query(
             "SELECT COUNT(*)::INTEGER AS count FROM jobpilot.user_resumes WHERE user_id=$1::UUID",
             [userId]
@@ -90,7 +91,7 @@ const setPrimary = async (userId, id) => {
 
 const findFile = async (userId, id) => {
     const result = await pool.query(
-        `SELECT file_name, mime_type, file_data FROM jobpilot.user_resumes
+        `SELECT id, display_name, file_name, mime_type, file_data, extracted_text FROM jobpilot.user_resumes
          WHERE id=$1::UUID AND user_id=$2::UUID`,
         [id, userId]
     );

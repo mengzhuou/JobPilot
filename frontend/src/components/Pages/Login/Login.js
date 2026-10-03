@@ -16,7 +16,9 @@ const Login = () => {
     const location = useLocation();
     const registering = location.pathname === '/register';
     const [showPassword, setShowPassword] = useState(false);
-    const destination = location.state?.from === '/profile?connectExtension=1' ? '/profile?connectExtension=1' : '/active-job-postings';
+    const requestedDestination = location.state?.from || '';
+    const destination = requestedDestination === '/profile?connectExtension=1' || /^\/resume-enhancement\?id=[a-f0-9-]{36}$/i.test(requestedDestination)
+        ? requestedDestination : '/active-job-postings';
     const dispatch = useDispatch();
 
     useEffect(() => {

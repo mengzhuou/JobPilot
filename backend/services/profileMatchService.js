@@ -266,4 +266,4 @@ const rankJobsForProfile = (jobs, profile) => [...jobs]
         || new Date(second.postedAt || 0).getTime() - new Date(first.postedAt || 0).getTime()
         || String(first.title || "").localeCompare(String(second.title || "")));
 
-module.exports = { scoreJobForProfile, rankJobsForProfile, getMatchLevel };
+module.exports = { scoreJobForProfile, rankJobsForProfile, getMatchLevel, JOB_SKILLS, hasPhrase };

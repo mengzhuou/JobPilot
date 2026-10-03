@@ -15,6 +15,18 @@ const api = axios.create({
     withCredentials: true,
 });
 
+export const assessResumeForJob = async values => (await api.post('/api/resume-enhancements/assess', values)).data;
+export const getResumeEnhancement = async id => (await api.get(`/api/resume-enhancements/${id}`)).data.draft;
+export const updateEnhancementReview = async (id,text) => api.patch(`/api/resume-enhancements/${id}/review`,{text});
+export const getResumeEnhancements = async () => (await api.get('/api/resume-enhancements')).data;
+export const setEnhancementReminders = async disabled => api.patch('/api/resume-enhancements/preferences', { disabled });
+export const dismissResumeEnhancement = async id => api.post(`/api/resume-enhancements/${id}/dismiss`);
+export const generateResumeEnhancement = async (id, options) => (await api.post(`/api/resume-enhancements/${id}/generate`, options)).data.draft;
+export const createResumeRevision = async (id, values) => (await api.post(`/api/resume-enhancements/${id}/revisions`, values)).data.draft;
+export const saveResumeEnhancement = async (id, values) => (await api.post(`/api/resume-enhancements/${id}/save`, values)).data.resume;
+export const downloadResumeEnhancement = async (id, values) => api.post(`/api/resume-enhancements/${id}/download`, values, { responseType: 'blob' });
+export const clearJobResumeSelection = async job => api.delete('/api/resume-enhancements/selection', { data: { job } });
+
 const getActiveJobPostings = async ({
     query = "software engineer",
     location = "",

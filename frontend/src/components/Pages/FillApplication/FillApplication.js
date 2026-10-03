@@ -6,6 +6,7 @@ import { faBriefcase, faBuilding, faCircleCheck, faCircleInfo, faClock, faListCh
 import "./FillApplication.scss";
 import Button from "../../Button/Button";
 import useExtensionApplication from "./useExtensionApplication";
+import ResumeEnhancementEntry from '../ResumeEnhancement/ResumeEnhancementEntry';
 import {
     reportJob,
     getJobReportStatus,
@@ -311,6 +312,7 @@ const FillApplication = () => {
                     {responsibilities.length > 0 && <section className="job-detail-section"><h3><FontAwesomeIcon icon={faListCheck}/> Responsibilities</h3><ul>{responsibilities.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                 </section>}
 
+                {jobUrl && <ResumeEnhancementEntry job={{...job,jobUrl}} onContinue={openWithExtension}/>}
                 <label className="application-url-label">
                     <span className="application-url-heading">Application URL <span className="autofill-help-icon" tabIndex="0" aria-label="How Autofill works"><FontAwesomeIcon icon={faCircleInfo}/><span className="autofill-help-tooltip" role="tooltip"><b>How Autofill works</b><span>Open the application with JobPilot to scan its fields automatically. Review your answers before submitting. When the site confirms submission, JobPilot records your application and closes these application tabs.</span></span></span></span>
                     <div className={`job-url-section${isAdmin ? "" : " no-report"}`}>

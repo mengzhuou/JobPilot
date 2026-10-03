@@ -18,6 +18,7 @@ import Profile from "./components/Pages/Profile/Profile";
 import Loops from "./components/Pages/Loops/Loops";
 import GuidedSetup from './components/Functions/GuidedSetup/GuidedSetup';
 import Resumes from "./components/Pages/Resumes/Resumes";
+import { ResumeEnhancementPage } from './components/Pages/ResumeEnhancement/ResumeEnhancement';
 import ResumeParsingSnackbar from './components/Pages/Resumes/ResumeParsingSnackbar';
 import ProtectedRoute from "./ProtectedRoute";
 import { Provider, useDispatch } from "react-redux";
@@ -89,6 +90,7 @@ const AppRoutes = () => {
                 <Route path="/profile" element={<ProtectedRoute element={<Profile />} />} />
                 <Route path="/loops" element={<ProtectedRoute element={<Loops />} />} />
                 <Route path="/resumes" element={<ProtectedRoute element={<Resumes />} />} />
+                <Route path="/resume-enhancement" element={<ProtectedRoute element={<ResumeEnhancementPage />} />} />
                 <Route path="/admin/companies" element={<ProtectedRoute requiredRole="admin" element={<AdminCompanies />} />} />
                 <Route path="/admin/feedback" element={<ProtectedRoute requiredRole="admin" element={<AdminFeedback />} />} />
                 <Route path="/admin/job-moderation" element={<ProtectedRoute requiredRole="admin" element={<AdminJobModeration />} />} />

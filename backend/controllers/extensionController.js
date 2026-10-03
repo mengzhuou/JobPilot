@@ -49,7 +49,14 @@ const getMappedProfile = asyncHandler(async (req, res) => {
 });
 
 const primaryResume = asyncHandler(async (req, res) => {
-    const resume = await resumeRepository.findPrimaryFile(req.auth.userId);
+    const selections = require('../repositories/resumeEnhancementRepository');
+    const jobUrl = req.query.jobUrl;
+    let selected;
+    if(jobUrl) {
+        const job = require('../services/resumeEnhancementService').normalizeJob({url:jobUrl});
+        selected = await selections.selectResume(req.auth.userId, job.url);
+    }
+    const resume = selected || await resumeRepository.findPrimaryFile(req.auth.userId);
     if (!resume) return res.status(404).json({ message: "Choose a primary resume in JobPilot before using Autofill." });
     const safeName = String(resume.file_name || "resume.pdf").replace(/[\r\n]/g, "_").slice(0, 240);
     res.setHeader("X-JobPilot-Filename", encodeURIComponent(safeName));

@@ -79,6 +79,7 @@ app.use(cors({
 // Large native select menus (school/country lists) exceed Express's default
 // 100 KB. Bound extension bodies separately; other endpoints keep the default.
 app.use('/api/extension', express.json({limit:'2mb'}));
+app.use('/api/resume-enhancements', express.json({limit:'512kb'}));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -97,6 +98,7 @@ app.use("/api/job-moderation", jobModerationRoutes);
 app.use("/api/job-analytics", jobAnalyticsRoutes);
 app.use("/api/profile", userProfileRoutes);
 app.use("/api/resumes", resumeRoutes);
+app.use('/api/resume-enhancements', require('./routes/resumeEnhancementRoutes'));
 app.use("/api/ai-autofill", require("./routes/aiAutofillReviewRoutes"));
 app.use("/api/extension", require("./routes/extensionRoutes"));
 

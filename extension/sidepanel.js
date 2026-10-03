@@ -344,9 +344,9 @@ const scanAndPlan = async () => {
                 return {
                     ...answer,
                     action: "fill",
-                    value: "Primary resume",
-                    source: "JobPilot · Primary resume",
-                    reason: "Your primary resume will be attached automatically.",
+                    value: "Selected resume",
+                    source: "JobPilot · Application resume",
+                    reason: "The saved resume for this job will be attached, or your primary resume if none is selected.",
                     resumeAttachment: true,
                 };
             }
@@ -365,7 +365,7 @@ const scanAndPlan = async () => {
         const ready = state.plan.filter(answer => answer.action === "fill").length;
         setStatus(
             "Review before filling",
-            `${ready} fields can be filled from your Profile and primary resume. Click any field to locate it on the application.`,
+            `${ready} fields can be filled from your Profile and selected resume. Click any field to locate it on the application.`,
             "success"
         );
         if (plan.missingProfileFields?.length) toast(`Profile could be stronger: ${plan.missingProfileFields.join(", ")}.`);
@@ -519,7 +519,13 @@ chrome.runtime.onMessage.addListener(message => {
     }, 150);
 });
 elements.reviewBackButton.addEventListener("click", () => setView("main"));
-elements.fillButton.addEventListener("click", () => applyAnswers(state.plan.filter(answer => answer.action === "fill")));
+const fillReviewedFields = () => applyAnswers(state.plan.filter(answer => answer.action === 'fill'));
+elements.fillButton.addEventListener('click', async () => {
+    if(state.applying || state.scanning)return;
+    // Enhancement belongs to the app's review flow, never the attachment path.
+    // APPLY downloads the latest job-selected résumé at fill time.
+    await fillReviewedFields();
+});
 elements.aiButton.addEventListener("click", () => {
     if (state.aiAnswers.length) {
         renderAiReview();

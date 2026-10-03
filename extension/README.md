@@ -1,5 +1,7 @@
 # JobPilot Chrome Extension
 
+Version **0.2.17** adds optional job-tailored résumé enhancement before Fill. Low keyword alignment can open a review prompt; saved tailored DOCX versions are used only for their selected job. Normal Autofill still makes no OpenAI generation request. See [résumé enhancement](../docs/resume-enhancement.md) for setup, limits, privacy and tests. Reload the extension and refresh existing application tabs after updating.
+
 Version 0.2.15 restores the shared saved connection before showing sign-in and synchronizes connection changes across open panels. Extension sessions no longer have a fixed expiry: they persist until disconnect/revocation (or extension storage is cleared). Restart the backend to apply migration 020; it preserves currently valid connections without reviving expired or revoked credentials.
 
 Version 0.2.12 opens the assistant directly inside detected application pages where Chrome site access is granted. The top-right arrow collapses it to a draggable JobPilot launcher; clicking the launcher restores it, and × removes it for the current page. Rescans respect collapsed/closed state. A new page navigation resets this choice. The embedded assistant is isolated in an extension-origin frame, excluded from form scanning, and all scan/fill/focus actions are bound to its hosting tab. Native Chrome side-panel access remains available via the toolbar; its Collapse control needs Chrome 141+ to close the native panel programmatically. Opening the assistant never fills or submits automatically.

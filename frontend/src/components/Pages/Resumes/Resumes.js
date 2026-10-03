@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { EnhancementHistory } from '../ResumeEnhancement/ResumeEnhancementEntry';
 import { useLocation, useNavigate } from "react-router-dom";
 import {Snackbar, Alert} from '@mui/material';
 import {runResumeParsing} from './resumeParsingTask';
@@ -173,6 +174,7 @@ const Resumes = () => {
             </article>)}
         </section>
         {resumes.length >= MAX_RESUMES && <p className="resume-cap-note">Delete a resume before adding another one.</p>}
+        <EnhancementHistory/>
     </section>
     <Snackbar key={notice} open={Boolean(notice)} autoHideDuration={6000} anchorOrigin={{vertical:'bottom',horizontal:'center'}} sx={{zIndex:10020}} onClose={(_,reason)=>{if(reason!=='clickaway')setNotice('');}}>
         <Alert severity="success" variant="filled" role="status" onClose={()=>setNotice('')} sx={{bgcolor:'#176b51',color:'#fff',borderRadius:'12px',alignItems:'center',maxWidth:'min(520px, calc(100vw - 32px))'}}>

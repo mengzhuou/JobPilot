@@ -72,10 +72,10 @@ const arrayBufferToBase64 = buffer => {
     return btoa(binary);
 };
 
-const downloadPrimaryResume = async () => {
+const downloadPrimaryResume = async jobUrl => {
     const settings = await connectionSettings();
     if (!settings.token) throw new Error("Connect this extension to your JobPilot account first.");
-    const response = await fetch(`${settings.backendUrl}/api/extension/primary-resume`, {
+    const response = await fetch(`${settings.backendUrl}/api/extension/primary-resume?jobUrl=${encodeURIComponent(jobUrl)}`, {
         headers: { Authorization: `Bearer ${settings.token}` },
     });
     if (!response.ok) {
@@ -167,7 +167,7 @@ const attachResumeToActiveTab = async (tab, fileFields) => {
     if (!fileFields.length) return [];
     let resume;
     try {
-        resume = await downloadPrimaryResume();
+        resume = await downloadPrimaryResume(tab.url);
     } catch (error) {
         return fileFields.map(field => ({ fieldKey: field.fieldKey, status: "failed", message: error.message }));
     }
@@ -320,6 +320,26 @@ const handleMessage = async (message, sender) => {
             return { connected: false };
         case "JOBPILOT_SCAN":
             return scanActiveTab(panelTabId);
+        case 'JOBPILOT_RESUME_ASSESS': {
+            if(!isPanelSender(sender))throw new Error('Use the JobPilot panel to assess a résumé.');
+            const tab=await activeTab(panelTabId);
+            if(message.job?.url!==tab.url)throw new Error('The application changed. Rescan before filling.');
+            return apiRequest('/api/extension/resume-enhancements/assess',{method:'POST',body:{job:message.job}});
+        }
+        case 'JOBPILOT_RESUME_DISMISS': {
+            if(!isPanelSender(sender)||!/^[a-f0-9-]{36}$/i.test(message.id))throw new Error('Invalid résumé request.');
+            if(message.disabled===true)await apiRequest('/api/extension/resume-enhancements/preferences',{method:'PATCH',body:{disabled:true}});
+            return apiRequest(`/api/extension/resume-enhancements/${message.id}/dismiss`,{method:'POST'});
+        }
+        case 'JOBPILOT_RESUME_ENHANCE': {
+            if(!isPanelSender(sender)||!/^[a-f0-9-]{36}$/i.test(message.id))throw new Error('Invalid résumé request.');
+            const settings=await connectionSettings();
+            const origins=chrome.runtime.getManifest().content_scripts.filter(script=>script.js.includes('app-bridge.js')).flatMap(script=>script.matches).filter(pattern=>pattern.endsWith('/*')).map(pattern=>pattern.slice(0,-2));
+            const origin=origins.find(origin=>new URL(origin).hostname===new URL(settings.backendUrl).hostname);
+            if(!origin)throw new Error('Configure your JobPilot app origin in the extension to open résumé enhancement.');
+            await chrome.tabs.create({url:`${origin}/resume-enhancement?id=${encodeURIComponent(message.id)}`});
+            return {opened:true};
+        }
         case "JOBPILOT_SUBMIT": {
             if (!isPanelSender(sender)) throw new Error("Submit must be requested from the JobPilot panel.");
             const scan = await scanActiveTab(panelTabId);

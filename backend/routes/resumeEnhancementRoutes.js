@@ -1,0 +1,16 @@
+const router=require('express').Router();
+const rateLimit=require('express-rate-limit');
+const controller=require('../controllers/resumeEnhancementController');
+router.use(require('../middleware/requireAuth'));
+router.get('/',controller.list);
+router.post('/assess',rateLimit({windowMs:60000,max:20,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false}),controller.assess);
+router.patch('/preferences',controller.preferences);
+router.delete('/selection',controller.clearSelection);
+router.get('/:id',controller.get);
+router.patch('/:id/review',controller.updateReview);
+router.post('/:id/revisions',rateLimit({windowMs:60000,max:20,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false}),controller.revision);
+router.post('/:id/dismiss',controller.dismiss);
+router.post('/:id/generate',rateLimit({windowMs:600000,max:5,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false,message:{message:'Please wait before generating another resume.'}}),controller.generate);
+router.post('/:id/download',controller.download);
+router.post('/:id/save',controller.save);
+module.exports=router;

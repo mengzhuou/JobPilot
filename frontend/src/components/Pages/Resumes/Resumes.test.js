@@ -6,6 +6,7 @@ import ResumeParsingSnackbar from './ResumeParsingSnackbar';
 import {dismissParsing} from './resumeParsingTask';
 import {getResumes,createResume,parseResumeProfile} from '../../../connector';
 jest.mock('../../../connector',()=>({getResumes:jest.fn(),createResume:jest.fn(),parseResumeProfile:jest.fn()}));
+jest.mock('../ResumeEnhancement/ResumeEnhancementEntry',()=>({EnhancementHistory:()=>null}));
 beforeEach(()=>{dismissParsing();jest.clearAllMocks();getResumes.mockResolvedValue([]);createResume.mockResolvedValue({id:'resume-a'});parseResumeProfile.mockResolvedValue({});});
 const mount=(state)=>render(<MemoryRouter initialEntries={[{pathname:'/resumes',state}]}><ResumeParsingSnackbar/><Resumes/></MemoryRouter>);
 async function uploadSetup(parse=false) {

@@ -184,3 +184,15 @@ button, input, textarea { font: inherit; }
 .panel-window-actions { display: flex; gap: 5px; margin-left: auto; flex-shrink: 0; }
 .panel-window-actions .icon-button { font-size: 21px; width: 29px; height: 31px; }
 .app-header .brand { min-width: 0; }
+:root { --enhancement-accent: #3563ad; }
+.resume-enhancement-prompt { width: calc(100% - 32px); max-width: 440px; box-sizing: border-box; border: 1px solid #d9e4f5; border-radius: 20px; padding: 24px; color: #1c2940; box-shadow: 0 20px 70px #182d5530; max-height: calc(100vh - 32px); overflow: auto; }
+.resume-enhancement-prompt::backdrop { background: #1d2c4866; backdrop-filter: blur(3px); }
+.resume-enhancement-prompt h2 { font-size: 23px; letter-spacing: -.6px; margin: 12px 0; }
+.resume-enhancement-prompt p { font-size: 13px; line-height: 1.6; color: #60718d; }
+.enhancement-keywords { display: flex; flex-wrap: wrap; gap: 6px; }
+.enhancement-keywords span { border-radius: 6px; background: #fff2e4; color: #815920; padding: 5px 8px; font-size: 12px; }
+.resume-enhancement-prompt .enhancement-reminder { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 20px 0; }
+.enhancement-reminder input { width: 16px; height: 16px; }
+.resume-enhancement-prompt button { width: 100%; border-radius: 10px; padding: 12px; margin-top: 10px; border: 1px solid #d8e2f1; background: white; color: #42628d; font-weight: 650; cursor: pointer; }
+.resume-enhancement-prompt #resumeEnhancementStart { background: var(--enhancement-accent); color: white; border-color: var(--enhancement-accent); }
+.resume-enhancement-prompt #resumeEnhancementError { color: #a43829; }

@@ -1,0 +1,66 @@
+const {test,before,after}=require('node:test');
+const assert=require('node:assert/strict');
+const express=require('express');
+const jwt=require('jsonwebtoken');
+process.env.DATABASE_URL ||= 'postgresql://unused:unused@localhost/unused';
+process.env.SESSION_SECRET='test-only-session-secret';
+const repository=require('../repositories/resumeEnhancementRepository');
+const resumes=require('../repositories/resumeRepository');
+const service=require('../services/resumeEnhancementService');
+const userId='11111111-1111-4111-8111-111111111111',id='22222222-2222-4222-8222-222222222222',resumeId='33333333-3333-4333-8333-333333333333';
+let server,base,draft,disabled,selected,saveCalls;
+const source='Alex Candidate\nalex@example.com\n\nEXPERIENCE\nBuilt Python services.\n\nEDUCATION\nBS Computer Science\n\nSKILLS\nPython';
+before(async()=>{
+    const originals=new Map();
+    const mock=(object,key,fn)=>{originals.set(fn,()=>object[key]=originals.get(fn).original);const restore=originals.get(fn);restore.original=object[key];object[key]=fn;};
+    mock(repository,'get',async(user,key)=>user===userId&&key===id?draft:undefined);
+    mock(repository,'create',async(user,value)=>{assert.equal(user,userId);draft={...draft,source_text:value.sourceText,analysis:value.analysis,job:value.job};return draft;});
+    mock(repository,'preferences',async()=>({reminders_disabled:disabled}));
+    mock(repository,'selectResume',async()=>selected);
+    mock(resumes,'findPrimaryFile',async()=>({id:resumeId,file_name:'original.pdf',display_name:'Original',extracted_text:source}));
+    mock(resumes,'findFile',async(user,key)=>user===userId&&key===resumeId?{id:resumeId,extracted_text:source}:undefined);
+    mock(repository,'save',async(user,key,values)=>{assert.equal(user,userId);assert.equal(key,id);assert.equal(values.file.subarray(0,2).toString(),'PK');saveCalls++;return {id:resumeId};});
+    const app=express();app.use(express.json());app.use(require('cookie-parser')());app.use('/api/resume-enhancements',require('../routes/resumeEnhancementRoutes'));
+    app.use((error,req,res,next)=>res.status(error.statusCode||500).json({message:error.message}));
+    server=await new Promise(resolve=>{const instance=app.listen(0,'127.0.0.1',()=>resolve(instance));});base=`http://127.0.0.1:${server.address().port}/api/resume-enhancements`;
+    server.restore=()=>{for(const restore of originals.values())restore();};
+});
+after(async()=>{server.restore();await new Promise(resolve=>server.close(resolve));});
+const request=(path,body,user=userId,method='POST')=>fetch(base+path,{method,headers:{'Content-Type':'application/json',...(user?{Cookie:`jobpilot_session=${jwt.sign({userId:user},process.env.SESSION_SECRET,{issuer:'jobpilot',audience:'jobpilot-web'})}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+test('account isolation, optional assessment, prompt suppression, reviewed export and save',async()=>{
+    draft={id,source_resume_id:resumeId,source_name:'Original',source_text:source,status:'assessed',changes:[],job:{},analysis:{}};disabled=false;selected=null;saveCalls=0;
+    assert.equal((await request('/assess',{},null)).status,401);
+    assert.equal((await request('/'+id,undefined,'44444444-4444-4444-8444-444444444444','GET')).status,404);
+    assert.equal((await request('/not-a-uuid',undefined,userId,'GET')).status,404);
+    const job={url:'https://example.com/job/1',title:'Software developer',summary:'This role involves Python, Docker, Kubernetes and Terraform. Develop reliable services for our customers and collaborate with the engineering organization.'};
+    const assessed=await (await request('/assess',{job})).json();assert.equal(assessed.available,true);assert.equal(assessed.shouldPrompt,true);
+    disabled=true;assert.equal((await (await request('/assess',{job})).json()).shouldPrompt,false);
+    assert.equal((await (await request('/assess',{job,resumeId:'55555555-5555-4555-8555-555555555555'})).json()).available,false);
+    draft.status='ready';draft.analysis=service.assessResume(source,job);
+    assert.equal((await request(`/${id}/save`,{text:source,displayName:'Tailored',reviewed:false})).status,400);
+    assert.equal(saveCalls,0);
+    assert.equal((await request(`/${id}/save`,{text:source,displayName:'Tailored',reviewed:true})).status,200);assert.equal(saveCalls,1);
+    assert.equal((await request(`/${id}/download`,{text:'Short',reviewed:true})).status,400);
+    const exported=await request(`/${id}/download`,{text:source,reviewed:true});assert.equal(exported.status,200);assert.match(exported.headers.get('content-type'),/wordprocessingml/);
+    draft.status='saved';draft.saved_resume_id=resumeId;draft.reviewed_text=source;
+    const repeat=await request(`/${id}/generate`,{});assert.equal(repeat.status,200);assert.equal((await repeat.json()).draft.status,'saved');
+});
+test('revisions are account-owned, preserve the parent and support manual saved-resume copies',async()=>{
+    const previous={get:repository.get,create:repository.create,makeEditable:repository.makeEditable};
+    const parent={id,source_resume_id:resumeId,source_name:'Original',source_text:source,reviewed_text:source,status:'saved',changes:[],job:{url:'https://example.com/job/1',summary:'Python developer',requirements:[]},analysis:{}};
+    const childId='66666666-6666-4666-8666-666666666666';let child,createCalls=0;
+    repository.get=async(user,key)=>user===userId?(key===id?parent:key===childId?child:undefined):undefined;
+    repository.create=async(user,value)=>{assert.equal(user,userId);createCalls++;child={...parent,id:childId,status:'assessed',source_text:value.sourceText,reviewed_text:null,analysis:value.analysis};return child;};
+    repository.makeEditable=async(user,key,text)=>{assert.equal(user,userId);assert.equal(key,childId);child.status='ready';child.reviewed_text=text;};
+    const values={text:source+'\nManual edit.',requestId:'77777777-7777-4777-8777-777777777777'};
+    try{
+        assert.equal((await request(`/${id}/revisions`,values,'44444444-4444-4444-8444-444444444444')).status,404);
+        assert.equal((await request(`/${id}/revisions`,{...values,text:'short'})).status,400);
+        assert.equal((await request(`/${id}/revisions`,{...values,requestId:'bad'})).status,400);
+        assert.equal(createCalls,0);
+        const ai=await request(`/${id}/revisions`,values);assert.equal(ai.status,200);assert.equal((await ai.json()).draft.status,'assessed');
+        const manual=await request(`/${id}/revisions`,{...values,editable:true});assert.equal(manual.status,200);
+        const result=(await manual.json()).draft;assert.equal(result.status,'ready');assert.equal(result.previewText,values.text);
+        assert.equal(parent.reviewed_text,source);assert.equal(parent.status,'saved');
+    }finally{Object.assign(repository,previous);}
+});
