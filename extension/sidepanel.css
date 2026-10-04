@@ -196,3 +196,10 @@ button, input, textarea { font: inherit; }
 .resume-enhancement-prompt button { width: 100%; border-radius: 10px; padding: 12px; margin-top: 10px; border: 1px solid #d8e2f1; background: white; color: #42628d; font-weight: 650; cursor: pointer; }
 .resume-enhancement-prompt #resumeEnhancementStart { background: var(--enhancement-accent); color: white; border-color: var(--enhancement-accent); }
 .resume-enhancement-prompt #resumeEnhancementError { color: #a43829; }
+/* Compact, explicit controls for application answer memory. */
+.answer-memory{margin:16px 0;padding:14px 16px;border:1px solid #dfe7f3;border-radius:14px;background:#f8faff;color:#334763}
+.answer-memory label{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;cursor:pointer}
+.answer-memory input[type="checkbox"]{width:16px;height:16px;margin:0;accent-color:#3368b8;flex-shrink:0}
+.answer-memory p,.answer-memory>span{display:block;font-size:12px;line-height:1.55;margin:8px 0;color:#64748b}
+.answer-memory summary{margin-top:12px;font-size:12px;cursor:pointer;color:#3368b8}
+.answer-memory button{margin-top:6px}

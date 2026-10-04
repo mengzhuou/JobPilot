@@ -3,11 +3,22 @@ import {render,screen,fireEvent,waitFor} from '@testing-library/react';
 import GuidedSetup from './GuidedSetup';
 import {getSignedInUser,getUserProfile,getResumes,saveOnboarding} from '../../../connector';
 const mockNavigate=jest.fn();
-jest.mock('react-redux',()=>({useSelector:fn=>fn({auth:{isAuthenticated:true},studentData:{email:'user@example.com'}})}));
+let mockRole='user';
+jest.mock('react-redux',()=>({useSelector:fn=>fn({auth:{isAuthenticated:true},studentData:{email:'user@example.com',role:mockRole}})}));
 jest.mock('react-router-dom',()=>({useNavigate:()=>mockNavigate}));
 jest.mock('../../../connector',()=>({getSignedInUser:jest.fn(),getUserProfile:jest.fn(),getResumes:jest.fn(),saveOnboarding:jest.fn()}));
 beforeEach(()=>{
+    mockRole='user';
     jest.clearAllMocks();getSignedInUser.mockResolvedValue({id:'user'});getUserProfile.mockResolvedValue({});getResumes.mockResolvedValue([]);saveOnboarding.mockImplementation(async state=>state);
+});
+test('AI Loop is omitted from the regular guide but remains available to admins',async()=>{
+    getSignedInUser.mockResolvedValue({id:'user',onboarding:{status:'active',step:10}});
+    const {unmount}=render(<GuidedSetup/>);
+    await screen.findByRole('button',{name:'Finish'});
+    expect(screen.queryByText('Meet AI Loop')).not.toBeInTheDocument();
+    unmount();mockRole='admin';
+    render(<GuidedSetup/>);
+    expect(await screen.findByText('Meet AI Loop')).toBeInTheDocument();
 });
 test('zero profile starts once, advances, opens upload and permanently skips',async()=>{
     render(<GuidedSetup/>);

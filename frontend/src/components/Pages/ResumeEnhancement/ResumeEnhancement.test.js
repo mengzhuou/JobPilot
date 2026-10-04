@@ -6,6 +6,15 @@ jest.mock('../../../connector',()=>({getResumeEnhancement:jest.fn(),generateResu
 const source='Alex Candidate\nalex@example.com\n\nEXPERIENCE\nBuilt Python services.\n\nEDUCATION\nBS Computer Science\n\nSKILLS\nPython SQL';
 const changes=[{section:'experience',original:'Built Python services.',replacement:'Developed services using Python.',reason:'Clearer wording.'}];
 const draft={id:'draft-1',job:{title:'Backend engineer',company:'Example'},source_name:'Original',source_text:source,analysis:{score:40,missing:['Docker'],matched:['Python'],checks:[],explanation:'Keyword estimate, not an ATS guarantee.',limitation:'Limited to readable text.'},status:'assessed',changes:[],generationAvailable:true};
+test('missing skill chips are grouped by requirement with source evidence',()=>{
+    render(<ResumeEnhancement initialDraft={{...draft,analysis:{...draft.analysis,missing:['Docker','Rust'],keywordDetails:[{label:'Docker',category:'required',evidence:'Docker is required'},{label:'Rust',category:'preferred',evidence:'Rust is a plus'}]}}} onClose={jest.fn()}/>);
+    fireEvent.click(screen.getByRole('button',{name:/Choose improvements/}));
+    expect(screen.getByText('Required skills')).toBeInTheDocument();
+    expect(screen.getByText('Preferred skills')).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Docker'})).toHaveAttribute('title','Docker is required');
+    fireEvent.click(screen.getByRole('button',{name:'Rust'}));
+    expect(screen.getByRole('button',{name:'Rust'})).toHaveAttribute('aria-pressed','true');
+});
 beforeEach(()=>{jest.clearAllMocks();updateEnhancementReview.mockResolvedValue({});Object.defineProperty(window,'crypto',{configurable:true,value:{randomUUID:()=> '11111111-1111-4111-8111-111111111111'}});});
 test('requires explicit consent before generating and opens the review',async()=>{
     generateResumeEnhancement.mockResolvedValue({...draft,status:'ready',changes,previewText:composeResume(source,changes)});

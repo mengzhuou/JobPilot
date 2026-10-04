@@ -9,6 +9,7 @@ function setup(supported=true) {
     const loaded = new Set([0]), injected = [], applied = [], targets=[], requests=[];
     let frames = [{ frameId: 0 }, { frameId: 3 }, { frameId: 7, url: 'https://www.recaptcha.net/recaptcha' }, { frameId: 9 }];
     const context = vm.createContext({ console, URL, importScripts() {}, createApplicationLifecycle: () => ({ modeForTab: async () => 'autofill' }), chrome: {
+        storage: {local:{get:async()=>({})},session:{get:async()=>({}),set:async()=>{},remove:async()=>{}}},
         tabs: { onUpdated: noopEvent, onRemoved: noopEvent, query: async () => [{ id: 12, url: 'https://example.org/job' }],get:async id=>{targets.push(id);return {id,url:'https://example.org/job'};},
             sendMessage: async (tab, message, { frameId }) => {
                 requests.push(message.type);

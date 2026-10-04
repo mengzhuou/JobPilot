@@ -88,7 +88,7 @@ const AppRoutes = () => {
                 <Route path="/feedback" element={<ProtectedRoute element={<Feedback />} />} />
                 <Route path="/add-application" element={<ProtectedRoute element={<ManualApplication />} />} />
                 <Route path="/profile" element={<ProtectedRoute element={<Profile />} />} />
-                <Route path="/loops" element={<ProtectedRoute element={<Loops />} />} />
+                <Route path="/loops" element={<ProtectedRoute requiredRole="admin" element={<Loops />} />} />
                 <Route path="/resumes" element={<ProtectedRoute element={<Resumes />} />} />
                 <Route path="/resume-enhancement" element={<ProtectedRoute element={<ResumeEnhancementPage />} />} />
                 <Route path="/admin/companies" element={<ProtectedRoute requiredRole="admin" element={<AdminCompanies />} />} />

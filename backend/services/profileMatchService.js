@@ -1,56 +1,4 @@
-const JOB_SKILLS = [
-    ["Java", ["Java"]], ["Python", ["Python"]], ["C++", ["C++"]], ["C#", ["C#"]],
-    ["Go", ["Golang", "Go"]], ["Ruby", ["Ruby"]], ["PHP", ["PHP"]], ["Swift", ["Swift"]],
-    ["Kotlin", ["Kotlin"]], ["JavaScript", ["JavaScript"]], ["TypeScript", ["TypeScript"]],
-    ["React", ["React"]], ["Angular", ["Angular"]], ["Vue.js", ["Vue.js", "Vue"]],
-    ["Node.js", ["Node.js", "NodeJS"]], ["Express.js", ["Express.js", "ExpressJS"]],
-    ["Django", ["Django"]], ["Flask", ["Flask"]], ["Spring Boot", ["Spring Boot"]],
-    [".NET", [".NET"]], ["HTML", ["HTML"]], ["CSS", ["CSS"]], ["SQL", ["SQL"]],
-    ["PostgreSQL", ["PostgreSQL", "Postgres"]], ["MySQL", ["MySQL"]], ["MongoDB", ["MongoDB"]],
-    ["Redis", ["Redis"]], ["DynamoDB", ["DynamoDB"]], ["Snowflake", ["Snowflake"]],
-    ["REST APIs", ["REST APIs", "REST API", "RESTful"]], ["GraphQL", ["GraphQL"]],
-    ["Microservices", ["Microservices", "Microservice Architecture"]], ["AWS", ["AWS", "Amazon Web Services"]],
-    ["Microsoft Azure", ["Microsoft Azure", "Azure"]], ["Google Cloud Platform", ["Google Cloud Platform", "Google Cloud", "GCP"]],
-    ["Docker", ["Docker"]], ["Kubernetes", ["Kubernetes"]], ["Terraform", ["Terraform"]],
-    ["Git", ["Git"]], ["CI/CD", ["CI/CD", "Continuous Integration", "Continuous Deployment"]],
-    ["Jenkins", ["Jenkins"]], ["GitHub Actions", ["GitHub Actions"]], ["Playwright", ["Playwright"]],
-    ["Jest", ["Jest"]], ["PyTest", ["PyTest"]], ["Kafka", ["Kafka"]], ["Spark", ["Apache Spark", "Spark"]],
-    ["ETL", ["ETL"]], ["Data Modeling", ["Data Modeling"]], ["Data Pipelines", ["Data Pipelines", "Data Pipeline"]],
-    ["Machine Learning", ["Machine Learning", "ML"]], ["Artificial Intelligence", ["Artificial Intelligence", "AI"]],
-    ["Data Structures and Algorithms", ["Data Structures and Algorithms", "Algorithms"]],
-    ["System Design", ["System Design"]], ["Cloud Computing", ["Cloud Computing", "Cloud Services"]],
-    ["Agile", ["Agile"]], ["Scrum", ["Scrum"]], ["Communication", ["Communication"]],
-    ["Teamwork", ["Teamwork", "Team Work"]], ["Problem Solving", ["Problem Solving", "Problem-Solving"]],
-    ["Root Cause Analysis", ["Root Cause Analysis", "RCA"]],
-    ["Incident Response", ["Incident Response", "Production Incidents"]],
-    ["Troubleshooting", ["Troubleshooting", "Troubleshoot"]],
-    ["Network Automation", ["Network Automation", "Network Automation Frameworks"]],
-    ["Network Observability", ["Network Observability", "Network Monitoring", "Telemetry"]],
-    ["Monitoring and Alerting", ["Monitoring and Alerting", "Dashboards and Alerting"]],
-    ["Service Level Objectives", ["Service Level Objectives", "SLOs", "SLO"]],
-    ["Mean Time to Detect", ["Mean Time to Detect", "MTTD"]],
-    ["Mean Time to Recovery", ["Mean Time to Recovery", "MTTR"]],
-    ["Runbooks", ["Runbooks", "Operational Runbooks"]],
-    ["Ethernet", ["Ethernet", "Ethernet Fabrics"]],
-    ["BGP", ["BGP"]], ["OSPF", ["OSPF"]], ["ECMP", ["ECMP"]],
-    ["MLAG", ["MLAG"]], ["LACP", ["LACP"]], ["VRF", ["VRF", "VRFs"]],
-    ["VLAN", ["VLAN", "VLANs"]], ["DNS", ["DNS"]], ["TCP/IP", ["TCP/IP", "TCP IP"]],
-    ["Load Balancing", ["Load Balancing", "Load Balancer"]],
-    ["Data Center Networking", ["Data Center Networking", "Data Centers"]],
-    ["High Performance Computing", ["High Performance Computing", "HPC"]],
-    ["GPU Computing", ["GPU Compute", "GPU Computing"]],
-    ["Fiber Optics", ["Fiber Optics", "Fiber Optic"]],
-    ["Transceivers", ["Transceivers"]], ["DAC/AOC Cables", ["DAC/AOC", "DAC AOC"]],
-    ["100G Ethernet", ["100G"]], ["200G Ethernet", ["200G"]], ["400G Ethernet", ["400G"]], ["800G Ethernet", ["800G"]],
-    ["VAST Data", ["VAST", "VAST Data"]], ["DDN", ["DDN"]],
-    ["Distributed Storage", ["Distributed Storage"]], ["Storage Networking", ["Storage Networking"]],
-    ["Colocation", ["Colocation", "Colo Providers"]],
-    ["Hardware Lifecycle Management", ["Hardware Lifecycle", "Hardware Replacements"]],
-    ["Change Management", ["Change Management", "Production Network Changes"]],
-    ["Capacity Planning", ["Capacity Expansions", "Capacity Planning"]],
-    ["On-call", ["On-call", "On Call Rotation"]],
-    ["Linux", ["Linux"]], ["Bash", ["Bash", "Shell Scripting"]],
-];
+const {extractJobSkills,containsSkill,hasPhrase}=require("./jobSkillExtraction");
 const ROLE_FAMILIES = [
     ["frontend", /\b(?:front[ -]?end|react|angular|vue|ui engineer)\b/i],
     ["backend", /\b(?:back[ -]?end|server[ -]?side|api engineer)\b/i],
@@ -78,31 +26,6 @@ const INDUSTRY_DOMAINS = [
 
 const plain = value => String(value || "").toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").replace(/\.(?=\s|$)/g, "").trim();
 const values = value => Array.isArray(value) ? value.flatMap(values) : value && typeof value === "object" ? Object.values(value).flatMap(values) : value ? [String(value)] : [];
-const hasPhrase = (text, phrase) => {
-    const normalized = plain(phrase);
-    return normalized.length > 1 && (` ${plain(text)} `).includes(` ${normalized} `);
-};
-const uniqueSkills = skills => [...new Map(skills.filter(Boolean).map(skill => [plain(skill), skill])).values()];
-const ACRONYM_STOP_WORDS = new Set(["US", "USA", "AI", "ML", "IT", "OR", "AND", "THE", "FOR", "WITH", "FROM", "TO", "IN", "AT", "IS", "AS", "ON", "OF"]);
-const AD_HOC_TECH_PATTERNS = [
-    /\b(?:root[- ]cause analysis|incident management|network automation|network observability|network telemetry|service[- ]level objectives?|change management|capacity planning|hardware lifecycle management)\b/gi,
-    /\b(?:data center networking|storage networking|distributed storage|high[- ]performance computing|gpu computing|fiber optics?|ethernet fabrics?|production networking)\b/gi,
-    /\b(?:google cloud(?: platform)?|microsoft azure|amazon web services|vast(?: data)?|docker swarm|github actions|gitlab ci|ansible|prometheus|grafana|wireshark)\b/gi,
-    /\b(?:\d{2,4}G(?:bE)? ethernet|dac\/aoc(?: cables?)?|transceivers?|load balancers?|cloud service providers?)\b/gi,
-];
-const titleCase = value => String(value || "").replace(/\b\w/g, letter => letter.toUpperCase());
-const extractAdHocSkills = text => {
-    const phrases = AD_HOC_TECH_PATTERNS.flatMap(pattern => [...String(text || "").matchAll(pattern)].map(match => titleCase(match[0])));
-    const acronyms = [...String(text || "").matchAll(/\b[A-Z][A-Z0-9]{1,9}\b/g)]
-        .map(match => match[0])
-        .filter(value => !ACRONYM_STOP_WORDS.has(value));
-    return uniqueSkills([...phrases, ...acronyms]);
-};
-const isCatalogEquivalent = (profileSkill, label, aliases) => {
-    const normalizedProfileSkill = plain(profileSkill);
-    return [label, ...aliases].some(candidate => plain(candidate) === normalizedProfileSkill);
-};
-
 const percentage = value => Math.max(0, Math.min(100, Math.round(value)));
 const dateValue = value => {
     if (!value) return null;
@@ -219,26 +142,11 @@ const jobText = job => [job.title, job.company, job.location, ...(job.tags || []
 const getMatchLevel = score => score >= 90 ? "strong" : score >= 70 ? "good" : score >= 60 ? "fair" : "bad";
 
 const scoreJobForProfile = (job, profile) => {
-    if (!profile) return { score: 0, level: "bad", matchedSkills: [], jobSkills: [], breakdown: buildBreakdown() };
-    const text = jobText(job);
+    if (!profile) { const skillDetails=extractJobSkills(job); return { score: 0, level: "bad", matchedSkills: [], jobSkills: skillDetails.map(item=>item.label), skillDetails, skillExtraction:job.skillExtraction?.source||'local', breakdown: buildBreakdown() }; }
     const skills = [...new Set(values(profile.skills).map(item => item.trim()).filter(item => item.length > 1))];
-    const catalogSkillsInJob = JOB_SKILLS.filter(([, aliases]) => aliases.some(alias => hasPhrase(text, alias)));
-    // Keep the canonical catalog label when an extracted phrase is merely an
-    // alias (for example, "VAST" becomes "VAST Data"). The remaining terms
-    // are job-specific suggestions that the candidate can add to their Profile.
-    const adHocSkills = extractAdHocSkills(text)
-        .filter(skill => !JOB_SKILLS.some(([label, aliases]) => isCatalogEquivalent(skill, label, aliases)));
-    const matchedCatalogSkills = catalogSkillsInJob
-        .filter(([label, aliases]) => skills.some(skill => isCatalogEquivalent(skill, label, aliases)))
-        .map(([label]) => label);
-    const customMatchedSkills = skills.filter(skill => hasPhrase(text, skill));
-    const matchedAdHocSkills = adHocSkills.filter(adHoc => skills.some(skill => plain(skill) === plain(adHoc)));
-    const matchedSkills = uniqueSkills([...matchedCatalogSkills, ...customMatchedSkills, ...matchedAdHocSkills]);
-    const jobSkills = uniqueSkills([
-        ...catalogSkillsInJob.map(([label]) => label),
-        ...adHocSkills,
-        ...customMatchedSkills,
-    ]);
+    const skillDetails = extractJobSkills(job);
+    const jobSkills = skillDetails.map(skill=>skill.label);
+    const matchedSkills = skillDetails.filter(skill=>skills.some(saved=>containsSkill(saved,skill))).map(skill=>skill.label);
     const experience = Array.isArray(profile.experience) ? profile.experience : [];
     const skillPercentage = jobSkills.length ? percentage((matchedSkills.length / jobSkills.length) * 100) : 0;
     const experienceMatch = experienceLevelMatch(job, experience, profile.education);
@@ -250,6 +158,8 @@ const scoreJobForProfile = (job, profile) => {
         level: getMatchLevel(finalScore),
         matchedSkills,
         jobSkills,
+        skillDetails,
+        skillExtraction: job.skillExtraction?.source || "local",
         breakdown: buildBreakdown({
             skillPercentage,
             experience: experienceMatch,
@@ -266,4 +176,4 @@ const rankJobsForProfile = (jobs, profile) => [...jobs]
         || new Date(second.postedAt || 0).getTime() - new Date(first.postedAt || 0).getTime()
         || String(first.title || "").localeCompare(String(second.title || "")));
 
-module.exports = { scoreJobForProfile, rankJobsForProfile, getMatchLevel, JOB_SKILLS, hasPhrase };
+module.exports = { scoreJobForProfile, rankJobsForProfile, getMatchLevel, hasPhrase };

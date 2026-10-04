@@ -1,5 +1,5 @@
 const { createHash } = require('node:crypto');
-const { JOB_SKILLS, hasPhrase } = require('./profileMatchService');
+const {extractJobSkills,containsSkill} = require('./jobSkillExtraction');
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const tidy = value => typeof value === 'string' ? value.replace(/\u0000/g, '').trim() : '';
@@ -9,7 +9,9 @@ const normalizeJob = input => {
     try { url = new URL(input?.url || input?.jobUrl); } catch { throw fail('A valid application URL is required.'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.href.length > 2000) throw fail('Use a valid HTTP or HTTPS application URL.');
     return { url: url.href, title: tidy(input.title || input.jobTitle).slice(0, 300), company: tidy(input.company).slice(0, 300),
-        summary: tidy(input.summary).replace(/<[^>]*>/g, ' ').slice(0, 18000),
+        description: tidy(input.description).replace(/<[^>]*>/g,' ').slice(0,40000),
+        tags: (Array.isArray(input.tags)?input.tags:[]).filter(x=>typeof x==='string').slice(0,40).map(x=>x.slice(0,80)),
+        summary: tidy(input.summary).replace(/<\/(?:p|div|li|h[1-6])>|<br\s*\/?\s*>/gi, '\n').replace(/<[^>]*>/g, ' ').slice(0, 18000),
         requirements: (Array.isArray(input.requirements) ? input.requirements : []).filter(x => typeof x === 'string').slice(0, 40).map(x => x.slice(0, 600)) };
 };
 // Preserve job IDs, query parameters and SPA fragments; remove only known tracking parameters.
@@ -20,13 +22,12 @@ const jobKey = value => {
     url.pathname = url.pathname.replace(/\/$/, '') || '/';
     return digest(url.href);
 };
-const aliasesFor = keyword => JOB_SKILLS.find(([label]) => label === keyword)?.[1] || [keyword];
-const containsSkill = (text, keyword) => aliasesFor(keyword).some(alias => hasPhrase(text, alias));
 const assessResume = (text, job) => {
-    const description = [job.summary, ...(job.requirements || [])].join('\n');
-    const keywords = JOB_SKILLS.filter(([, aliases]) => aliases.some(alias => hasPhrase(description, alias))).map(([label]) => label);
-    const matched = keywords.filter(keyword => containsSkill(text, keyword));
-    const missing = keywords.filter(keyword => !containsSkill(text, keyword));
+    const description = [job.description,job.summary, ...(job.requirements || [])].filter(Boolean).join('\n');
+    const keywordDetails = extractJobSkills(job);
+    const keywords = keywordDetails.map(item=>item.label);
+    const matched = keywordDetails.filter(keyword => containsSkill(text, keyword)).map(item=>item.label);
+    const missing = keywordDetails.filter(keyword => !containsSkill(text, keyword)).map(item=>item.label);
     const checks = [
         { key: 'contact', label: 'Readable email address', passed: /[^\s@]+@[^\s@]+\.[^\s@]+/.test(text) },
         { key: 'experience', label: 'Experience or projects heading', passed: /(?:^|\n)\s*(?:professional |work |relevant )?(?:experience|employment|projects)\b/i.test(text) },
@@ -35,7 +36,7 @@ const assessResume = (text, job) => {
     ];
     const enoughContext = description.length >= 100 && keywords.length >= 3;
     const score = enoughContext ? Math.round(matched.length / keywords.length * 100) : null;
-    return { score, matched, missing, keywords, checks, threshold: 75,
+    return { score, matched, missing, keywords, keywordDetails, checks, threshold: 75,
         shouldEnhance: score !== null && score < 75 && missing.length > 0,
         explanation: 'Percentage of detected job skills found in resume text, with common aliases recognized. This is not an employer ATS score, a hiring prediction, or the Profile match score.',
         limitation: enoughContext ? 'Formatting and actual employer screening rules are not evaluated.' : 'Not enough recognized job skills to calculate a reliable keyword estimate. You can still tailor the wording with a job description.' };

@@ -40,5 +40,7 @@ router.patch('/resume-enhancements/preferences', enhancement.preferences);
 router.post("/fill-plan", controller.fillPlan);
 router.post("/ai-plan", aiLimiter, controller.aiPlan);
 router.post("/answer-memory", controller.saveAnswerMemory);
+router.post('/manual-answers', rateLimit({windowMs:60000,max:60,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false}), controller.rememberManualAnswers);
+router.delete('/manual-answers', controller.forgetManualAnswers);
 
 module.exports = router;

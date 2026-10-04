@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import ProfileEditor from './ProfileEditor';
 import { PersonalLocations } from './ProfileFields';
 import { getProfileLocations } from '../../../connector';
-import { ACTIVE_IMMIGRATION_CASE, INTERVIEW_LANGUAGE } from './profileQuestions';
+import { ACTIVE_IMMIGRATION_CASE, INTERVIEW_LANGUAGE, ACTIVE_SECURITY_CLEARANCE, OTHER_CITIZENSHIP } from './profileQuestions';
 
 jest.mock('../../../connector', () => ({ getProfileLocations: jest.fn() }));
 const user = {
@@ -12,6 +12,23 @@ const user = {
     click: (...args) => act(() => userEvent.click(...args)),
 };
 beforeEach(() => { getProfileLocations.mockReset(); getProfileLocations.mockResolvedValue([]); });
+test('preferences editor shows one location control and saves merged legacy values',()=>{
+    const save=jest.fn();render(<ProfileEditor section="preferences" value={[["Preferred application location",['Dallas, TX']],["Preferred locations",['Atlanta, GA']]]} onSave={save} onCancel={()=>{}}/>);
+    expect(screen.getAllByRole('combobox',{name:'Preferred application location'})).toHaveLength(1);
+    expect(screen.queryByRole('combobox',{name:'Preferred locations'})).not.toBeInTheDocument();
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save).toHaveBeenLastCalledWith([["Preferred application location",['Dallas, TX','Atlanta, GA']],[INTERVIEW_LANGUAGE,'']]);
+});
+test('clearance and other citizenship are independent optional saved answers',()=>{
+    const save=jest.fn();render(<ProfileEditor section="equalEmployment" value={[]} onSave={save} onCancel={()=>{}}/>);
+    for(const label of [ACTIVE_SECURITY_CLEARANCE,OTHER_CITIZENSHIP]) {
+        const group=screen.getAllByRole('group',{name:label}).find(node=>node.tagName==='DIV');
+        expect(within(group).getByRole('button',{name:'No'})).toHaveAttribute('aria-pressed','false');
+        fireEvent.click(within(group).getByRole('button',{name:'Yes'}));
+    }
+    user.click(screen.getAllByRole('button',{name:'Update'})[0]);
+    expect(save).toHaveBeenLastCalledWith([[ACTIVE_IMMIGRATION_CASE,''],[ACTIVE_SECURITY_CLEARANCE,'Yes'],[OTHER_CITIZENSHIP,'Yes']]);
+});
 
 test('company typing preserves focus and saves the whole name without editor IDs', () => {
     const save = jest.fn();
@@ -122,10 +139,10 @@ test('active immigration case is blank by default, independent of sponsorship, a
     expect(within(activeCase).getByRole('button',{name:'Yes'})).toHaveAttribute('aria-pressed','false');
     fireEvent.click(within(activeCase).getByRole('button',{name:'Yes'}));
     user.click(screen.getAllByRole('button',{name:'Update'})[0]);
-    expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,'Yes']]);
+    expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,'Yes'],[ACTIVE_SECURITY_CLEARANCE,''],[OTHER_CITIZENSHIP,'']]);
     fireEvent.click(screen.getByRole('button',{name:`Clear ${ACTIVE_IMMIGRATION_CASE}`}));
     user.click(screen.getAllByRole('button',{name:'Update'})[0]);
-    expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,'']]);
+    expect(save).toHaveBeenLastCalledWith([["Requires employment sponsorship","No"],[ACTIVE_IMMIGRATION_CASE,''],[ACTIVE_SECURITY_CLEARANCE,''],[OTHER_CITIZENSHIP,'']]);
 });
 
 test('all employment fields may remain blank and decline choices are absent',()=>{

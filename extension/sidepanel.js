@@ -14,6 +14,8 @@ const state = {
     aiAnswers: [],
     unresolvedFields: [],
 };
+const memoryToggle = document.getElementById('rememberManualAnswers');
+const memoryStatus = document.getElementById('answerMemoryStatus');
 document.getElementById("extensionVersion").textContent = `Application assistant · v${chrome.runtime.getManifest().version}`;
 
 const send = message => new Promise((resolve, reject) => {
@@ -317,6 +319,7 @@ const scanAndPlan = async () => {
         const scan = await send({ type: "JOBPILOT_SCAN" });
         if (generation !== scanGeneration) return;
         state.scan = scan;
+        if (typeof scan.rememberEnabled === 'boolean') memoryToggle.checked = scan.rememberEnabled;
         elements.jobTitle.textContent = state.scan.job?.title || "Application page";
         elements.jobCompany.textContent = state.scan.job?.company || new URL(state.scan.job?.url || "https://example.com").hostname;
         if (state.scan.unavailable) throw new Error("This application page appears to be unavailable.");
@@ -327,7 +330,8 @@ const scanAndPlan = async () => {
         }
         setStatus("Inspecting this application", "Looking for fields JobPilot can safely complete.");
 
-        const plan = await send({ type: "JOBPILOT_BUILD_PLAN", fields: state.scan.fields });
+        const plan = await send({ type: "JOBPILOT_BUILD_PLAN", fields: state.scan.fields, jobUrl:state.scan.job?.url });
+        if (plan.memoryUnavailable) memoryStatus.textContent = 'Saved answers are temporarily unavailable. Profile Autofill still works.';
         if (generation !== scanGeneration) return;
         const pendingFileFields = state.scan.fields.filter(field => field.type === "file" && !field.filled);
         const clearlyResumeFields = pendingFileFields.filter(field => /\b(resume|resume|curriculum vitae|cv)\b/i.test(
@@ -507,6 +511,14 @@ elements.submitButton.addEventListener("click", async () => {
 });
 let launchScanTimer;
 chrome.runtime.onMessage.addListener(message => {
+    if (message.type === 'JOBPILOT_MANUAL_ANSWERS_SAVED' && message.tabId === state.scan?.tabId) {
+        memoryStatus.textContent = `${message.saved || 0} manual answer${message.saved === 1 ? '' : 's'} remembered. Future Autofill will use your latest choices.`;
+        return;
+    }
+    if (message.type === 'JOBPILOT_MANUAL_MEMORY_FAILED' && message.tabId === state.scan?.tabId) {
+        memoryStatus.textContent = 'Your answer is still on the application, but could not be remembered. Check your connection and rescan.';
+        return;
+    }
     if (message.type !== "JOBPILOT_RESCAN_REQUEST") return;
     const embedded=new URLSearchParams(location.search).has('embedded');
     // Other application tabs must not cancel this panel's pending rescan.
@@ -517,6 +529,26 @@ chrome.runtime.onMessage.addListener(message => {
         if(message.automatic && (state.scanning || state.applying || state.generating || (state.scan?.tabId===tab?.id && !elements.reviewView.classList.contains('hidden')))) return;
         if (state.connected && (embedded ? state.scan?.tabId === message.tabId : tab?.id === message.tabId && tab.windowId === message.windowId)) await scanAndPlan();
     }, 150);
+});
+memoryToggle.addEventListener('change', async () => {
+    memoryToggle.disabled = true;
+    try {
+        await send({type:'JOBPILOT_MEMORY_SETTINGS',enabled:memoryToggle.checked});
+        memoryStatus.textContent = memoryToggle.checked ? 'Remembering answers you enter after this scan.' : 'Remembering paused. Previously learned answers can still be used.';
+        await scanAndPlan();
+    } catch (error) {toast(error.message);}
+    finally {memoryToggle.disabled=false;}
+});
+document.getElementById('forgetManualAnswers').addEventListener('click', async event => {
+    const button=event.currentTarget;
+    button.disabled=true;
+    try {
+        await send({type:'JOBPILOT_FORGET_MANUAL_ANSWERS'});
+        memoryToggle.checked=false;
+        memoryStatus.textContent='Learned answers forgotten. Remembering is paused; your Profile is unchanged.';
+        await scanAndPlan();
+    } catch (error) {toast(error.message);}
+    finally {button.disabled=false;}
 });
 elements.reviewBackButton.addEventListener("click", () => setView("main"));
 const fillReviewedFields = () => applyAnswers(state.plan.filter(answer => answer.action === 'fill'));

@@ -17,7 +17,7 @@ const EQUAL_EMPLOYMENT_FIELDS = ["Authorized to work in the United States","Requ
 const emptyProfile = {
     personal: {links: ['LinkedIn', 'GitHub', 'Portfolio'].map(label => ({label, href: '', value: ''}))},
     education: [], experience: [], skills: [],
-    preferences: [['Seeking', []], ['Office preference', ''], ['Preferred locations', []]], equalEmployment: [],
+    preferences: [['Seeking', []], ['Office preference', ''], ['Preferred application location', []]], equalEmployment: [],
 };
 const normalizeProfile = profile => {
     const equalEmployment = withApplicationQuestions('equalEmployment', profile.equalEmployment);

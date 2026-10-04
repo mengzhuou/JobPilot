@@ -6,9 +6,10 @@ const {
 
 const MAX_FIELDS = 120;
 const MAX_FIELD_TEXT = 500;
+const { normalizeQuestion, canRemember } = require('./confirmedAnswerPolicy');
 
 const clean = value => String(value ?? "").trim();
-const normalized = value => normalizeText(value);
+const normalized = value => normalizeText(String(value ?? '').replace(/[/_–—-]/g, ' '));
 const containsAny = (value, phrases) => phrases.some(phrase => value.includes(phrase));
 
 // Degree dropdowns ask for a qualification level, not the major in its title.
@@ -33,6 +34,7 @@ const safeField = field => ({
     autocomplete: clean(field?.autocomplete).slice(0, 100),
     name: clean(field?.name).slice(0, 200),
     type: clean(field?.type || "text").slice(0, 50),
+    multiple: Boolean(field?.multiple),
     required: Boolean(field?.required),
     filled: Boolean(field?.filled) && !field?.hasError,
     currentValue: clean(field?.currentValue).slice(0, MAX_FIELD_TEXT),
@@ -59,6 +61,11 @@ const optionFor = (field, candidates) => {
         return clean(candidate);
     }
     for (const candidate of candidates.filter(value => value !== undefined && value !== null && clean(value))) {
+        if (/^(yes|no|true|false)$/i.test(String(candidate))) {
+            const booleanKey = value => clean(value).toLowerCase().replace(/^true$/, 'yes').replace(/^false$/, 'no');
+            const exactBoolean = field.options.find(option => booleanKey(option) === booleanKey(candidate));
+            if (exactBoolean) return exactBoolean;
+        }
         if (typeof candidate === "boolean") {
             const answer = getBooleanFormAnswer(candidate, field.options);
             if (typeof answer === "string" && field.options.includes(answer)) return answer;
@@ -87,7 +94,10 @@ const fill = (field, candidates, source, reason, extra) => {
     if (!value && value !== false) {
         return result(field, "ask_user", "", source, "Your Profile has an answer, but it does not match an available option.", extra);
     }
-    return result(field, "fill", value, source, reason, extra);
+    return result(field, "fill", value, source, reason, source === 'Profile · Equal Employment' ? {
+        ...extra,
+        optionContext: { ...extra?.optionContext, aliases: (Array.isArray(candidates) ? candidates : [candidates]).filter(value => typeof value === 'string' && value) },
+    } : extra);
 };
 
 const qaAnswer = (profile, question) => Object.values(profile.Q_and_A || {}).find(entry =>
@@ -97,7 +107,7 @@ const qaAnswer = (profile, question) => Object.values(profile.Q_and_A || {}).fin
     })
 )?.answer;
 
-const planField = (field, profile) => {
+const planField = (field, profile, memories = []) => {
     const question = fieldQuestion(field);
     const candidate = profile.candidate || {};
     const location = candidate.location || {};
@@ -118,8 +128,55 @@ const planField = (field, profile) => {
     if (containsAny(question, ["signature", "certify", "attest", "truthful", "electronic signature"])) {
         return result(field, "ask_user", "", "legal", "A signature or legal certification requires your review.");
     }
+    if (/\b(password|passcode|social security|ssn|passport|bank|credit card|debit card|routing number|captcha|verification code)\b/.test(question)) {
+        return result(field, 'ask_user', '', 'security', 'Complete this private security field yourself. It is never remembered.');
+    }
+    if (containsAny(question, ['how did you hear', 'how heard', 'source of application', 'how did you learn about us'])) {
+        const aliases=['Other','Other (please specify)','Other - please specify','Others'];
+        const value=field.options.length ? field.options.find(option=>aliases.some(alias=>normalized(alias)===normalized(option))) : 'Other';
+        return value ? result(field,'fill',value,'Application preference','Uses Other for application referral source.',{optionContext:{exactOnly:true,aliases}})
+            : result(field,'ask_user','','Application preference','This question does not offer an Other option. Choose the appropriate source.');
+    }
+    const memory = canRemember(field) && memories.find(item => item.normalized_question === normalizeQuestion(field.label));
+    if (memory?.answer_values?.length) {
+        // Exact question + exact/equivalent option only; never fuzzy-match facts.
+        const optionKey = value => normalizeQuestion(value).replace(/^true$/, 'yes').replace(/^false$/, 'no');
+        const values = memory.answer_values.map(value => field.options.length
+            ? field.options.find(option => optionKey(option) === optionKey(value)) : value);
+        if (values.some(value => !value) || (values.length > 1 && !field.multiple && !['checkbox-group','combobox'].includes(field.type))) {
+            return result(field, 'ask_user', '', 'Remembered answer', 'Your remembered answer does not match this question’s choices. Select an answer here to update it.');
+        }
+        return result(field, 'fill', values.join(', '), 'Remembered answer', 'Uses your most recent manual answer to this exact question.',
+            { values, sensitive: true, optionContext: { exactOnly: true } });
+    }
     if (field.type === "checkbox" && containsAny(question, ["acknowledge", "confirm", "privacy policy", "privacy notice"])) {
         return fill(field, [true, "Yes", "Acknowledge/Confirm"], "acknowledgement", "Acknowledgement requested on the application.");
+    }
+    const citizenship = normalized(workAuthorization.citizenship_status);
+    const citizenshipAnswer = (aliases, reason) => {
+        const choices=field.options.filter(option=>aliases.some(alias=>normalized(alias)===normalized(option)));
+        if (!aliases.length || (field.options.length && choices.length !== 1)) return result(field,'ask_user','','Profile · Equal Employment','Save the specific citizenship answer in Equal Employment; no nationality or citizenship subtype will be inferred.',{sensitive:true});
+        return result(field,'fill',choices[0] || aliases[0],'Profile · Equal Employment',reason,{sensitive:true,optionContext:{exactOnly:true,aliases}});
+    };
+    const isCitizen=/^us citizen\b/.test(citizenship);
+    const isResident=/\bpermanent resident\b/.test(citizenship);
+    const isNational=/^us national$/.test(citizenship);
+    const isProtected=/^protected individual$/.test(citizenship);
+    if (/\b(citizen|citizenship|dual citizen)\b/.test(question) && /\b(other than|dual|another country|any other country)\b/.test(question)) {
+        const saved=workAuthorization.other_citizenship;
+        return /^(yes|no)$/i.test(saved || '') ? fill(field,saved,'Profile · Equal Employment','Matched your explicit other-country/dual citizenship answer.',{sensitive:true})
+            : result(field,'ask_user','','Profile · Equal Employment','Save your other-country/dual citizenship answer in Equal Employment. U.S. status alone does not establish it.',{sensitive:true});
+    }
+    if (/\b(us|u s|united states) person\b/.test(question)) {
+        const aliases=isResident ? ['Yes, U.S. lawful permanent resident (Green card holder)','Yes, U.S. lawful permanent resident','U.S. lawful permanent resident','Lawful permanent resident']
+            : isNational ? ['Yes, U.S. national','U.S. national'] : isProtected ? ['Yes, U.S. protected individual (e.g. asylum, refugee)','Yes, U.S. protected individual','Protected individual']
+            : isCitizen ? ['Yes, U.S. citizen','U.S. citizen'] : [];
+        return citizenshipAnswer(aliases,'Matched your saved U.S.-person category.');
+    }
+    if (/\b(us|u s|united states) citizen\b/.test(question)) {
+        const aliases=isResident || isNational || isProtected ? ['No'] : /natural born/.test(citizenship) ? ['Yes, natural-born citizen','Natural-born citizen','Yes']
+            : /naturalized/.test(citizenship) ? ['Yes, naturalized citizen','Naturalized citizen','Yes'] : isCitizen && (!field.options.length || field.options.some(option=>normalized(option)==='yes')) ? ['Yes'] : [];
+        return citizenshipAnswer(aliases,'Matched your saved citizenship status.');
     }
 
     if (/\b(active|pending|ongoing|open)\s+(?:immigration|visa)\s+(?:case|application|petition)\b/.test(question)) {
@@ -146,6 +203,22 @@ const planField = (field, profile) => {
         return fill(field, [authorized, authorized ? "Yes" : "No", ...(workAuthorization.authorized_to_work_form_options || [])], "Profile · Work authorization", "Matched to your saved work authorization.", { sensitive: true });
     }
 
+    if (/\b(clearance|polygraph)\b/.test(question)) {
+        // Clearance level, active status, issuer, and polygraph are distinct facts.
+        const active = /\b(hold|have|possess)\b/.test(question) && !/\b(level|which|what|agency|polygraph|obtain|eligible)\b/.test(question);
+        if (active && clean(answers.active_security_clearance)) return fill(field, answers.active_security_clearance, 'Saved application answer', 'Matched your saved active clearance answer.', { sensitive: true });
+        return result(field, 'ask_user', '', 'user', 'Answer this clearance question once on the application; JobPilot can remember your selection.', { sensitive: true });
+    }
+
+    if (containsAny(question, ["veteran status", "protected veteran", "veteran classification"])) return fill(field, [eeoc.veteran_status?.answer, ...(eeoc.veteran_status?.form_options || [])], "Profile · Equal Employment", "Matched saved veteran status.", { sensitive: true });
+    if (/\b(veteran|armed forces|military service)\b/.test(question)) return result(field, 'ask_user', '', 'user', 'This question asks about military service, not just protected-veteran status. Answer once and JobPilot can remember it.', {sensitive:true});
+    if (containsAny(question, ["disability status", "have a disability", "disability self identification"])) return fill(field, [eeoc.disability_status?.answer, ...(eeoc.disability_status?.form_options || [])], "Profile · Equal Employment", "Matched saved disability answer.", { sensitive: true });
+    if (/\btransgender\b/.test(question)) return fill(field, [eeoc.transgender_status?.answer, ...(eeoc.transgender_status?.form_options || [])], "Profile · Equal Employment", "Matched saved transgender answer.", { sensitive: true });
+    if (/\bgender\b/.test(question)) return fill(field, [eeoc.gender?.answer, ...(eeoc.gender?.form_options || [])], "Profile · Equal Employment", "Matched saved gender answer.", { sensitive: true });
+    if (containsAny(question, ["hispanic", "latino", "latina", "latinx"])) return fill(field, [eeoc.hispanic_latino?.answer, ...(eeoc.hispanic_latino?.form_options || [])], "Profile · Equal Employment", "Matched saved Hispanic or Latino answer.", { sensitive: true });
+    if (containsAny(question, ["ethnicity", "racial ethnic"])) return fill(field, [eeoc.race?.answer, ...(eeoc.race?.form_options || [])], "Profile · Equal Employment", "Matched saved racial or ethnic background.", { sensitive: true });
+    if (containsAny(question, ["race", "racial identity"])) return fill(field, [eeoc.race?.answer, ...(eeoc.race?.form_options || [])], "Profile · Equal Employment", "Matched saved race answer.", { sensitive: true });
+    if (containsAny(question, ["sexual orientation"])) return fill(field, [eeoc.sexual_orientation?.answer, ...(eeoc.sexual_orientation?.form_options || [])], "Profile · Equal Employment", "Matched saved sexual orientation answer.", { sensitive: true });
     if (containsAny(question, ["first name", "given name"]) || field.autocomplete === "given-name") return fill(field, candidate.first_name, "Profile · Personal", "Matched first name.");
     if (containsAny(question, ["last name", "family name", "surname"]) || field.autocomplete === "family-name") return fill(field, candidate.last_name, "Profile · Personal", "Matched last name.");
     if ((containsAny(question, ["full name", "legal name", "your name", "candidate name"]) || normalized(field.label) === "name" || field.autocomplete === "name") && !containsAny(question, ["company name", "school name"])) return fill(field, candidate.name, "Profile · Personal", "Matched full name.");
@@ -193,18 +266,6 @@ const planField = (field, profile) => {
 
     if (containsAny(question, ["earliest start", "when can you start", "available start date"])) return fill(field, profile.job_preferences?.earliest_start_date, "Profile · Preferences", "Matched earliest start date.");
     if (containsAny(question, ["full time", "fulltime"]) && ["radio", "select", "checkbox"].includes(field.type)) return fill(field, [profile.job_preferences?.applying_for_full_time, "Full-time"], "Profile · Preferences", "Matched employment preference.");
-    if (containsAny(question, ["how did you hear", "how heard", "source of application"])) return fill(field, answers.how_heard_about_company, "Saved application answer", "Matched saved source answer.");
-    if (containsAny(question, ["security clearance", "active clearance"])) return fill(field, answers.active_security_clearance, "Saved application answer", "Matched saved clearance answer.", { sensitive: true });
-
-    if (containsAny(question, ["veteran status", "protected veteran", "veteran classification"])) return fill(field, [eeoc.veteran_status?.answer, ...(eeoc.veteran_status?.form_options || [])], "Profile · Equal Employment", "Matched saved veteran status.", { sensitive: true });
-    if (containsAny(question, ["disability status", "have a disability", "disability self identification"])) return fill(field, [eeoc.disability_status?.answer, ...(eeoc.disability_status?.form_options || [])], "Profile · Equal Employment", "Matched saved disability answer.", { sensitive: true });
-    if (containsAny(question, ["gender", "gender identity"])) return fill(field, [eeoc.gender?.answer, ...(eeoc.gender?.form_options || [])], "Profile · Equal Employment", "Matched saved gender answer.", { sensitive: true });
-    if (containsAny(question, ["hispanic", "latino", "latina", "latinx"])) return fill(field, [eeoc.hispanic_latino?.answer, ...(eeoc.hispanic_latino?.form_options || [])], "Profile · Equal Employment", "Matched saved Hispanic or Latino answer.", { sensitive: true });
-    if (containsAny(question, ["ethnicity", "racial ethnic"])) return fill(field, [eeoc.hispanic_latino?.answer, ...(eeoc.hispanic_latino?.form_options || []), eeoc.race?.answer, ...(eeoc.race?.form_options || [])], "Profile · Equal Employment", "Matched saved ethnicity answer.", { sensitive: true });
-    if (containsAny(question, ["race", "racial identity"])) return fill(field, [eeoc.race?.answer, ...(eeoc.race?.form_options || [])], "Profile · Equal Employment", "Matched saved race answer.", { sensitive: true });
-    if (containsAny(question, ["sexual orientation"])) return fill(field, [eeoc.sexual_orientation?.answer, ...(eeoc.sexual_orientation?.form_options || [])], "Profile · Equal Employment", "Matched saved sexual orientation answer.", { sensitive: true });
-    if (containsAny(question, ["transgender"])) return fill(field, [eeoc.transgender_status?.answer, ...(eeoc.transgender_status?.form_options || [])], "Profile · Equal Employment", "Matched saved transgender answer.", { sensitive: true });
-
     const savedQa = qaAnswer(profile, question);
     if (savedQa) return fill(field, savedQa, "Saved application answer", "Matched a saved application question.");
 
@@ -214,9 +275,9 @@ const planField = (field, profile) => {
     return result(field, "ask_user", "", "user", "No reliable Profile answer was found.");
 };
 
-const createDeterministicFillPlan = ({ fields, profile }) => {
+const createDeterministicFillPlan = ({ fields, profile, memories = [] }) => {
     const safeFields = (Array.isArray(fields) ? fields : []).slice(0, MAX_FIELDS).map(safeField);
-    const answers = safeFields.map(field => planField(field, profile));
+    const answers = safeFields.map(field => planField(field, profile, memories));
     return {
         answers,
         summary: {

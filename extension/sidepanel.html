@@ -60,6 +60,13 @@
                     <div class="field-list" id="fieldList"></div>
                 </section>
 
+                <section class="answer-memory" aria-label="Remember application answers">
+                    <label><input type="checkbox" id="rememberManualAnswers" checked> Remember answers I enter</label>
+                    <p>After you edit an application field, JobPilot saves your answer for matching future questions. These learned answers are not sent to AI. Unknown answers are never guessed.</p>
+                    <span id="answerMemoryStatus" role="status" aria-live="polite">Corrections replace earlier learned answers; your Profile stays unchanged.</span>
+                    <details><summary>Manage learned answers</summary><p>Forget all answers learned from application forms and pause remembering. This does not change your Profile.</p><button class="secondary-button compact" id="forgetManualAnswers" type="button">Forget learned answers</button></details>
+                </section>
+
                 <div class="actions hidden" id="actionsView">
                     <button class="primary-button" id="fillButton" type="button">Fill ready fields</button>
                     <button class="ai-button hidden" id="aiButton" type="button"><span>✦</span> Generate AI suggestions</button>

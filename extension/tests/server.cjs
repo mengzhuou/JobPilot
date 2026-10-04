@@ -20,7 +20,7 @@ http.createServer(async (request, response) => {
             response.end(`<!doctype html><meta charset="utf-8"><title>JobPilot autocomplete regression tests</title>
               <style>body{font:16px system-ui;margin:32px;background:#f6f8fc;color:#172033}#fixture{max-width:620px;padding:24px;background:white}label{display:block;margin-top:20px}.error-message{color:#b42318}#results{white-space:pre-wrap}button{padding:10px}input{font:inherit}#decoy{position:fixed;right:10px;top:160px}</style>
               <h1>JobPilot autocomplete browser tests</h1><p>Uses React Select 5.10.2 and the installed source content script. All data is synthetic.</p>
-              <button id="run">Run regression tests</button><pre id="results">Ready</pre><div id="fixture"></div>
+              <button id="run">Run regression tests</button><button id="manual-test">Start manual memory test</button><pre id="results">Ready</pre><pre id="memory-log"></pre><div id="fixture"></div>
               <script src="/fixture.js"></script><script src="/content-script.js"></script>`);
         }
     } catch (error) { response.statusCode = 500; response.end(error.message); }

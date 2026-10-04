@@ -4,6 +4,7 @@ const { createHash, randomUUID } = require("crypto");
 const { listCustomCareerSources, resolveSource } = require("../repositories/customCareerSourceRepository");
 const { getCachedJson, setCachedJson, deleteCachedValue } = require("../config/redis");
 const { rankJobsForProfile, scoreJobForProfile } = require("./profileMatchService");
+const {enrichJobSkills,hydrateJobSkills}=require('./semanticJobSkills');
 const jobDetailSnapshots = require("../repositories/jobDetailSnapshotRepository");
 
 const SOFTWARE_JOB_PATTERN =
@@ -206,7 +207,10 @@ const extractJobDetails = html => {
         .filter(paragraph => paragraph.length >= 80 && paragraph.length <= 1400)
         .filter(paragraph => !/cookie|privacy policy|equal opportunity|sign up|log in/i.test(paragraph));
     const summary = cleanExtractedSummary(paragraphs[0] || text);
-    return { summary, requirements, salary };
+    $('script,style,form').remove();
+    $('p,div,li,h1,h2,h3,h4,br').append('\n');
+    const description=$.root().text().replace(/[\t ]+/g,' ').replace(/\n\s*\n/g,'\n').trim().slice(0,40000);
+    return { summary, requirements, salary, description };
 };
 
 const enrichJobDetails = job => {
@@ -934,7 +938,7 @@ const getActiveJobPostings = async ({
         100,
         Math.max(1, Number.parseInt(limit, 10) || 30)
     );
-    const rankedJobs = rankJobsForProfile(filteredJobs, profile);
+    const rankedJobs = rankJobsForProfile(await hydrateJobSkills(filteredJobs), profile);
     const matchLevelJobs = matchLevel === "all" ? rankedJobs : rankedJobs
         .filter(job => job.profileMatch.level === matchLevel);
     const total = matchLevelJobs.length;
@@ -996,7 +1000,7 @@ const getJobPostingById = async (jobId, profile = null) => {
     let job = (current?.jobs || []).find(item => String(item.id) === String(jobId));
     if (!job) job = await jobDetailSnapshots.getById(String(jobId));
     if (!job) return null;
-    const detailedJob = enrichJobDetails(job);
+    const detailedJob = await enrichJobSkills(enrichJobDetails(job));
     await jobDetailSnapshots.upsert(detailedJob);
     return { ...detailedJob, profileMatch: scoreJobForProfile(detailedJob, profile) };
 };

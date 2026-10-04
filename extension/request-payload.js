@@ -1,6 +1,6 @@
 const compactApplicationField = field => {
     const text = (value,max) => String(value ?? '').slice(0,max);
-    return {fieldKey:text(field.fieldKey,240),label:text(field.label,500),name:text(field.name,200),placeholder:text(field.placeholder,240),autocomplete:text(field.autocomplete,100),type:text(field.type,50),required:Boolean(field.required),filled:Boolean(field.filled),hasError:Boolean(field.hasError),errorMessage:text(field.errorMessage,500),currentValue:text(field.currentValue,500),options:(Array.isArray(field.options)?field.options:[]).slice(0,2000).map(value=>text(value,200))};
+    return {fieldKey:text(field.fieldKey,240),label:text(field.label,500),name:text(field.name,200),placeholder:text(field.placeholder,240),autocomplete:text(field.autocomplete,100),type:text(field.type,50),multiple:Boolean(field.multiple),required:Boolean(field.required),filled:Boolean(field.filled),hasError:Boolean(field.hasError),errorMessage:text(field.errorMessage,500),currentValue:text(field.currentValue,500),options:(Array.isArray(field.options)?field.options:[]).slice(0,2000).map(value=>text(value,200))};
 };
 const applicationFieldBatches = fields => {
     const batches=[];let batch=[],bytes=20;

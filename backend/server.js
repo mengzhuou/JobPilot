@@ -10,16 +10,6 @@ dotenv.config({
     )
 });
 
-
-if (
-    !process.env.APPLICATION_USERNAME ||
-    !process.env.APPLICATION_PASSWORD
-) {
-    console.warn(
-        "Candidate login credentials are not configured in backend/.env."
-    );
-}
-
 if (!process.env.SESSION_SECRET) {
     throw new Error(
         "SESSION_SECRET is required in backend/.env."

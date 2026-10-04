@@ -9,7 +9,7 @@ export default function ResumeEnhancementEntry({job,onContinue}) {
     const [error,setError]=useState('');const [prompt,setPrompt]=useState(false);const [editing,setEditing]=useState(false);const [disabled,setDisabled]=useState(false);const [selectedName,setSelectedName]=useState('');
     const dismissedJobs=useRef(new Set());
     const [revision,setRevision]=useState(0);
-    const serializedJob=JSON.stringify({url:job.jobUrl||job.url,title:job.jobTitle||job.title,company:job.company,summary:job.summary,requirements:job.requirements});
+    const serializedJob=JSON.stringify({url:job.jobUrl||job.url,title:job.jobTitle||job.title,company:job.company,description:job.description,summary:job.summary,requirements:job.requirements,tags:job.tags});
     useEffect(()=>{
         const context=JSON.parse(serializedJob);if(!context.url)return undefined;
         let active=true;setError('');setPrompt(false);setSelectedName('');

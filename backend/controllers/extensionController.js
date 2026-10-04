@@ -4,6 +4,8 @@ const profileRepository = require("../repositories/userProfileRepository");
 const resumeRepository = require("../repositories/resumeRepository");
 const reviewRepository = require("../repositories/aiAutofillReviewRepository");
 const answerMemoryRepository = require("../repositories/applicationAnswerMemoryRepository");
+const confirmedAnswers = require('../repositories/confirmedAutofillAnswerRepository');
+const { applicationScope } = require('../services/confirmedAnswerPolicy');
 const { mapProfileForAutofill } = require("../services/autofillProfileMapper");
 const { createDeterministicFillPlan, safeField } = require("../services/extensionAutofillPlanner");
 const { createApplicationAnswerPlan } = require("../services/applicationAiService");
@@ -68,7 +70,13 @@ const fillPlan = asyncHandler(async (req, res) => {
     const editableProfile = await profileRepository.getByUserId(req.auth.userId);
     if (!editableProfile) return res.status(400).json({ message: "Complete your JobPilot Profile before using Autofill." });
     const mapped = mapProfileForAutofill(editableProfile);
-    const plan = createDeterministicFillPlan({ fields: req.body?.fields, profile: mapped.profile });
+    const fields = (Array.isArray(req.body?.fields) ? req.body.fields : []).slice(0,120).map(safeField);
+    let memories = [];
+    let memoryUnavailable = false;
+    try { memories = await confirmedAnswers.findForFields(req.auth.userId, fields, req.body?.jobUrl); }
+    catch { memoryUnavailable = true; } // Remembering must never block normal Autofill.
+    const plan = createDeterministicFillPlan({ fields, profile: mapped.profile, memories });
+    plan.memoryUnavailable = memoryUnavailable;
     res.json({ ...plan, missingProfileFields: mapped.missing });
 });
 
@@ -150,6 +158,17 @@ const saveAnswerMemory = asyncHandler(async (req, res) => {
     res.status(201).json({ saved: saved.length });
 });
 
+const rememberManualAnswers = asyncHandler(async (req, res) => {
+    const jobUrl = applicationScope(req.body?.jobUrl);
+    if (!jobUrl || !Array.isArray(req.body?.answers)) return res.status(400).json({ message: 'A valid application and answers are required.' });
+    const saved = await confirmedAnswers.rememberMany(req.auth.userId, req.body.answers, jobUrl);
+    res.status(201).json({ saved });
+});
+const forgetManualAnswers = asyncHandler(async (req, res) => {
+    await confirmedAnswers.forgetAll(req.auth.userId);
+    res.json({ forgotten: true });
+});
+
 module.exports = {
     pairingCode,
     exchange,
@@ -161,4 +180,6 @@ module.exports = {
     fillPlan,
     aiPlan,
     saveAnswerMemory,
+    rememberManualAnswers,
+    forgetManualAnswers,
 };

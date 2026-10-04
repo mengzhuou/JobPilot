@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit=require('express-rate-limit');
 const {
     createCareerSource,
     getCareerSourceDiscovery,
@@ -14,7 +15,7 @@ const requireAdmin = require("../middleware/requireAdmin");
 
 router.use(requireAuth);
 router.get("/", listActiveJobPostings);
-router.get("/detail/:jobId", getActiveJobPosting);
+router.get("/detail/:jobId", rateLimit({windowMs:60000,max:30,keyGenerator:req=>req.auth.userId,standardHeaders:true,legacyHeaders:false}), getActiveJobPosting);
 router.get('/platforms', async (req, res, next) => {
     try {
         const sources = [...require('../services/companyCareerSources'), ...await require('../repositories/customCareerSourceRepository').listCustomCareerSources()];

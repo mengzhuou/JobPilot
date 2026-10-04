@@ -5,7 +5,15 @@ import Select, { components } from "react-select";
 import AsyncSelect from "react-select/async";
 
 let listener;
-window.chrome = { runtime: { onMessage: { addListener: callback => { listener = callback; } } } };
+const remembered = new Map();
+window.chrome = { runtime: { onMessage: { addListener: callback => { listener = callback; } }, sendMessage: async message => {
+    if (message.type === 'JOBPILOT_REMEMBER_MANUAL_ANSWERS') {
+        message.answers.forEach(answer => remembered.set(answer.fieldKey,answer.values));
+        document.getElementById('memory-log').textContent = `Remembered manual answers: ${JSON.stringify([...remembered])}`;
+        return {ok:true,data:{saved:message.answers.length}};
+    }
+    return {ok:true};
+} } };
 const send = message => new Promise(resolve => listener(message, {}, resolve));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const check = (condition, message) => { if (!condition) throw new Error(message); };
@@ -95,6 +103,19 @@ const fill = async (id, value, extra = {}) => {
     return (await send({ type: "JOBPILOT_APPLY_PLAN", answers: [{ fieldKey: id, value, action: "fill", ...extra }] })).results[0];
 };
 const tests = [
+    ['React Select remembers/replays multiple values without losing selections', async () => {
+        function Multi() { const [value,setValue]=useState([]);return <><label htmlFor="multi-race">Please identify your race</label><Select inputId="multi-race" isMulti options={['Asian','White','Other'].map(label=>({value:label,label}))} value={value} onChange={setValue}/></>; }
+        flushSync(()=>root.render(<Multi/>));
+        const result=await fill('multi-race','Asian, White',{values:['Asian','White'],optionContext:{exactOnly:true}});
+        check(result.status==='filled',result.message || 'Multi-select failed');
+        check((await scan()).find(field=>field.fieldKey==='multi-race').currentValue==='Asian, White','Multi-select did not retain both answers');
+    }],
+    ['Gender dropdown selects Male, never Female by substring', async () => {
+        function Gender() {const [value,setValue]=useState(null);return <><label htmlFor="gender">How would you describe your gender identity?</label><Select inputId="gender" options={['Female','Male','Prefer not to say'].map(label=>({value:label,label}))} value={value} onChange={setValue}/></>;}
+        flushSync(()=>root.render(<Gender/>));
+        check((await fill('gender','Male')).status==='filled','Male did not fill');
+        check((await scan())[0].currentValue==='Male','Wrong gender option selected');
+    }],
     ["Standalone Ashby EEOC fieldsets detect and fill hidden radio controls", async () => {
         flushSync(() => root.render(<>{[["Gender", ["Male", "Female"]], ["Race", ["Hispanic or Latino", "Asian (Not Hispanic or Latino)"]], ["Veteran Status", ["I am not a protected veteran", "I decline to self-identify"]]].map(([question, options], g) =>
             <fieldset key={question} className="ashby-application-form-input-radio-group">
@@ -280,3 +301,13 @@ document.getElementById("run").onclick = async () => {
     document.getElementById("run").disabled = false;
 };
 mount();
+document.getElementById('manual-test').onclick = async () => {
+    remembered.clear();
+    function MemoryDemo() {
+        const [value,setValue]=useState(null);
+        return <><label htmlFor="manual-clearance">Do you currently hold an active security clearance?</label><Select inputId="manual-clearance" options={['Yes','No','Prefer not to say'].map(label=>({value:label,label}))} value={value} onChange={setValue}/><label htmlFor="manual-context">Describe your project</label><textarea id="manual-context"/><button id="manual-outside" type="button">Finish editing</button></>;
+    }
+    flushSync(()=>root.render(<MemoryDemo/>));
+    await send({type:'JOBPILOT_SCAN_FIELDS',remember:true,rememberSession:'synthetic-account'});
+    document.getElementById('memory-log').textContent='Ready: choose an answer, then edit it. Only trusted manual edits are remembered.';
+};

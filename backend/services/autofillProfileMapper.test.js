@@ -30,7 +30,14 @@ assert.equal(profile.work_authorization.has_saved_authorization_answer, true);
 assert.equal(profile.work_authorization.has_saved_sponsorship_answer, true);
 assert.equal(profile.eeoc.hispanic_latino.answer, "No");
 assert.equal(profile.application_answers.preferred_application_location, "Austin, Texas");
-assert(profile.Q_and_A.self_introduction.answer);
+assert.deepEqual(profile.Q_and_A, {}, 'Demo answers must not be attributed to a signed-in user');
+assert.equal(profile.application_answers.active_security_clearance, '');
+for (const answer of ['Yes','No']) {
+    const mapped=mapProfileForAutofill({...editableProfile,equalEmployment:[['Do You Currently Hold an Active Security Clearance?',answer]]}).profile;
+    assert.equal(mapped.application_answers.active_security_clearance,answer);
+    const {createDeterministicFillPlan:plan}=require('./extensionAutofillPlanner');
+    assert.equal(plan({profile:mapped,fields:[{fieldKey:'clearance',label:'Do You Currently Hold an Active Security Clearance?',type:'select',options:['Yes','No']}]}).answers[0].value,answer);
+}
 assert(validateEditableProfile({ personal: {}, education: [] }).includes("email"));
 
 const { createDeterministicFillPlan } = require('./extensionAutofillPlanner');

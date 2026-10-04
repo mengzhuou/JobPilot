@@ -22,6 +22,8 @@ export const steps=[
 export default function GuidedSetup(){
     const authenticated=useSelector(state=>state.auth.isAuthenticated);
     const account=useSelector(state=>state.studentData?.email);
+    const isAdmin=useSelector(state=>state.studentData?.role==='admin');
+    const visibleSteps=steps.filter(step=>step.path!=='/loops'||isAdmin);
     const navigate=useNavigate();
     const [guide,setGuide]=useState(null),[expanded,setExpanded]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState('');
     useEffect(()=>{
@@ -42,7 +44,7 @@ export default function GuidedSetup(){
         return ()=>{active=false;};
     },[authenticated,account]);
     if(!authenticated || !guide || guide.status!=='active')return null;
-    const index=Math.min(Math.max(guide.step,0),steps.length-1),step=steps[index];
+    const index=Math.min(Math.max(guide.step,0),visibleSteps.length-1),step=visibleSteps[index];
     const advance=async status=>{
         if(busy)return;
         setBusy(true);setError('');
@@ -59,15 +61,15 @@ export default function GuidedSetup(){
     return <>
         <Dialog open={expanded} onClose={()=>{if(!busy)setExpanded(false);}} maxWidth="sm" fullWidth aria-labelledby="guided-setup-title">
             <div className="guided-setup">
-                <span className="guided-setup-eyebrow">YOUR JOBPILOT QUICK START · {index+1} / {steps.length}</span>
-                <progress value={index+1} max={steps.length} aria-label="Walkthrough progress"/>
+                <span className="guided-setup-eyebrow">YOUR JOBPILOT QUICK START · {index+1} / {visibleSteps.length}</span>
+                <progress value={index+1} max={visibleSteps.length} aria-label="Walkthrough progress"/>
                 <h2 id="guided-setup-title">{step.title}</h2><p>{step.text}</p>
                 {step.action && <button className="guided-setup-open" onClick={openStep} disabled={busy}>{step.action} <span aria-hidden="true">↗</span></button>}
                 {error && <p role="alert">{error}</p>}
-                <div className="guided-setup-actions"><button disabled={busy} onClick={()=>advance('skipped')}>Skip</button><button disabled={busy} onClick={()=>advance(index===steps.length-1?'completed':'active')}>{busy?'Saving…':index===steps.length-1?'Finish':'Next Step'}</button></div>
+                <div className="guided-setup-actions"><button disabled={busy} onClick={()=>advance('skipped')}>Skip</button><button disabled={busy} onClick={()=>advance(index===visibleSteps.length-1?'completed':'active')}>{busy?'Saving…':index===visibleSteps.length-1?'Finish':'Next Step'}</button></div>
                 <small>Your progress is saved to your account. Skipping or finishing stops future automatic prompts.</small>
             </div>
         </Dialog>
-        {!expanded && <aside className="guided-setup-dock" aria-label="Profile setup guide"><button onClick={()=>setExpanded(true)}>Continue guide · {index+1}/{steps.length} <span aria-hidden="true">→</span></button></aside>}
+        {!expanded && <aside className="guided-setup-dock" aria-label="Profile setup guide"><button onClick={()=>setExpanded(true)}>Continue guide · {index+1}/{visibleSteps.length} <span aria-hidden="true">→</span></button></aside>}
     </>;
 }

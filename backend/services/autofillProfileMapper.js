@@ -85,7 +85,10 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
     const equalEmployment = labelMap(editableProfile?.equalEmployment);
     const firstName = text(personal.firstName);
     const lastName = text(personal.lastName);
-    const preferredLocation = choice(preferences, "preferred application location");
+    const locationValues=(editableProfile?.preferences||[]).filter(row=>['preferred application location','preferred locations'].includes(String(row?.[0]||'').trim().toLowerCase()))
+        .flatMap(row=>Array.isArray(row[1])?row[1]:[row[1]]).filter(value=>typeof value==='string'&&value.trim());
+    const preferredLocations = [...new Map(locationValues.map(value=>[value.trim().toLowerCase(),value.trim()])).values()];
+    const preferredLocation = preferredLocations.length>1?preferredLocations:preferredLocations[0]||'';
     const authorized = booleanAnswer(choice(equalEmployment, "authorized to work in the united states"));
     const needsSponsorship = booleanAnswer(choice(equalEmployment, "requires employment sponsorship"));
     const citizenship = choice(equalEmployment, "citizenship status");
@@ -136,6 +139,8 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
             preferred_interview_language: text(choice(preferences, "preferred programming language for interviews")),
         },
         work_authorization: {
+            citizenship_status: text(citizenship),
+            other_citizenship: text(choice(equalEmployment, 'Are you a citizen of any country other than the United States (e.g., dual citizen)?')),
             us_citizen_or_permanent_resident: /citizen|permanent resident/i.test(text(citizenship)),
             authorized_to_work_without_sponsorship: authorized && !needsSponsorship,
             requires_employment_sponsorship: needsSponsorship,
@@ -155,15 +160,14 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
             transgender_status: { answer: choice(equalEmployment, "transgender experience"), is_transgender: booleanAnswer(choice(equalEmployment, "transgender experience")), form_options: optionValues(choice(equalEmployment, "transgender experience"), fallback.eeoc?.transgender_status?.form_options) },
             disability_status: { answer: choice(equalEmployment, "disability"), has_disability: booleanAnswer(choice(equalEmployment, "disability")), form_options: optionValues(choice(equalEmployment, "disability"), fallback.eeoc?.disability_status?.form_options) },
         },
-        // These are not editable in Profile yet, so retaining the curated
-        // answers is intentional until dedicated Profile fields exist.
-        application_answers: fallback.application_answers || {},
+        // A seed/demo profile is not evidence about the signed-in user.
+        application_answers: {active_security_clearance: text(choice(equalEmployment, 'Do You Currently Hold an Active Security Clearance?'))},
         autofill_policy: fallback.autofill_policy || {},
-        Q_and_A: fallback.Q_and_A || {},
+        Q_and_A: {},
     };
     mapped.application_answers = {
         ...mapped.application_answers,
-        preferred_application_location: preferredLocation || fallback.application_answers?.preferred_application_location || "",
+        preferred_application_location: preferredLocation || "",
     };
     // Optional means truly optional: compatibility aliases from the seed profile
     // must never supply an answer the user left blank or explicitly cleared.

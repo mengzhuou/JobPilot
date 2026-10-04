@@ -38,7 +38,7 @@ const canonicalSkill = skill => {
 const equivalentSkill = (left, right) => {
     const first = canonicalSkill(left);
     const second = canonicalSkill(right);
-    return first === second || (first.length > 2 && second.length > 2 && (first.includes(second) || second.includes(first)));
+    return first === second;
 };
 const companyInitials = company => String(company || "Job").split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join("").toUpperCase();
 const companyLogo = job => {
@@ -124,6 +124,8 @@ const FillApplication = () => {
     const [logoFailed, setLogoFailed] = useState(false);
     const { qualifications, responsibilities } = splitRequirements(job.requirements);
     const matchedSkills = uniqueTags(job.profileMatch?.matchedSkills || []);
+    const skillDetails=job.profileMatch?.skillDetails||[];
+    const matchesJobSkill=(saved,label)=>[label,...(skillDetails.find(item=>item.label===label)?.aliases||[])].some(alias=>equivalentSkill(saved,alias));
     const isMatchedSkill = skill => matchedSkills.some(profileSkill => equivalentSkill(profileSkill, skill));
     const qualificationSkills = uniqueTags(job.profileMatch?.jobSkills || matchedSkills);
     const scoreBreakdown = Array.isArray(job.profileMatch?.breakdown) ? job.profileMatch.breakdown : [];
@@ -197,6 +199,7 @@ const FillApplication = () => {
         jobPostedAt: job.jobPostedAt,
         salary: job.salary,
         summary: job.summary,
+        description: job.description,
         requirements: job.requirements,
     };
 
@@ -241,7 +244,7 @@ const FillApplication = () => {
             const profile = await getUserProfile();
             const profileSkills = Array.isArray(profile.skills) ? profile.skills : [];
             const nextSkills = wasMatched
-                ? profileSkills.filter(profileSkill => !equivalentSkill(profileSkill, skill))
+                ? profileSkills.filter(profileSkill => !matchesJobSkill(profileSkill, skill))
                 : uniqueTags([...profileSkills, skill]);
             await updateUserProfileSection("skills", nextSkills);
 
@@ -308,7 +311,7 @@ const FillApplication = () => {
 
                 {(summary || job.requirements?.length > 0) && <section className="job-description-panel">
                     {summary && <p className="job-summary">{summary}</p>}
-                    {(qualifications.length > 0 || qualificationSkills.length > 0) && <section className="qualification-panel"><div className="qualification-heading"><div><span>Key criteria</span><h3>Qualifications</h3><p>These skills are detected from this job. <strong>Click a tag</strong> to add or remove it from your Profile, based on your actual expertise. Your choices are private and are used for future job matches and applications.</p></div>{matchedSkills.length > 0 && <em><FontAwesomeIcon icon={faThumbsUp}/> Represents the skills you have</em>}</div>{qualificationSkills.length > 0 && <div className="qualification-skill-tags" aria-label="Skills detected from this job">{qualificationSkills.map(skill => { const matched = isMatchedSkill(skill); return <button type="button" className={matched ? "matched" : ""} aria-pressed={matched} disabled={Boolean(skillSaving)} onClick={() => toggleQualificationSkill(skill)} key={skill}>{matched && <FontAwesomeIcon icon={faThumbsUp}/>} {skill}{skillSaving === skill && <span className="skill-saving">…</span>}</button>; })}</div>}<ul>{qualifications.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
+                    {(qualifications.length > 0 || qualificationSkills.length > 0) && <section className="qualification-panel"><div className="qualification-heading"><div><span>Key criteria</span><h3>Qualifications</h3><p>These skills are extracted from this job’s qualifications and responsibilities. <strong>Click a tag</strong> to add or remove it from your Profile, based on your actual expertise. Your choices are private and are used for future job matches and applications.</p></div>{matchedSkills.length > 0 && <em><FontAwesomeIcon icon={faThumbsUp}/> Represents the skills you have</em>}</div>{job.profileMatch?.skillExtraction === "local" && <p className="skill-extraction-note">Showing a local keyword estimate; semantic analysis is unavailable or still being prepared.</p>}{qualificationSkills.length > 0 && <div className="qualification-skill-tags" aria-label="Skills detected from this job">{qualificationSkills.map(skill => { const matched = isMatchedSkill(skill); return <button type="button" className={matched ? "matched" : ""} aria-pressed={matched} disabled={Boolean(skillSaving)} onClick={() => toggleQualificationSkill(skill)} key={skill} title={skillDetails.find(item=>item.label===skill)?.evidence || skill}>{matched && <FontAwesomeIcon icon={faThumbsUp}/>} {skill}{skillSaving === skill && <span className="skill-saving">…</span>}</button>; })}</div>}<ul>{qualifications.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                     {responsibilities.length > 0 && <section className="job-detail-section"><h3><FontAwesomeIcon icon={faListCheck}/> Responsibilities</h3><ul>{responsibilities.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                 </section>}
 

@@ -4,6 +4,7 @@ const repository=require('../repositories/resumeEnhancementRepository');
 const resumes=require('../repositories/resumeRepository');
 const {extractResumeText}=require('../services/resumeTextService');
 const service=require('../services/resumeEnhancementService');
+const {enrichJobSkills}=require('../services/semanticJobSkills');
 const {createResumeDocument}=require('../services/resumeDocumentService');
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const owned=async req=>{
@@ -16,7 +17,7 @@ const publicDraft= draft=>({...draft,generation_id:undefined,user_id:undefined,f
     generationAvailable:Boolean(process.env.OPENAI_API_KEY),
     previewText:draft.reviewed_text||service.applyChanges(draft.source_text,draft.changes)});
 const assess=asyncHandler(async(req,res)=>{
-    const job=service.normalizeJob(req.body?.job);
+    let job=service.normalizeJob(req.body?.job);
     if(req.body?.resumeId&&!uuid(req.body.resumeId))throw service.fail('Choose a valid resume.');
     const selected=await repository.selectResume(req.auth.userId,job.url);
     const resume=req.body?.resumeId?await resumes.findFile(req.auth.userId,req.body.resumeId):selected||await resumes.findPrimaryFile(req.auth.userId);
@@ -25,6 +26,7 @@ const assess=asyncHandler(async(req,res)=>{
     if(!text){try{text=await extractResumeText({fileData:resume.file_data,mimeType:resume.mime_type});}catch{return res.json({available:false,reason:'This resume cannot be read. Use a text-based PDF or DOCX for enhancement.'});}}
     if(!text||text.trim().length<80)return res.json({available:false,reason:'Not enough readable resume text. Upload a text-based PDF or DOCX.'});
     if(text.length>=30000)return res.json({available:false,reason:'This resume is too long to enhance safely without omitting content. Choose a shorter version; you can still Autofill with the original.'});
+    job=await enrichJobSkills(job);
     const analysis=service.assessResume(text,job);
     const draft=await repository.create(req.auth.userId,{sourceId:resume.id,sourceName:resume.display_name||resume.file_name,sourceText:text,job,analysis,
         fingerprint:service.digest(JSON.stringify({text,job,sourceId:resume.id}))});

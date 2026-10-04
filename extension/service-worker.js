@@ -14,7 +14,10 @@ chrome.webNavigation.onCompleted.addListener(details => {
     if (details.frameId !== 0) applicationLifecycle.ready(details.tabId).catch(console.error);
     if (details.frameId !== 0 && !/recaptcha|hcaptcha|challenges\.cloudflare|^chrome-extension:/i.test(details.url||'')) chrome.scripting.executeScript({target:{tabId:details.tabId,frameIds:[details.frameId]},files:['application-detector.js']}).catch(()=>{});
 });
-chrome.tabs.onRemoved.addListener(tabId => applicationLifecycle.removed(tabId).catch(console.error));
+chrome.tabs.onRemoved.addListener(tabId => {
+    applicationLifecycle.removed(tabId).catch(console.error);
+    chrome.storage.session.get(null).then(items => chrome.storage.session.remove(Object.keys(items).filter(key => key.startsWith(`jobpilot.manual.${tabId}.`)))).catch(()=>{});
+});
 const STORAGE_KEYS = Object.freeze({
     backendUrl: "jobpilotBackendUrl",
     token: "jobpilotExtensionToken",
@@ -38,8 +41,9 @@ const connectionSettings = async () => {
     };
 };
 
-const apiRequest = async (path, { method = "GET", body, requiresToken = true } = {}) => {
+const apiRequest = async (path, { method = "GET", body, requiresToken = true, expectedToken } = {}) => {
     const settings = await connectionSettings();
+    if (expectedToken !== undefined && expectedToken !== settings.token) throw new Error('Your account changed. Rescan before remembering answers.');
     if (requiresToken && !settings.token) throw new Error("Connect this extension to your JobPilot account first.");
     const response = await fetch(`${settings.backendUrl}${path}`, {
         method,
@@ -119,21 +123,34 @@ const ensureContentScript = async (tab, frameId = 0) => {
 
 const scanActiveTab = async targetId => {
     const tab = await activeTab(targetId,true);
-    if(!/^https?:/i.test(tab.url||''))return {tabId:tab.id,supported:false,fields:[],job:{url:tab.url}};
+    const rememberEnabled = (await storageGet('jobpilot.rememberManualAnswers'))['jobpilot.rememberManualAnswers'] !== false;
+    if(!/^https?:/i.test(tab.url||''))return {tabId:tab.id,rememberEnabled,supported:false,fields:[],job:{url:tab.url}};
     await installDetector(tab.id);
     const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id }).catch(() => [{ frameId: 0 }]);
     const eligibility=await Promise.all((frames || [{frameId:0}]).map(async frame=>{
         if(/recaptcha|hcaptcha|challenges\.cloudflare|^chrome-extension:/i.test(frame.url||''))return false;
         try{return (await sendToFrame(tab.id,frame.frameId,{type:'JOBPILOT_APPLICATION_STATUS'}))?.supported===true;}catch{return false;}
     }));
-    if(!eligibility.some(Boolean))return {tabId:tab.id,supported:false,fields:[],job:{url:tab.url}};
+    if(!eligibility.some(Boolean))return {tabId:tab.id,rememberEnabled,supported:false,fields:[],job:{url:tab.url}};
     await ensureContentScript(tab);
-    const responses = await Promise.all((frames || [{ frameId: 0 }]).map(async frame => {
+    const settings = await connectionSettings();
+    const responses = await Promise.all((frames || [{ frameId: 0 }]).map(async (frame, index) => {
         // CAPTCHA frames are not application questions and must stay manual.
         if (/recaptcha|hcaptcha|challenges\.cloudflare|^chrome-extension:/i.test(frame.url || "")) return null;
         try {
             await ensureContentScript(tab, frame.frameId);
-            const response = await sendToFrame(tab.id, frame.frameId, { type: "JOBPILOT_SCAN_FIELDS" });
+            const remember = Boolean(settings.token && eligibility[index] && rememberEnabled);
+            const key = `jobpilot.manual.${tab.id}.${frame.frameId}`;
+            const previous=(await chrome.storage.session.get(key))[key];
+            const rememberSession=previous?.token===settings.token && previous?.url===(frame.url || tab.url)
+                ? previous.id : `${Date.now()}-${Math.random()}`;
+            const response = await sendToFrame(tab.id, frame.frameId, { type: "JOBPILOT_SCAN_FIELDS", remember, rememberSession });
+            if (remember && response?.fields?.length) await chrome.storage.session.set({[key]: {
+                id:rememberSession,
+                token: settings.token, url: frame.url || tab.url, jobUrl: tab.url, documentId: frame.documentId,
+                fields: response.fields.map(field => ({fieldKey:field.fieldKey,label:field.label,type:field.type,name:field.name,autocomplete:field.autocomplete})),
+            }});
+            else await chrome.storage.session.remove(key);
             return response ? { ...response, frameId: frame.frameId } : null;
         } catch (error) {
             return { frameId: frame.frameId, inaccessible: true };
@@ -144,6 +161,7 @@ const scanActiveTab = async targetId => {
     const top = successful.find(response => response.frameId === 0) || successful[0];
     return {
         tabId: tab.id,
+        rememberEnabled,
         inaccessibleFrames: responses.filter(response => response?.inaccessible).map(response => response.frameId),
         mode: await applicationLifecycle.modeForTab(tab.id),
         job: { ...top.job, url: tab.url || top.job?.url || "" },
@@ -243,6 +261,33 @@ const focusInActiveTab = async (fieldKey, targetId) => {
 };
 
 const isPanelSender = sender => Boolean(sender.url) && String(sender.url).split('?')[0] === chrome.runtime.getURL('sidepanel.html');
+const manualSaveQueues = new Map();
+const clearManualContexts = async () => {
+    const keys = Object.keys(await chrome.storage.session.get(null)).filter(key => key.startsWith('jobpilot.manual.'));
+    await chrome.storage.session.remove(keys);
+};
+const rememberManualAnswers = (message, sender) => {
+    if (!sender.tab?.id || !Number.isInteger(sender.frameId)) throw new Error('Manual answers must come from an inspected application.');
+    const key = `jobpilot.manual.${sender.tab.id}.${sender.frameId}`;
+    const save = (manualSaveQueues.get(key) || Promise.resolve()).catch(() => {}).then(async () => {
+        const context = (await chrome.storage.session.get(key))[key];
+        const enabled = (await storageGet('jobpilot.rememberManualAnswers'))['jobpilot.rememberManualAnswers'] !== false;
+        const settings = await connectionSettings();
+        if (!enabled || !context || context.token !== settings.token || context.url !== sender.url
+            || (context.documentId && context.documentId !== sender.documentId)) throw new Error('Rescan this application to enable answer memory.');
+        const answers = (Array.isArray(message.answers) ? message.answers : []).slice(0,30).flatMap(answer => {
+            const field = context.fields.find(field => field.fieldKey === answer.fieldKey);
+            return field ? [{question:field.label,type:field.type,name:field.name,autocomplete:field.autocomplete,values:answer.values}] : [];
+        });
+        if (!answers.length) return {saved:0};
+        const result = await apiRequest('/api/extension/manual-answers', {method:'POST',body:{jobUrl:context.jobUrl,answers},expectedToken:context.token});
+        await chrome.runtime.sendMessage({type:'JOBPILOT_MANUAL_ANSWERS_SAVED',tabId:sender.tab.id,saved:result.saved}).catch(()=>{});
+        return result;
+    });
+    manualSaveQueues.set(key, save);
+    save.finally(() => {if(manualSaveQueues.get(key)===save)manualSaveQueues.delete(key);}).catch(()=>{});
+    return save;
+};
 const showPagePanel = async (tabId, mode) => {
     await chrome.scripting.executeScript({target:{tabId,frameIds:[0]},files:['page-panel.js']});
     return chrome.tabs.sendMessage(tabId,{type:'JOBPILOT_PAGE_PANEL',mode},{frameId:0});
@@ -320,6 +365,27 @@ const handleMessage = async (message, sender) => {
             return { connected: false };
         case "JOBPILOT_SCAN":
             return scanActiveTab(panelTabId);
+        case 'JOBPILOT_REMEMBER_MANUAL_ANSWERS':
+            return rememberManualAnswers(message, sender);
+        case 'JOBPILOT_MANUAL_MEMORY_FAILED':
+            if (sender.tab?.id) await chrome.runtime.sendMessage({type:'JOBPILOT_MANUAL_MEMORY_FAILED',tabId:sender.tab.id}).catch(()=>{});
+            return {ok:true};
+        case 'JOBPILOT_MEMORY_SETTINGS': {
+            if (!isPanelSender(sender)) throw new Error('Change answer memory from the JobPilot panel.');
+            await storageSet({'jobpilot.rememberManualAnswers':message.enabled === true});
+            await clearManualContexts();
+            return {enabled:message.enabled === true};
+        }
+        case 'JOBPILOT_FORGET_MANUAL_ANSWERS': {
+            if (!isPanelSender(sender)) throw new Error('Manage remembered answers from the JobPilot panel.');
+            const settings = await connectionSettings();
+            // Pause capture and drain in-flight writes before deleting, so a
+            // pending event cannot immediately recreate a forgotten answer.
+            await storageSet({'jobpilot.rememberManualAnswers':false});
+            await clearManualContexts();
+            await Promise.allSettled([...manualSaveQueues.values()]);
+            return apiRequest('/api/extension/manual-answers',{method:'DELETE',expectedToken:settings.token});
+        }
         case 'JOBPILOT_RESUME_ASSESS': {
             if(!isPanelSender(sender))throw new Error('Use the JobPilot panel to assess a résumé.');
             const tab=await activeTab(panelTabId);
@@ -350,8 +416,9 @@ const handleMessage = async (message, sender) => {
         }
         case "JOBPILOT_BUILD_PLAN": {
             const answers=[],missing=new Set();
+            let memoryUnavailable = false;
             const requestBatch = async fields => {
-                try {return [await apiRequest('/api/extension/fill-plan',{method:'POST',body:{fields}})];}
+                try {return [await apiRequest('/api/extension/fill-plan',{method:'POST',body:{fields,jobUrl:message.jobUrl}})];}
                 catch(error){
                     if(error.status !== 413 || fields.length<=1) throw error;
                     const half=Math.ceil(fields.length/2);
@@ -360,8 +427,9 @@ const handleMessage = async (message, sender) => {
             };
             for(const fields of applicationFieldBatches(message.fields)) for(const plan of await requestBatch(fields)) {
                 answers.push(...plan.answers);(plan.missingProfileFields||[]).forEach(item=>missing.add(item));
+                memoryUnavailable ||= Boolean(plan.memoryUnavailable);
             }
-            return {answers,missingProfileFields:[...missing],summary:{total:answers.length,ready:answers.filter(a=>a.action==='fill').length,needsReview:answers.filter(a=>a.action==='ask_user').length,skipped:answers.filter(a=>a.action==='skip').length}};
+            return {answers,memoryUnavailable,missingProfileFields:[...missing],summary:{total:answers.length,ready:answers.filter(a=>a.action==='fill').length,needsReview:answers.filter(a=>a.action==='ask_user').length,skipped:answers.filter(a=>a.action==='skip').length}};
         }
         case "JOBPILOT_APPLY":
             return { results: await applyToActiveTab(message.answers, message.fileFields || [], panelTabId) };

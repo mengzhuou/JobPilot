@@ -1,10 +1,12 @@
 import React from 'react';
-import {ACTIVE_IMMIGRATION_CASE} from './profileQuestions';
+import {ACTIVE_IMMIGRATION_CASE, ACTIVE_SECURITY_CLEARANCE, OTHER_CITIZENSHIP} from './profileQuestions';
 
 const options = {
     'Authorized to work in the United States':['Yes','No'],
     'Requires employment sponsorship':['Yes','No'],
     [ACTIVE_IMMIGRATION_CASE]:['Yes','No'],
+    [ACTIVE_SECURITY_CLEARANCE]:['Yes','No'],
+    [OTHER_CITIZENSHIP]:['Yes','No'],
     Gender:['Male','Female','Non-binary','Choose not to disclose'],
     'Hispanic or Latino':['Yes','No','Choose not to disclose'],
     'Veteran status':['Not a protected veteran','Protected veteran','Choose not to disclose'],
@@ -12,7 +14,7 @@ const options = {
     'Transgender experience':['Yes','No','Choose not to disclose'],
 };
 const selects = {
-    'Citizenship status':['U.S. citizen','U.S. lawful permanent resident','Protected individual','Other'],
+    'Citizenship status':['U.S. citizen','U.S. citizen — natural-born','U.S. citizen — naturalized','U.S. national','U.S. lawful permanent resident','Protected individual','Other'],
     Race:['Asian','Black or African American','White','Hispanic or Latino','American Indian or Alaska Native','Native Hawaiian or Other Pacific Islander','Two or more races'],
     'Sexual orientation':['Heterosexual','Bisexual','Gay','Lesbian','Asexual','Other'],
 };

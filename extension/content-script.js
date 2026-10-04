@@ -3,6 +3,15 @@
     window.__JOBPILOT_CONTENT_SCRIPT__ = true;
 
     const registry = new Map();
+    let rememberManual = false;
+    let rememberSession = '';
+    let applying = false;
+    const manualDirty = new Set();
+    const manualReady = new Set();
+    const manualBaseline = new Map();
+    let manualTimer;
+    let manualSaving = false;
+    let manualSaveAgain = false;
     const MAX_FIELDS = 120;
     const cleanText = value => String(value || "").replace(/\s+/g, " ").trim();
     const normalized = value => cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -20,7 +29,7 @@
     const selectedDisplay = element => {
         const root = reactSelectRoot(element);
         return cleanText(Array.from(root?.querySelectorAll(
-            "[class*='__single-value'], [class$='-singleValue'], [class*='__multi-value__label']"
+            "[class*='__single-value'], [class$='-singleValue'], [class*='__multi-value__label'], [class$='-multiValue']"
         ) || []).map(node => node.textContent).join(", "));
     };
     const ashbyField = element => element.closest(".ashby-application-form-field-entry, .ashby-application-form-input-radio-group, .ashby-application-form-input-checkbox-group");
@@ -54,6 +63,11 @@
     const textById = ids => cleanText(String(ids || "").split(/\s+/).map(id => document.getElementById(id)?.textContent || "").join(" "));
     const nearestText = element => {
         if (ashbyQuestion(element)) return ashbyQuestion(element);
+        if (element.matches('input[type="radio"], input[type="checkbox"]')) {
+            const group = element.closest('fieldset, [role="radiogroup"], [role="group"]');
+            const question = cleanText(group?.querySelector(':scope > legend')?.textContent || group?.getAttribute('aria-label') || textById(group?.getAttribute('aria-labelledby')));
+            if (question) return question;
+        }
         const candidates = [];
         if (element.labels) candidates.push(...Array.from(element.labels).map(label => label.innerText));
         candidates.push(
@@ -239,6 +253,7 @@
                 autocomplete: cleanText(element.autocomplete),
                 name: cleanText(element.name),
                 type,
+                multiple: Boolean(element.multiple || reactSelectRoot(element)?.querySelector('[class*="multi-value"], [class$="-multiValue"]')),
                 context: type === "file" ? fileContext(element) : "",
                 required: Boolean(element.required || element.getAttribute("aria-required") === "true" || ashbyRequired(element)),
                 filled: isFilled(type, element) && !errorMessage,
@@ -262,12 +277,33 @@
         return /\b(page not found|job not found|position (?:is )?no longer available|job (?:is )?no longer available|404 not found)\b/.test(text);
     };
 
+    const jobDescription = () => {
+        // Prefer the publisher's job description; never include entered application answers.
+        const findPosting = value => {
+            if (!value || typeof value !== 'object') return null;
+            if ([value['@type']].flat().includes('JobPosting')) return value;
+            return (Array.isArray(value) ? value : value['@graph'] || []).map(findPosting).find(Boolean);
+        };
+        let description = '';
+        for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+            if (script.textContent.length > 250000) continue;
+            try { description = findPosting(JSON.parse(script.textContent))?.description || ''; } catch { /* malformed publisher metadata */ }
+            if (typeof description === 'string' && description.trim()) break;
+            description = '';
+        }
+        const source = description ? new DOMParser().parseFromString(description, 'text/html').body
+            : document.querySelector('[itemprop="description"], .job-description, #job-description, .posting-page .content, #content, main') || document.body;
+        const copy = source.cloneNode(true);
+        copy.querySelectorAll('form,input,textarea,select,button,nav,footer,script,style,[role="dialog"],#jobpilot-autofill-host').forEach(node=>node.remove());
+        copy.querySelectorAll('p,div,li,br,h1,h2,h3,h4,section').forEach(node=>node.append('\n'));
+        return (copy.textContent || '').replace(/[\t ]+/g,' ').replace(/\n\s*\n/g,'\n').trim().slice(0,18000);
+    };
     const jobMetadata = () => ({
         url: window.top === window ? window.location.href : document.referrer,
         title: cleanText(document.querySelector("h1")?.innerText || document.title).slice(0, 300),
         company: cleanText(document.querySelector("[data-testid*='company'], [class*='company'], meta[property='og:site_name']")?.content
             || document.querySelector("[data-testid*='company'], [class*='company']")?.innerText).slice(0, 300),
-        summary: cleanText(document.querySelector("main")?.innerText || document.body?.innerText).slice(0, 6000),
+        summary: jobDescription(),
     });
 
     const dispatchInput = (element, value) => {
@@ -310,13 +346,16 @@
         const target = normalized(desired)
             .replace(/\b(i am|im|a|an|the)\b/g, " ")
             .replace(/\s+/g, " ").trim();
-        return available.find(value => {
+        const exact = available.find(value => normalized(value) === normalized(desired));
+        if (exact) return exact;
+        const matches = available.filter(value => {
             const option = normalized(value).replace(/\b(i am|im|a|an|the)\b/g, " ").replace(/\s+/g, " ").trim();
             if (!option || !target) return false;
             const targetNegative = /\b(no|not|never|without|decline)\b/.test(target);
             const optionNegative = /\b(no|not|never|without|decline)\b/.test(option);
-            return targetNegative === optionNegative && (option === target || option.includes(target) || target.includes(option));
+            return targetNegative === optionNegative && (option === target || ` ${option} `.includes(` ${target} `) || ` ${target} `.includes(` ${option} `));
         });
+        return matches.length === 1 ? matches[0] : undefined;
     };
     const clickReactAware = element => {
         element.focus({ preventScroll: true });
@@ -345,19 +384,26 @@
         const value = normalized(cleanText(text).replace(/\s+\+\d[\d\s()-]*$/, ""));
         if (/^(true|yes)$/.test(value)) return "yes";
         if (/^(false|no)$/.test(value)) return "no";
+        if (/^(woman|female)$/.test(value)) return 'female';
+        if (/^(man|male)$/.test(value)) return 'male';
+        if (/^(prefer not to (say|answer|disclose)|choose not to disclose|decline to (state|self identify)|i do not wish to answer)$/.test(value)) return 'decline';
         if (/^(us|usa|united states of america)$/.test(value)) return "united states";
         return value;
     };
     const chooseAutocompleteOption = (options, value, context = {}) => {
         const target = comparableOption(value);
         let matches = options.filter(option => comparableOption(optionText(option)) === target);
+        if (!matches.length && context.aliases?.length) matches = options.filter(option => context.aliases.some(alias => comparableOption(optionText(option)) === comparableOption(alias)));
         if (!matches.length && context.degreeLabel) {
             matches = options.filter(option => comparableOption(optionText(option)) === comparableOption(context.degreeLabel));
         }
         if (!matches.length && context.city) {
             matches = options.filter(option => normalized(optionText(option).split(",")[0]) === normalized(context.city));
         }
-        if (!matches.length && !context.degreeLabel) matches = options.filter(option => semanticMatch([optionText(option)], value));
+        if (!matches.length && !context.degreeLabel && !context.exactOnly) {
+            const match = semanticMatch(options.map(optionText), value);
+            matches = options.filter(option => optionText(option) === match);
+        }
         if (context.city && matches.length) {
             matches = matches.filter(option => normalized(optionText(option).split(",")[0]) === normalized(context.city));
             for (const hint of [context.state, context.country].filter(Boolean)) {
@@ -426,7 +472,11 @@
             return { status: "failed", message: fieldErrorMessage(element) || "The application did not retain the selected suggestion. Please select it manually." };
         }
         // Search inputs become empty after React Select commits a separate value.
-        if (!reactSelectRoot(element) && !chooseAutocompleteOption([{ textContent: committed }], value, context)) {
+        const selectedLabels = reactSelectRoot(element) ? Array.from(reactSelectRoot(element).querySelectorAll('[class*="__single-value"], [class$="-singleValue"], [class*="__multi-value__label"], [class$="-multiValue"]')).map(node => node.textContent) : [committed];
+        // Phone-country selectors display just the dialing prefix after a
+        // verified full country option was clicked (e.g. United States → +1).
+        const compactDialCode = /^\+\d[\d\s()-]*$/.test(committed) && optionText(option).endsWith(committed);
+        if (!compactDialCode && !selectedLabels.some(label => chooseAutocompleteOption([{ textContent: label }], value, context))) {
             return { status: "failed", message: "The application retained a different option. Please review this field." };
         }
         return { status: "filled" };
@@ -485,6 +535,13 @@
         }
         if (type === "radio" || type === "checkbox-group") {
             const labels = elements.map(optionLabel);
+            if (type === 'checkbox-group' && answer.values?.length) {
+                const indices = answer.values.map(value => labels.findIndex(label => comparableOption(label) === comparableOption(value)));
+                if (indices.some(index => index < 0)) return {status:'failed',message:'A remembered choice is not available on this application.'};
+                for (const index of indices) if (!elements[index].checked) clickReactAware(elements[index]);
+                await wait(80);
+                return {status:indices.every(index => elements[index].checked) ? 'filled' : 'failed'};
+            }
             const match = semanticMatch(labels, value);
             const index = labels.indexOf(match);
             if (index < 0) return { status: "failed", message: "No equivalent radio option was found." };
@@ -494,6 +551,15 @@
         }
         if (type === "select") {
             const labels = Array.from(element.options).map(option => cleanText(option.textContent));
+            if (element.multiple && answer.values?.length) {
+                const indices = answer.values.map(value => labels.findIndex(label => comparableOption(label) === comparableOption(value)));
+                if (indices.some(index => index < 0)) return {status:'failed',message:'A remembered choice is no longer available.'};
+                Array.from(element.options).forEach((option,index) => {option.selected = indices.includes(index);});
+                element.dispatchEvent(new Event('input',{bubbles:true}));
+                element.dispatchEvent(new Event('change',{bubbles:true}));
+                await wait(80);
+                return {status:indices.every(index => element.options[index].selected) ? 'filled' : 'failed'};
+            }
             const match = semanticMatch(labels, value);
             const index = labels.indexOf(match);
             if (index < 0) return { status: "failed", message: "No equivalent dropdown option was found." };
@@ -509,7 +575,12 @@
             return { status: cleanText(element.value) ? "filled" : "failed" };
         }
         if (isAutocompleteField(entry)) {
-            return typeAndSelectAutocomplete(element, value, answer.optionContext);
+            for (const selection of answer.values || [value]) {
+                const outcome = await typeAndSelectAutocomplete(element, selection, answer.optionContext);
+                if (outcome.status !== 'filled') return outcome;
+            }
+            if (answer.values?.length > 1 && readManualValues(entry).length !== answer.values.length) return {status:'failed',message:'Review the selected choices. This control did not retain every answer.'};
+            return {status:'filled'};
         }
         setNativeValue(element, value);
         return cleanText(element.value || element.textContent) ? { status: "filled" } : { status: "failed", message: "The site rejected the value." };
@@ -573,6 +644,9 @@
     };
 
     const applyPlan = async answers => {
+        applying = true;
+        manualDirty.clear();
+        manualReady.clear();
         overlay.show();
         const results = [];
         try {
@@ -597,8 +671,72 @@
         } finally {
             await wait(250);
             overlay.hide();
+            applying = false;
+            registry.forEach((entry,key) => manualBaseline.set(key, JSON.stringify(readManualValues(entry))));
         }
     };
+
+    const readManualValues = entry => {
+        const {type,element,elements} = entry;
+        if (type === 'radio' || type === 'checkbox-group') return elements.filter(item => item.checked).map(optionLabel);
+        if (type === 'yesno') return Array.from(element.querySelectorAll('button[aria-pressed="true"]')).map(node => cleanText(node.textContent));
+        if (type === 'select') return Array.from(element.selectedOptions).filter(option => option.value && !option.disabled).map(option => cleanText(option.textContent));
+        const root = reactSelectRoot(element);
+        if (root) return Array.from(root.querySelectorAll('[class*="__single-value"], [class$="-singleValue"], [class*="__multi-value__label"], [class$="-multiValue"]')).map(node => cleanText(node.textContent));
+        const value = fieldValue(type,element);
+        return value && !/^(select|choose|please select|--)/i.test(value) ? [value] : [];
+    };
+    const rememberable = entry => entry && !['password','file','hidden','checkbox'].includes(entry.type)
+        && !/\b(password|passcode|social security|ssn|passport|national id|tax id|bank|credit card|debit card|cc number|routing number|captcha|signature|certify|attest|agree|consent|acknowledge|privacy policy|terms of|verification code|one time code)\b/i.test(`${entry.label} ${entry.element.name || ''} ${entry.element.autocomplete || ''}`.replace(/[_-]/g,' '));
+    const saveManualChanges = async () => {
+        if (!rememberManual || applying) return;
+        if (manualSaving) {manualSaveAgain=true;return;}
+        const answers = [...manualReady].flatMap(key => {
+            const entry = registry.get(key);
+            if (!rememberable(entry) || !entry.element.isConnected || fieldErrorMessage(entry.element,entry.elements)) return [];
+            if (entry.element.getAttribute('aria-expanded') === 'true') return [];
+            const values = readManualValues(entry);
+            if (values.some(value => /^\+\d[\d\s()-]*$/.test(value))) return []; // An abbreviated display is not a complete country answer.
+            return JSON.stringify(values) !== manualBaseline.get(key) ? [{fieldKey:key,values}] : [];
+        }).slice(0,30);
+        if (!answers.length) return;
+        const capturedSession = rememberSession;
+        manualSaving = true;
+        try {
+            const response = await chrome.runtime.sendMessage({type:'JOBPILOT_REMEMBER_MANUAL_ANSWERS',answers});
+            if (!response?.ok) throw new Error('Answer memory unavailable');
+            if (capturedSession !== rememberSession) return;
+            answers.forEach(answer => {
+                manualBaseline.set(answer.fieldKey,JSON.stringify(answer.values));
+                const entry=registry.get(answer.fieldKey);
+                if (entry && JSON.stringify(readManualValues(entry)) === JSON.stringify(answer.values)) {manualDirty.delete(answer.fieldKey);manualReady.delete(answer.fieldKey);}
+            });
+        } catch {
+            chrome.runtime.sendMessage({type:'JOBPILOT_MANUAL_MEMORY_FAILED'}).catch(()=>{});
+        } finally {
+            manualSaving=false;
+            if (manualSaveAgain) {manualSaveAgain=false;clearTimeout(manualTimer);manualTimer=setTimeout(saveManualChanges,900);}
+        }
+    };
+    const onManualEvent = event => {
+        if (!event.isTrusted || applying || !rememberManual) return;
+        const pair = [...registry].find(([,entry]) => entry.elements.some(element => element === event.target || element.contains(event.target))
+            || reactSelectRoot(entry.element)?.contains(event.target)
+            || (event.target.closest?.('[role="option"]') && autocompleteMenus(entry.element).some(menu => menu.contains(event.target))));
+        if (!pair || !rememberable(pair[1])) return;
+        const [key,entry] = pair;
+        const textEntry = ['text','textarea','email','tel','url','number'].includes(entry.type) && !isAutocompleteField(entry);
+        if (textEntry && !['input','change','focusout'].includes(event.type)) return;
+        // Focus/blur can also be generated by scripts. They may commit only a
+        // field previously changed by a trusted input, click, or key event.
+        if (event.type !== 'focusout') manualDirty.add(key);
+        if (!manualDirty.has(key)) return;
+        if (event.type === 'input' && textEntry) {manualReady.delete(key);return;}
+        manualReady.add(key);
+        clearTimeout(manualTimer);
+        manualTimer = setTimeout(saveManualChanges,900);
+    };
+    ['input','change','click','keyup','focusout'].forEach(type => document.addEventListener(type,onManualEvent,true));
 
     const submitControls = () => Array.from(document.querySelectorAll("button, input[type='submit'], [role='button']"))
         .filter(node => visible(node) && !node.disabled && node.getAttribute("aria-disabled") !== "true")
@@ -617,7 +755,13 @@
             return false;
         }
         if (message?.type === "JOBPILOT_SCAN_FIELDS") {
+            if (!message.remember || rememberSession !== message.rememberSession) {
+                manualDirty.clear(); manualReady.clear(); manualBaseline.clear(); clearTimeout(manualTimer);
+            }
+            rememberSession = message.rememberSession || '';
+            rememberManual = message.remember === true;
             const fields = scanFields();
+            registry.forEach((entry,key) => {if (!manualDirty.has(key)) manualBaseline.set(key,JSON.stringify(readManualValues(entry)));});
             sendResponse({ fields, submission: submissionState(fields), job: jobMetadata(), unavailable: pageUnavailable() });
             return false;
         }
