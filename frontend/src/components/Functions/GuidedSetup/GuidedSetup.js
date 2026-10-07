@@ -1,4 +1,4 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {useSelector} from 'react-redux';
 import {useNavigate,useLocation} from 'react-router-dom';
 import Dialog from '@mui/material/Dialog';
@@ -28,9 +28,40 @@ export default function GuidedSetup(){
     const visibleSteps=steps.filter(step=>step.path!=='/loops'||isAdmin);
     const navigate=useNavigate();
     const [guide,setGuide]=useState(null),[expanded,setExpanded]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState('');
+    const progress=useRef(null),queued=useRef(null),saving=useRef(false),latest=useRef(null);
+    const account=useRef(user?.id),mounted=useRef(true);
+    account.current=user?.id;
+    useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+    // One write at a time; while it is pending, keep only the newest step.
+    // This prevents slow responses from moving the visible guide backward.
+    const flushProgress=async()=>{
+        if(saving.current)return;
+        saving.current=true;setBusy(true);
+        try {
+            while(queued.current){
+                const item=queued.current;queued.current=null;
+                if(item.account!==account.current)continue;
+                try {
+                    const saved=await saveOnboarding(item.state);
+                    if(mounted.current&&item.account===account.current&&latest.current===item){
+                        progress.current={account:item.account,state:saved};setGuide(saved);setError('');
+                    }
+                } catch {
+                    if(mounted.current&&item.account===account.current&&latest.current===item)
+                        setError('Could not save your progress. Your current step is kept here; retry to save it to your account.');
+                }
+            }
+        } finally {saving.current=false;if(mounted.current)setBusy(false);}
+    };
+    const persistProgress=state=>{
+        const item={account:user.id,state};
+        latest.current=item;queued.current=item;progress.current=item;
+        setGuide(state);setError('');void flushProgress();
+    };
     useEffect(()=>{
         let active=true;setGuide(null);
         if(!authenticated||applicationPage)return ()=>{active=false;};
+        if(progress.current?.account===user?.id){setGuide(progress.current.state);return ()=>{active=false;};}
         (async()=>{
             if(!active || !user?.id || ['completed','skipped'].includes(user.onboarding?.status))return;
             if(user.onboarding?.status==='active'){setGuide(user.onboarding);setExpanded(true);return;}
@@ -44,31 +75,31 @@ export default function GuidedSetup(){
         })().catch(()=>{}); // Failed eligibility checks must not misclassify a profile as empty.
         return ()=>{active=false;};
     },[authenticated,user,applicationPage]);
-    if(!authenticated || !guide || guide.status!=='active')return null;
+    if(!authenticated||applicationPage||!guide)return null;
+    const retry=()=>persistProgress(progress.current.state);
+    if(guide.status!=='active')return error?<aside className="guided-save-notice" aria-label="Guide progress save">
+        <p role="alert">{error}</p>
+        <button onClick={retry}>Retry save</button>
+    </aside>:null;
     const index=Math.min(Math.max(guide.step,0),visibleSteps.length-1),step=visibleSteps[index];
-    const advance=async status=>{
-        if(busy)return;
-        setBusy(true);setError('');
-        try {
-            const saved=await saveOnboarding({status,step:status==='active'?index+1:index});
-            setGuide(saved);setExpanded(true);
-        } catch {setError('Could not save your progress. Please try again.');}
-        finally{setBusy(false);}
+    const advance=status=>{
+        persistProgress({status,step:status==='active'?index+1:index});
+        setExpanded(true);
     };
     const openStep=()=>{
         setExpanded(false);
         navigate(step.section?'/profile':step.path,{state:step.section?{guidedSection:step.section}:step.state});
     };
     return <>
-        <Dialog open={expanded} onClose={()=>{if(!busy)setExpanded(false);}} maxWidth="sm" fullWidth aria-labelledby="guided-setup-title">
+        <Dialog open={expanded} onClose={()=>setExpanded(false)} maxWidth="sm" fullWidth aria-labelledby="guided-setup-title">
             <div className="guided-setup">
                 <span className="guided-setup-eyebrow">YOUR JOBPILOT QUICK START · {index+1} / {visibleSteps.length}</span>
                 <progress value={index+1} max={visibleSteps.length} aria-label="Walkthrough progress"/>
                 <h2 id="guided-setup-title">{step.title}</h2><p>{step.text}</p>
-                {step.action && <button className="guided-setup-open" onClick={openStep} disabled={busy}>{step.action} <span aria-hidden="true">↗</span></button>}
-                {error && <p role="alert">{error}</p>}
-                <div className="guided-setup-actions"><button disabled={busy} onClick={()=>advance('skipped')}>Skip</button><button disabled={busy} onClick={()=>advance(index===visibleSteps.length-1?'completed':'active')}>{busy?'Saving…':index===visibleSteps.length-1?'Finish':'Next Step'}</button></div>
-                <small>Your progress is saved to your account. Skipping or finishing stops future automatic prompts.</small>
+                {step.action && <button className="guided-setup-open" onClick={openStep}>{step.action} <span aria-hidden="true">↗</span></button>}
+                {error && <p role="alert">{error} <button onClick={retry}>Retry save</button></p>}
+                <div className="guided-setup-actions"><button onClick={()=>advance('skipped')}>Skip</button><button onClick={()=>advance(index===visibleSteps.length-1?'completed':'active')}>{index===visibleSteps.length-1?'Finish':'Next Step'}</button></div>
+                <small role="status">{busy?'Saving progress in the background…':error?'Progress has not been saved to your account yet.':'Your progress is saved to your account. Skipping or finishing stops future automatic prompts.'}</small>
             </div>
         </Dialog>
         {!expanded && <aside className="guided-setup-dock" aria-label="Profile setup guide"><button onClick={()=>setExpanded(true)}>Continue guide · {index+1}/{visibleSteps.length} <span aria-hidden="true">→</span></button></aside>}

@@ -34,3 +34,9 @@
 .resume-modal { gap: 16px; }
 .resume-modal label .resume-field-label { color: #344054; font-size: 13px; font-weight: 800; }
 .resume-modal input[type="checkbox"] { min-height: 17px; padding: 0; }
+.resume-modal-fields { display: grid; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.resume-modal-fields:disabled { opacity: .65; }
+.resume-pending { padding: 18px; border: 1px solid #cbdcf5; border-radius: 14px; background: #f2f7ff; color: #264d86; }
+.resume-pending-heading { display: flex; align-items: center; gap: 12px; }
+.resume-pending p { margin: 12px 0 16px; font-size: 13px; line-height: 1.6; }
+@media(prefers-reduced-motion:reduce) { .resume-pending *, .MuiSnackbar-root .MuiCircularProgress-root { animation: none !important; transition: none !important; } }

@@ -1,5 +1,5 @@
 import React from 'react';
-import {render,screen,fireEvent,waitFor} from '@testing-library/react';
+import {render,screen,fireEvent,waitFor,act} from '@testing-library/react';
 import GuidedSetup from './GuidedSetup';
 import {getSignedInUser,getUserProfile,getResumes,saveOnboarding} from '../../../connector';
 const mockNavigate=jest.fn();
@@ -63,4 +63,45 @@ test('Autofill does not repeat session, profile, or resume onboarding requests',
     expect(getUserProfile).not.toHaveBeenCalled();
     expect(getResumes).not.toHaveBeenCalled();
     expect(saveOnboarding).not.toHaveBeenCalled();
+});
+test('Next Step advances immediately, coalesces pending saves, and never checks task completion',async()=>{
+    mockUser={id:'user',onboarding:{status:'active',step:0}};
+    let finish;
+    saveOnboarding.mockImplementationOnce(state=>new Promise(resolve=>{finish=()=>resolve(state);}));
+    render(<GuidedSetup/>);
+    fireEvent.click(screen.getByRole('button',{name:'Next Step'}));
+    expect(screen.getByRole('heading',{name:'Start with your resume'})).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Next Step'})).toBeEnabled();
+    fireEvent.click(screen.getByRole('button',{name:'Next Step'}));
+    fireEvent.click(screen.getByRole('button',{name:'Next Step'}));
+    expect(screen.getByRole('heading',{name:'Add your education'})).toBeInTheDocument();
+    expect(saveOnboarding).toHaveBeenCalledTimes(1);
+    expect(getUserProfile).not.toHaveBeenCalled();expect(getResumes).not.toHaveBeenCalled();
+    await act(async()=>finish());
+    expect(saveOnboarding).toHaveBeenCalledTimes(2);
+    expect(saveOnboarding).toHaveBeenLastCalledWith({status:'active',step:3});
+    expect(screen.getByRole('heading',{name:'Add your education'})).toBeInTheDocument();
+});
+test('failed background save keeps the new step and can retry without advancing',async()=>{
+    mockUser={id:'user',onboarding:{status:'active',step:0}};
+    saveOnboarding.mockRejectedValueOnce(new Error('Offline'));
+    render(<GuidedSetup/>);
+    fireEvent.click(screen.getByRole('button',{name:'Next Step'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save');
+    expect(screen.getByRole('heading',{name:'Start with your resume'})).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Retry save'}));
+    await waitFor(()=>expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(saveOnboarding).toHaveBeenLastCalledWith({status:'active',step:1});
+});
+test('Skip closes immediately even while an earlier progress save is pending',async()=>{
+    mockUser={id:'user',onboarding:{status:'active',step:0}};
+    let finish;saveOnboarding.mockImplementationOnce(state=>new Promise(resolve=>{finish=()=>resolve(state);}));
+    render(<GuidedSetup/>);
+    fireEvent.click(screen.getByRole('button',{name:'Next Step'}));
+    fireEvent.click(screen.getByRole('button',{name:'Skip'}));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Guide progress save')).not.toBeInTheDocument();
+    await act(async()=>finish());
+    expect(saveOnboarding).toHaveBeenLastCalledWith({status:'skipped',step:1});
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

@@ -46,13 +46,15 @@ test('upload dialog omits Optional labels and keeps the required marker inline',
     expect(screen.getByLabelText('Target job title')).toBeInTheDocument();
     expect(screen.getByText('Resume name').querySelector('b')).toHaveTextContent('*');
 });
-test('parsing uses a persistent progress snackbar then a success snackbar',async()=>{
+test('parsing uses a blocking overlay then a success snackbar',async()=>{
     let finish;
     parseResumeProfile.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
     await uploadSetup(true);
     fireEvent.click(screen.getByRole('button',{name:'Upload & parse'}));
     const progress=await screen.findByText('Parsing resume and filling missing profile information…');
-    expect(progress.closest('.MuiSnackbar-root')).not.toBeNull();
+    expect(progress.closest('.MuiModal-root')).not.toBeNull();
+    expect(screen.getByRole('dialog',{name:'Parsing your resume…'})).toHaveAttribute('aria-modal','true');
+    expect(screen.queryByRole('button',{name:'Add resume'})).not.toBeInTheDocument();
     expect(screen.queryByText(/parsed successfully/)).not.toBeInTheDocument();
     await act(async()=>{finish({});});
     const success=await screen.findByText(/Resume parsed successfully/);
@@ -71,4 +73,35 @@ test('saved resume parsing also shows progress and success instead of immediatel
     await act(async()=>{finish({});});
     expect(await screen.findByText(/Resume parsed successfully/)).toBeInTheDocument();
     expect(screen.getByRole('heading',{name:'Resumes'})).toBeInTheDocument();
+});
+test('upload form disappears immediately and overlay remains through parsing',async()=>{
+    let uploaded,parsed;
+    createResume.mockImplementation(()=>new Promise(resolve=>{uploaded=resolve;}));
+    parseResumeProfile.mockImplementation(()=>new Promise(resolve=>{parsed=resolve;}));
+    await uploadSetup(true);
+    fireEvent.click(screen.getByRole('button',{name:'Upload & parse'}));
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-busy','true');
+    expect(screen.getByRole('progressbar',{name:'Uploading your resume…'})).toBeInTheDocument();
+    expect(screen.queryByRole('dialog',{name:'Upload your resume'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:'Close'})).not.toBeInTheDocument();
+    expect(parseResumeProfile).not.toHaveBeenCalled();
+    await act(async()=>uploaded({id:'resume-a'}));
+    expect(screen.getByRole('dialog',{name:'Parsing your resume…'})).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Parsing resume');
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('dialog'),{key:'Escape'});
+    expect(screen.getByRole('dialog',{name:'Parsing your resume…'})).toBeInTheDocument();
+    await act(async()=>parsed({}));
+    expect(screen.getByText('Resume parsed successfully.')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+test('upload failure removes overlay and restores the selected file for retry',async()=>{
+    createResume.mockRejectedValueOnce(new Error('Offline'));
+    await uploadSetup(true);
+    fireEvent.click(screen.getByRole('button',{name:'Upload & parse'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't save that resume.");
+    expect(screen.getByRole('dialog',{name:'Upload your resume'})).toBeInTheDocument();
+    expect(screen.getByText('Resume.pdf')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(parseResumeProfile).not.toHaveBeenCalled();
 });

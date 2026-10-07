@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { EnhancementHistory } from '../ResumeEnhancement/ResumeEnhancementEntry';
 import { useLocation, useNavigate } from "react-router-dom";
-import {Snackbar, Alert} from '@mui/material';
+import {Snackbar, Alert, CircularProgress, LinearProgress} from '@mui/material';
 import {runResumeParsing} from './resumeParsingTask';
+import ResumeProgressOverlay from './ResumeProgressOverlay';
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
     faCheck, faDownload, faEllipsis, faFileLines, faPencil, faPlus,
@@ -46,14 +47,21 @@ const ResumeModal = ({ mode, resume, onClose, onSubmit, pending, parseByDefault=
     };
     const isUpload = mode === "upload";
     return <div className="resume-modal-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-        <form className="resume-modal" onSubmit={submit} aria-modal="true" role="dialog" aria-labelledby="resume-modal-title">
-            <div className="resume-modal-heading"><div><span>{isUpload ? "Add a resume" : "Edit resume"}</span><h2 id="resume-modal-title">{isUpload ? "Upload your resume" : "Update resume details"}</h2></div><button type="button" aria-label="Close" onClick={onClose}><FontAwesomeIcon icon={faXmark}/></button></div>
+        <form className="resume-modal" onSubmit={submit} aria-modal="true" role="dialog" aria-labelledby="resume-modal-title" aria-busy={pending}>
+            <div className="resume-modal-heading"><div><span>{isUpload ? "Add a resume" : "Edit resume"}</span><h2 id="resume-modal-title">{isUpload ? "Upload your resume" : "Update resume details"}</h2></div><button type="button" aria-label="Close" disabled={pending} onClick={onClose}><FontAwesomeIcon icon={faXmark}/></button></div>
+            {pending && <section className="resume-pending" role="status" aria-live="polite">
+                <div className="resume-pending-heading"><CircularProgress size={26} aria-label="Resume operation in progress"/><strong>{isUpload?'Uploading your resume…':'Saving your changes…'}</strong></div>
+                <p>{isUpload&&values.parseProfile?'Once uploaded, this window will close and we’ll parse your resume in the background. Keep this tab open; a banner will show the result.':'Please keep this tab open until your changes are saved.'}</p>
+                <LinearProgress aria-label="Waiting for resume upload or save"/>
+            </section>}
+            <fieldset className="resume-modal-fields" disabled={pending}>
             {isUpload && <div className={`resume-file-picker${values.file ? " selected" : ""}`}><FontAwesomeIcon icon={faFileLines}/><div><strong>{values.file ? values.file.name : "Select a resume file"}</strong><small>{values.file ? `${Math.ceil(values.file.size / 1024)} KB · ready to upload` : "PDF, DOC, or DOCX · maximum 10 MB"}</small></div><button type="button" onClick={() => fileInput.current?.click()}>{values.file ? "Change" : "Browse files"}</button><input ref={fileInput} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={chooseFile}/></div>}
             <label><span className="resume-field-label">Resume name <b>*</b></span><input value={values.displayName} maxLength="199" placeholder="e.g. Software Engineer resume" onChange={update("displayName")}/></label>
             <label>Target job title<input value={values.targetJobTitle} maxLength="199" placeholder="e.g. Software Engineer" onChange={update("targetJobTitle")}/></label>
             {isUpload && <div className="resume-parse-option"><label><input type="checkbox" checked={Boolean(values.parseProfile)} disabled={pending} onChange={event=>setValues(current=>({...current,parseProfile:event.target.checked}))}/> Parse this resume to autofill my profile</label><p>Sends resume text to OpenAI to fill missing contact details, education, work experience and skills. Existing answers stay unchanged. PDF or DOCX required; review the results afterward.</p></div>}
             {error && <p className="resume-form-error" role="alert">{error}</p>}
-            <div className="resume-modal-actions"><button type="button" className="resume-secondary" disabled={pending} onClick={onClose}>Cancel</button><button className="resume-primary" disabled={pending} type="submit"><FontAwesomeIcon icon={isUpload ? faUpload : faCheck}/>{pending ? (values.parseProfile ? "Uploading & parsing…" : "Saving…") : isUpload ? (values.parseProfile ? "Upload & parse" : "Upload resume") : "Save changes"}</button></div>
+            </fieldset>
+            <div className="resume-modal-actions"><button type="button" className="resume-secondary" disabled={pending} onClick={onClose}>Cancel</button><button className="resume-primary" disabled={pending} type="submit"><FontAwesomeIcon icon={isUpload ? faUpload : faCheck}/>{pending ? (isUpload ? "Uploading…" : "Saving…") : isUpload ? (values.parseProfile ? "Upload & parse" : "Upload resume") : "Save changes"}</button></div>
         </form>
     </div>;
 };
@@ -68,6 +76,7 @@ const Resumes = () => {
     const [menuId, setMenuId] = useState(null);
     const [modal, setModal] = useState(null);
     const [pending, setPending] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [parseTarget, setParseTarget] = useState(null);
 
@@ -102,12 +111,14 @@ const Resumes = () => {
         setError('');
         try {
             if (modal.mode === "upload") {
+                setUploading(true);
                 const data = new FormData();
                 data.append("file", values.file);
                 data.append("displayName", values.displayName);
                 data.append("targetJobTitle", values.targetJobTitle);
                 const uploaded=await createResume(data);
                 setModal(null);
+                setUploading(false);
                 if (values.parseProfile) {
                     try {
                         await parseIntoProfile(uploaded.id);
@@ -122,7 +133,7 @@ const Resumes = () => {
             setModal(null);
             await refresh(true);
         } catch (requestError) { setError(requestError.response?.data?.message || "We couldn't save that resume."); }
-        finally { setPending(false); }
+        finally { setUploading(false); setPending(false); }
     };
     const setPrimary = async resume => {
         try { await setPrimaryResume(resume.id); await refresh(); showNotice(`“${resume.display_name}” is now your primary resume.`); }
@@ -181,7 +192,8 @@ const Resumes = () => {
             {notice}
         </Alert>
     </Snackbar>
-    {modal && <ResumeModal mode={modal.mode} resume={modal.resume} parseByDefault={modal.parseByDefault} onClose={() => !pending && setModal(null)} onSubmit={submitModal} pending={pending}/>}
+    {uploading && <ResumeProgressOverlay title="Uploading your resume…" message="Please wait while we securely save your file."/>}
+    {modal && <div hidden={uploading}><ResumeModal mode={modal.mode} resume={modal.resume} parseByDefault={modal.parseByDefault} onClose={() => !pending && setModal(null)} onSubmit={submitModal} pending={pending&&!uploading}/></div>}
     {parseTarget && <div className="resume-modal-backdrop"><section className="resume-modal" role="dialog" aria-modal="true" aria-labelledby="parse-title"><h2 id="parse-title">Parse resume into Profile?</h2><p>Send the text of “{parseTarget.display_name}” to OpenAI to fill missing contact details, education, work experience and skills. Existing answers and Equal Employment information will not be replaced.</p><p>Use a text-based PDF or DOCX. Review your profile after parsing.</p><div className="resume-modal-actions"><button className="resume-secondary" disabled={pending} onClick={()=>setParseTarget(null)}>Cancel</button><button className="resume-primary" disabled={pending} onClick={updateProfile}>{pending ? 'Parsing…' : 'Parse & fill Profile'}</button></div></section></div>}
     {confirmDelete && <div className="resume-modal-backdrop"><section className="resume-confirm" role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">Delete this resume?</h2><p>“{confirmDelete.display_name}” will be removed permanently. This can’t be undone.</p><div><button className="resume-secondary" onClick={() => setConfirmDelete(null)}>Cancel</button><button className="resume-danger" onClick={() => deleteItem(confirmDelete)}>Delete resume</button></div></section></div>}
     </main>;
