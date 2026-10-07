@@ -1,14 +1,29 @@
 import React from 'react';
 import {Box, CircularProgress, Modal} from '@mui/material';
+import './ResumeProgressOverlay.scss';
 
-export default function ResumeProgressOverlay({title, message}) {
-    return <Modal open disableEscapeKeyDown sx={{zIndex:11000}} slotProps={{backdrop:{sx:{backgroundColor:'rgba(48, 53, 62, .72)',backdropFilter:'blur(3px)'}}}}>
-        <Box role="dialog" aria-modal="true" aria-label={title} aria-busy="true" tabIndex={-1}
-            sx={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%, -50%)',width:'min(420px, calc(100vw - 48px))',textAlign:'center',color:'#fff',outline:0}}>
-            <CircularProgress size={52} thickness={3} color="inherit" aria-label={title}
-                sx={{'@media (prefers-reduced-motion: reduce)':{animation:'none','& *':{animation:'none'}}}}/>
-            <h2 style={{fontSize:24,margin:'24px 0 12px'}}>{title}</h2>
-            <p role="status" aria-live="polite" style={{fontSize:15,lineHeight:1.7,margin:0}}>{message}</p>
+export default function ResumeProgressOverlay({title, message, phase='upload', includeParsing=false}) {
+    const parsing=phase==='parsing';
+    return <Modal open disableEscapeKeyDown sx={{zIndex:11000,display:'grid',placeItems:'center',p:2,overflowY:'auto'}} slotProps={{backdrop:{sx:{backgroundColor:'rgba(39, 46, 59, .72)',backdropFilter:'blur(6px)'}}}}>
+        <Box className="resume-progress" role="dialog" aria-modal="true" aria-label={title} aria-busy="true" tabIndex={-1}>
+            <div className="resume-progress-brand"><span aria-hidden="true">✦</span> JOBPILOT <span className="resume-progress-divider"/> YOUR NEXT CHAPTER</div>
+            <div className="resume-progress-illustration">
+                <div className="resume-progress-orbit" aria-hidden="true"/>
+                <CircularProgress size={128} thickness={1.4} aria-label={title} className="resume-progress-spinner"/>
+                <div className="resume-progress-document" aria-hidden="true">
+                    <span className="resume-progress-avatar"/><i/><i/><i/><i/>
+                    <span className="resume-progress-scan"/>
+                </div>
+                <span className="resume-progress-spark" aria-hidden="true">✦</span>
+            </div>
+            <span className="resume-progress-eyebrow">{parsing?'MAKING THE CONNECTIONS':'A GREAT FIRST STEP'}</span>
+            <h2>{title}</h2>
+            <p className="resume-progress-message" role="status" aria-live="polite">{message}</p>
+            <ol className="resume-progress-steps" aria-label="Resume processing steps">
+                <li className={parsing?'is-done':'is-current'} aria-current={!parsing?'step':undefined}><span aria-hidden="true">{parsing?'✓':'1'}</span>Upload</li>
+                {(parsing||includeParsing)&&<li className={parsing?'is-current':''} aria-current={parsing?'step':undefined}><span aria-hidden="true">2</span>Parse resume</li>}
+            </ol>
+            <div className="resume-progress-footer"><span aria-hidden="true">◇</span> {parsing?'Filling the gaps. Keeping your existing answers.':'Your next opportunity starts with your story.'}</div>
         </Box>
     </Modal>;
 }

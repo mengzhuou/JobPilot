@@ -111,7 +111,7 @@ const Resumes = () => {
         setError('');
         try {
             if (modal.mode === "upload") {
-                setUploading(true);
+                setUploading({includeParsing:Boolean(values.parseProfile)});
                 const data = new FormData();
                 data.append("file", values.file);
                 data.append("displayName", values.displayName);
@@ -192,7 +192,7 @@ const Resumes = () => {
             {notice}
         </Alert>
     </Snackbar>
-    {uploading && <ResumeProgressOverlay title="Uploading your resume…" message="Please wait while we securely save your file."/>}
+    {uploading && <ResumeProgressOverlay title="Uploading your resume…" message="Please wait while we securely save your file." includeParsing={uploading.includeParsing}/>}
     {modal && <div hidden={uploading}><ResumeModal mode={modal.mode} resume={modal.resume} parseByDefault={modal.parseByDefault} onClose={() => !pending && setModal(null)} onSubmit={submitModal} pending={pending&&!uploading}/></div>}
     {parseTarget && <div className="resume-modal-backdrop"><section className="resume-modal" role="dialog" aria-modal="true" aria-labelledby="parse-title"><h2 id="parse-title">Parse resume into Profile?</h2><p>Send the text of “{parseTarget.display_name}” to OpenAI to fill missing contact details, education, work experience and skills. Existing answers and Equal Employment information will not be replaced.</p><p>Use a text-based PDF or DOCX. Review your profile after parsing.</p><div className="resume-modal-actions"><button className="resume-secondary" disabled={pending} onClick={()=>setParseTarget(null)}>Cancel</button><button className="resume-primary" disabled={pending} onClick={updateProfile}>{pending ? 'Parsing…' : 'Parse & fill Profile'}</button></div></section></div>}
     {confirmDelete && <div className="resume-modal-backdrop"><section className="resume-confirm" role="dialog" aria-modal="true" aria-labelledby="delete-title"><h2 id="delete-title">Delete this resume?</h2><p>“{confirmDelete.display_name}” will be removed permanently. This can’t be undone.</p><div><button className="resume-secondary" onClick={() => setConfirmDelete(null)}>Cancel</button><button className="resume-danger" onClick={() => deleteItem(confirmDelete)}>Delete resume</button></div></section></div>}

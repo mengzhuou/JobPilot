@@ -1,0 +1,50 @@
+.resume-progress {
+  position: relative;
+  box-sizing: border-box;
+  width: min(480px, 100%);
+  padding: 30px 36px 0;
+  overflow: hidden;
+  text-align: center;
+  outline: none;
+  color: #203352;
+  background: radial-gradient(ellipse at 50% 24%, #e4eeff 0, transparent 55%), #fafcff;
+  border: 1px solid #ffffffb3;
+  border-radius: 28px;
+  box-shadow: 0 24px 90px #0d1b3540, inset 0 1px 0 white;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  &-brand { display: flex; align-items: center; justify-content: center; gap: 8px; color: #657793; font-size: 9px; font-weight: 700; letter-spacing: .13em; }
+  &-brand > span:first-child { color: #3769b6; font-size: 19px; }
+  &-divider { width: 1px; height: 12px; background: #cbd6e6; margin: 0 3px; }
+  &-illustration { position: relative; width: 160px; height: 160px; margin: 25px auto 22px; display: grid; place-items: center; }
+  &-orbit { position: absolute; inset: 15px; border: 1px solid #cfddf2; border-radius: 50%; box-shadow: 0 0 0 14px #eaf1fc80; }
+  &-spinner { position: absolute; color: #4f7bc6; }
+  &-document { position: relative; width: 64px; height: 82px; box-sizing: border-box; padding: 12px; border: 1px solid #cad8ee; border-radius: 9px; background: white; box-shadow: 0 10px 22px #3564ad1f; transform: rotate(-6deg); overflow: hidden; }
+  &-avatar { display: block; height: 16px; width: 16px; border-radius: 5px; background: #b8cdef; margin-bottom: 9px; }
+  &-document i { display: block; height: 3px; border-radius: 3px; background: #d5e1f3; margin: 5px 0; }
+  &-document i:last-of-type { width: 65%; }
+  &-scan { position: absolute; left: 0; right: 0; height: 18px; top: 0; background: linear-gradient(transparent, #73a4e73d); border-bottom: 1px solid #74a3e2; animation: resume-scan 2.8s ease-in-out infinite; }
+  &-spark { position: absolute; right: 13px; top: 13px; font-size: 23px; color: #5384cc; background: #eef4ff; padding: 2px; }
+  &-eyebrow { color: #5073ab; font-size: 10px; letter-spacing: .17em; font-weight: 750; }
+  h2 { margin: 12px 0; font-size: clamp(23px, 4vw, 29px); line-height: 1.25; letter-spacing: -.045em; font-weight: 750; }
+  &-message { max-width: 340px; min-height: 48px; margin: 0 auto; color: #677892; font-size: 14px; line-height: 1.7; }
+  &-steps { list-style: none; display: flex; justify-content: center; align-items: center; gap: 24px; padding: 0; margin: 26px 0 30px; font-size: 12px; color: #7888a1; }
+  &-steps li { display: flex; align-items: center; gap: 7px; }
+  &-steps li > span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #e9eef6; font-size: 10px; }
+  &-steps .is-current { color: #305c9f; font-weight: 700; }
+  &-steps .is-current > span { background: #3564ad; color: white; box-shadow: 0 0 0 4px #3564ad0d; }
+  &-steps .is-done { color: #24735d; }
+  &-steps .is-done > span { background: #dcf1e9; }
+  &-footer { margin: 0 -36px; padding: 15px 18px; border-top: 1px solid #e2eaf6; color: #71829b; background: #f0f5fc; font-size: 11px; line-height: 1.6; }
+  &-footer span { margin-right: 5px; color: #6484b5; }
+}
+@keyframes resume-scan { 0%, 100% { transform: translateY(-18px); opacity: 0; } 20%, 80% { opacity: 1; } 90% { transform: translateY(82px); opacity: 0; } }
+@media (max-width: 400px) {
+  .resume-progress { padding: 24px 20px 0; border-radius: 22px; }
+  .resume-progress-brand { font-size: 8px; gap: 6px; }
+  .resume-progress-footer { margin: 0 -20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resume-progress *, .resume-progress *::before, .resume-progress *::after { animation: none !important; transition: none !important; }
+  .resume-progress-scan { display: none; }
+}

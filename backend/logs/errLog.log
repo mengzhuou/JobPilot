@@ -130,3 +130,4 @@
 20261005	19:17:15	b1a07e82-aec5-4931-907e-0d15d97ab794	Error: Origin is not allowed by JobPilot CORS	OPTIONS	/api/auth/google	https://jobpilot-frontend-pzv8.onrender.com
 20261005	20:23:41	db2944c1-74b7-4c48-88a0-eb6c57eec7c4	Error: Connection terminated due to connection timeout	GET	/api/job-postings/platforms	http://localhost:3000
 20261005	20:23:41	6b7b7f34-4849-41ea-b87f-492e9609f124	Error: Connection terminated due to connection timeout	GET	/api/auth/me	http://localhost:3000
+20261006	19:59:04	8d3c6099-1129-40a0-b378-de9b458c1d85	Error: timeout exceeded when trying to connect	GET	/api/job-postings?query=software+engineer&location=&refresh=false&page=1&limit=30&company=&excludeCompany=&remoteOnly=false&keywords=&excludeFocuses=&excludeEligibility=&excludeJobTypes=&applicationState=all&postedWithin=all&locations=&excludeLevels=&includeLevels=&excludePlatforms=&matchLevel=all	http://localhost:3000
