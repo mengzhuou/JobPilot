@@ -24,6 +24,7 @@ test('assessment only accepts panel messages for the currently bound application
     await assert.rejects(send({type:'JOBPILOT_RESUME_ASSESS',job:{url:'https://example.com/job/2'}},panel),/changed/);
     await send({type:'JOBPILOT_RESUME_ASSESS',job:{url:'https://example.com/job/1'}},panel);
     assert.equal(requests.length,1);assert.equal(requests[0].options.headers.Authorization,'Bearer test-token');
+    assert.equal(requests[0].options.credentials,'omit');
 });
 test('enhancement opens only the configured app and never puts tokens or résumé text in a URL',async()=>{
     const {send,opened}=setup();const id='22222222-2222-4222-8222-222222222222';

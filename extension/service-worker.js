@@ -47,6 +47,7 @@ const apiRequest = async (path, { method = "GET", body, requiresToken = true, ex
     if (requiresToken && !settings.token) throw new Error("Connect this extension to your JobPilot account first.");
     const response = await fetch(`${settings.backendUrl}${path}`, {
         method,
+        credentials: 'omit',
         headers: {
             "Content-Type": "application/json",
             ...(requiresToken ? { Authorization: `Bearer ${settings.token}` } : {}),
@@ -80,6 +81,7 @@ const downloadPrimaryResume = async jobUrl => {
     const settings = await connectionSettings();
     if (!settings.token) throw new Error("Connect this extension to your JobPilot account first.");
     const response = await fetch(`${settings.backendUrl}/api/extension/primary-resume?jobUrl=${encodeURIComponent(jobUrl)}`, {
+        credentials: 'omit',
         headers: { Authorization: `Bearer ${settings.token}` },
     });
     if (!response.ok) {

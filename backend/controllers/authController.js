@@ -9,7 +9,7 @@ const { hashPassword, verifyPassword, validPassword } = require('../services/pas
 
 const googleClient = new OAuth2Client();
 const SESSION_COOKIE = "jobpilot_session";
-const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+const sessionCookie = require('../config/sessionCookie');
 
 const publicUser = user => ({
     id: user.id,
@@ -22,13 +22,7 @@ const publicUser = user => ({
     onboarding: user.onboarding || null,
 });
 
-const cookieOptions = () => ({
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: SESSION_MAX_AGE,
-    path: "/",
-});
+const cookieOptions = () => sessionCookie();
 
 const clearCookieOptions = () => {
     const { maxAge, ...options } = cookieOptions();
@@ -109,6 +103,7 @@ const googleLogin = async (req, res, next) => {
 
 const getCurrentUser = async (req, res, next) => {
     try {
+        res.set('Cache-Control', 'no-store');
         const user = await findUserById(req.auth.userId);
 
         if (!user) {

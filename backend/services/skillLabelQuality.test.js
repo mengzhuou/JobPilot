@@ -6,6 +6,19 @@ const {scoreJobForProfile}=require('./profileMatchService');
 const {assessResume}=require('./resumeEnhancementService');
 const {mapProfileForAutofill}=require('./autofillProfileMapper');
 const skill=label=>({label,aliases:[],category:'mentioned',evidence:`Experience with ${label}`});
+test('screenshot employer branding and posting markers never enter tags or scores',()=>{
+    for(const company of ['xAI','SpaceX','SpaceX / xAI','Different Employer','']){
+        const job={company,summary:'SpaceXAI OpenAI\nExperience with CI/CD and Linux.\n#LI-DNI'};
+        const labels=extractJobSkills(job).map(item=>item.label);
+        assert.deepEqual(labels.sort(),['CI/CD','Linux'].sort(),company);
+        const inputs=['SpaceXAI','SpaceX','xAI','OpenAI','LI','DNI'].map(skill);
+        const cached={...job,skillExtraction:{key:fingerprint(job),source:'semantic',skills:[...inputs,skill('Linux')]}};
+        assert.deepEqual(scoreJobForProfile(cached,{skills:['Linux']}).jobSkills,['Linux']);
+        assert.deepEqual(validateSkills(inputs,inputs.map(item=>item.evidence).join('\n'),job),[]);
+    }
+    for(const label of ['OpenAI API','PyTorch','Figma','MongoDB','FluxWeave'])assert.equal(cleanSkill(skill(label),{company:'Other employer'}).label,label);
+    assert.equal(cleanSkill(skill('NovaWorks'),{company:'Nova Works Inc.'}),null);
+});
 test('screenshot fragments are rejected while meaningful unknown tools remain open-vocabulary',()=>{
     for(const label of ['e.g.','e.g','hardware.Perform','the design','developing','architecture of a modern','scalable','ID'])assert.equal(cleanSkill(skill(label)),null,label);
     for(const label of ['PyTorch','CNNs','LLMs','Node.js','ASP.NET','sharding','indexing','database internals','FluxWeave'])assert.equal(cleanSkill(skill(label)).label,label);

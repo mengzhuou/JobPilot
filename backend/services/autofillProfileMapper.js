@@ -1,4 +1,3 @@
-const fallbackProfile = require("./profile.json");
 const { findEquivalentFormOption } = require('./applicationAgentUtils');
 
 const text = value => String(value ?? "").trim();
@@ -52,7 +51,7 @@ const totalExperienceYears = experience => {
     return Math.round((milliseconds / (365.25 * 24 * 60 * 60 * 1000)) * 10) / 10;
 };
 
-const optionValues = (answer, fallbackOptions = []) => [...new Set([answer, ...fallbackOptions].filter(Boolean))];
+const optionValues = answer => text(answer) ? [answer] : [];
 const booleanAnswer = value => /^yes$/i.test(text(value));
 const choice = (answers, label) => answers[key(label)];
 const firstChoice = (answers, ...labels) => firstValue(...labels.map(label => choice(answers, label)));
@@ -72,11 +71,9 @@ const validateEditableProfile = profile => {
 
 /**
  * Translates the editable account Profile into the field names consumed by the
- * extension autofill planner. The account Profile wins for every field it exposes.
- * profile.json only supplies site-specific option phrases and answers that do
- * not have an editable Profile field yet.
+ * extension autofill planner. Only saved account information supplies facts.
  */
-const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
+const mapProfileForAutofill = (editableProfile) => {
     const personal = editableProfile?.personal || {};
     const educationList = rows(editableProfile?.education);
     const education = educationList[0] || {};
@@ -113,14 +110,8 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
             start_date: educationMonth(education.from), end_date: education.current ? '' : educationMonth(education.to),
             school: text(education.school), highest_level: text(education.degree), field_of_study: educationMajor(education),
             undergraduate_gpa: text(education.gpa),
-            // Keep recruiting-site degree choices as compatibility aliases, not as the source of facts.
-            highest_level_form_options: optionValues(education.degree, fallback.education?.highest_level_form_options),
+            highest_level_form_options: optionValues(education.degree),
             currently_pursuing_further_education: Boolean(education.current || /present|current/i.test(text(education.to))),
-            graduate_gpa: fallback.education?.graduate_gpa,
-            doctorate_gpa: fallback.education?.doctorate_gpa,
-            sat_score: fallback.education?.sat_score,
-            act_score: fallback.education?.act_score,
-            gre_score: fallback.education?.gre_score,
         },
         career: {
             current_company: text(currentRole.company), current_title: text(currentRole.title),
@@ -148,29 +139,28 @@ const mapProfileForAutofill = (editableProfile, fallback = fallbackProfile) => {
             has_saved_sponsorship_answer: Boolean(text(choice(equalEmployment, "requires employment sponsorship"))),
             active_immigration_case: booleanAnswer(choice(equalEmployment, "Currently have an active immigration case (e.g. H-1B extension or green card)")),
             has_saved_active_immigration_case_answer: /^(yes|no)$/i.test(text(choice(equalEmployment, "Currently have an active immigration case (e.g. H-1B extension or green card)"))),
-            authorized_to_work_form_options: optionValues(authorized ? "Yes" : "No", fallback.work_authorization?.authorized_to_work_form_options),
-            citizenship_status_form_options: optionValues(citizenship, fallback.work_authorization?.citizenship_status_form_options),
+            authorized_to_work_form_options: optionValues(choice(equalEmployment, "authorized to work in the united states")),
+            citizenship_status_form_options: optionValues(citizenship),
         },
         eeoc: {
-            gender: { answer: choice(equalEmployment, "gender"), form_options: optionValues(choice(equalEmployment, "gender"), fallback.eeoc?.gender?.form_options) },
-            hispanic_latino: { answer: firstChoice(equalEmployment, "hispanic or latino", "hispanic/latino", "ethnicity"), form_options: optionValues(firstChoice(equalEmployment, "hispanic or latino", "hispanic/latino", "ethnicity"), fallback.eeoc?.hispanic_latino?.form_options) },
-            race: { answer: choice(equalEmployment, "race"), form_options: optionValues(choice(equalEmployment, "race"), fallback.eeoc?.race?.form_options) },
-            veteran_status: { answer: choice(equalEmployment, "veteran status"), form_options: optionValues(choice(equalEmployment, "veteran status"), fallback.eeoc?.veteran_status?.form_options) },
-            sexual_orientation: { answer: choice(equalEmployment, "sexual orientation"), form_options: optionValues(choice(equalEmployment, "sexual orientation"), fallback.eeoc?.sexual_orientation?.form_options) },
-            transgender_status: { answer: choice(equalEmployment, "transgender experience"), is_transgender: booleanAnswer(choice(equalEmployment, "transgender experience")), form_options: optionValues(choice(equalEmployment, "transgender experience"), fallback.eeoc?.transgender_status?.form_options) },
-            disability_status: { answer: choice(equalEmployment, "disability"), has_disability: booleanAnswer(choice(equalEmployment, "disability")), form_options: optionValues(choice(equalEmployment, "disability"), fallback.eeoc?.disability_status?.form_options) },
+            gender: { answer: choice(equalEmployment, "gender"), form_options: optionValues(choice(equalEmployment, "gender")) },
+            hispanic_latino: { answer: firstChoice(equalEmployment, "hispanic or latino", "hispanic/latino", "ethnicity"), form_options: optionValues(firstChoice(equalEmployment, "hispanic or latino", "hispanic/latino", "ethnicity")) },
+            race: { answer: choice(equalEmployment, "race"), form_options: optionValues(choice(equalEmployment, "race")) },
+            veteran_status: { answer: choice(equalEmployment, "veteran status"), form_options: optionValues(choice(equalEmployment, "veteran status")) },
+            sexual_orientation: { answer: choice(equalEmployment, "sexual orientation"), form_options: optionValues(choice(equalEmployment, "sexual orientation")) },
+            transgender_status: { answer: choice(equalEmployment, "transgender experience"), is_transgender: booleanAnswer(choice(equalEmployment, "transgender experience")), form_options: optionValues(choice(equalEmployment, "transgender experience")) },
+            disability_status: { answer: choice(equalEmployment, "disability"), has_disability: booleanAnswer(choice(equalEmployment, "disability")), form_options: optionValues(choice(equalEmployment, "disability")) },
         },
         // A seed/demo profile is not evidence about the signed-in user.
         application_answers: {active_security_clearance: text(choice(equalEmployment, 'Do You Currently Hold an Active Security Clearance?'))},
-        autofill_policy: fallback.autofill_policy || {},
+        autofill_policy: { never_invent_experience: true, never_infer_personal_information: true, never_answer_uncertain_questions_automatically: true, require_user_review_for_conflicting_facts: true, eeoc_fields_are_user_provided: true },
         Q_and_A: {},
     };
     mapped.application_answers = {
         ...mapped.application_answers,
         preferred_application_location: preferredLocation || "",
     };
-    // Optional means truly optional: compatibility aliases from the seed profile
-    // must never supply an answer the user left blank or explicitly cleared.
+    // Optional means truly optional: only a saved answer can supply option aliases.
     for (const [category,answer] of Object.entries(mapped.eeoc)) {
         const saved=text(answer.answer);
         if (!saved) {answer.form_options=[];continue;}

@@ -7,6 +7,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.auth-loading {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: var(--app-page-top) var(--app-page-gutter) var(--app-page-bottom);
+  background: #f5f7fb;
+  color: #1c2940;
+  section { max-width: 650px; margin: 24px auto; padding: 28px; border: 1px solid #dce4f1; border-radius: 18px; background: white; }
+  h1 { margin-top: 0; font-size: 24px; }
+  p { color: #60718d; line-height: 1.6; }
+  button { padding: 12px 20px; border: 0; border-radius: 9px; background: #3563ad; color: white; cursor: pointer; font: inherit; }
+  a { display: inline-block; margin: 12px 18px; color: #3563ad; }
+}
+
 :root {
   --app-content-width: 1180px;
   --app-page-gutter: clamp(20px, 5vw, 80px);

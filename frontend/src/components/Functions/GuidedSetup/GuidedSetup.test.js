@@ -3,16 +3,16 @@ import {render,screen,fireEvent,waitFor} from '@testing-library/react';
 import GuidedSetup from './GuidedSetup';
 import {getSignedInUser,getUserProfile,getResumes,saveOnboarding} from '../../../connector';
 const mockNavigate=jest.fn();
-let mockRole='user';
-jest.mock('react-redux',()=>({useSelector:fn=>fn({auth:{isAuthenticated:true},studentData:{email:'user@example.com',role:mockRole}})}));
-jest.mock('react-router-dom',()=>({useNavigate:()=>mockNavigate}));
+let mockRole='user',mockUser,mockPath='/active-job-postings';
+jest.mock('react-redux',()=>({useSelector:fn=>{mockUser.role=mockRole;return fn({auth:{isAuthenticated:true},studentData:mockUser});}}));
+jest.mock('react-router-dom',()=>({useNavigate:()=>mockNavigate,useLocation:()=>({pathname:mockPath})}));
 jest.mock('../../../connector',()=>({getSignedInUser:jest.fn(),getUserProfile:jest.fn(),getResumes:jest.fn(),saveOnboarding:jest.fn()}));
 beforeEach(()=>{
-    mockRole='user';
-    jest.clearAllMocks();getSignedInUser.mockResolvedValue({id:'user'});getUserProfile.mockResolvedValue({});getResumes.mockResolvedValue([]);saveOnboarding.mockImplementation(async state=>state);
+    mockRole='user';mockPath='/active-job-postings';
+    jest.clearAllMocks();mockUser={id:'user'};getUserProfile.mockResolvedValue({});getResumes.mockResolvedValue([]);saveOnboarding.mockImplementation(async state=>state);
 });
 test('AI Loop is omitted from the regular guide but remains available to admins',async()=>{
-    getSignedInUser.mockResolvedValue({id:'user',onboarding:{status:'active',step:10}});
+    mockUser={id:'user',onboarding:{status:'active',step:10}};
     const {unmount}=render(<GuidedSetup/>);
     await screen.findByRole('button',{name:'Finish'});
     expect(screen.queryByText('Meet AI Loop')).not.toBeInTheDocument();
@@ -31,15 +31,15 @@ test('zero profile starts once, advances, opens upload and permanently skips',as
     await waitFor(()=>expect(saveOnboarding).toHaveBeenLastCalledWith({status:'skipped',step:1}));
 });
 test.each(['completed','skipped'])('does not reopen a %s guide even with an empty profile',async status=>{
-    getSignedInUser.mockResolvedValue({id:'user',onboarding:{status,step:3}});
+    mockUser={id:'user',onboarding:{status,step:3}};
     render(<GuidedSetup/>);
-    await waitFor(()=>expect(getSignedInUser).toHaveBeenCalled());
+    expect(getSignedInUser).not.toHaveBeenCalled();
     expect(getUserProfile).not.toHaveBeenCalled();expect(saveOnboarding).not.toHaveBeenCalled();expect(screen.queryByRole('dialog')).toBeNull();
 });
 test('new accounts qualify without profile checks and active guides resume at their saved step',async()=>{
-    getSignedInUser.mockResolvedValue({id:'user',onboarding:{status:'pending',step:0}});
+    mockUser={id:'user',onboarding:{status:'pending',step:0}};
     const {unmount}=render(<GuidedSetup/>);await screen.findByRole('dialog');expect(getUserProfile).not.toHaveBeenCalled();unmount();
-    getSignedInUser.mockResolvedValue({id:'user',onboarding:{status:'active',step:3}});
+    mockUser={id:'user',onboarding:{status:'active',step:3}};
     render(<GuidedSetup/>);fireEvent.click(await screen.findByRole('button',{name:/Edit education/}));
     expect(mockNavigate).toHaveBeenLastCalledWith('/profile',{state:{guidedSection:'education'}});
 });
@@ -51,8 +51,16 @@ test('existing nonempty profiles and failed profile loads do not trigger the gui
     await waitFor(()=>expect(getUserProfile).toHaveBeenCalledTimes(2));expect(saveOnboarding).not.toHaveBeenCalled();
 });
 test('save failures keep the guide open with retry feedback',async()=>{
-    getSignedInUser.mockResolvedValue({id:'user',onboarding:{status:'active',step:10}});
+    mockUser={id:'user',onboarding:{status:'active',step:10}};
     saveOnboarding.mockRejectedValue(new Error('Offline'));render(<GuidedSetup/>);
     fireEvent.click(await screen.findByRole('button',{name:'Finish'}));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not save your progress');
+});
+test('Autofill does not repeat session, profile, or resume onboarding requests',()=>{
+    mockPath='/autofill';
+    render(<GuidedSetup/>);
+    expect(getSignedInUser).not.toHaveBeenCalled();
+    expect(getUserProfile).not.toHaveBeenCalled();
+    expect(getResumes).not.toHaveBeenCalled();
+    expect(saveOnboarding).not.toHaveBeenCalled();
 });

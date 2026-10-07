@@ -2,8 +2,8 @@
 
 `POST /api/auth/register` accepts JSON `{firstName,lastName,email,password}`.
 `POST /api/auth/login` accepts JSON `{email,password}`. Both return only the
-public user and set the existing seven-day HttpOnly, SameSite=Lax session cookie
-(Secure in production). Google sign-in remains separate; matching emails never
+public user and set a seven-day HttpOnly session cookie: SameSite=None and Secure
+in production, SameSite=Lax for local HTTP development. Google sign-in remains separate; matching emails never
 implicitly link accounts. Email ownership is not currently verified.
 
 Passwords must be 15–128 characters at registration; they are not trimmed or
@@ -26,6 +26,18 @@ form login. Account identifiers in rate-limit keys are hashed.
 - Set a strong random SESSION_SECRET (at least 32 random bytes), NODE_ENV=production,
   HTTPS, and the exact FRONTEND_ORIGIN. Keep request bodies and credentials out of
   proxy/APM logs. GOOGLE_CLIENT_ID is optional for email-only deployments.
+- FRONTEND_ORIGIN must contain the exact frontend origin (comma-separated if
+  multiple). Cookie-authenticated mutations and all auth mutations validate
+  Origin, falling back to Referer only when Origin is absent. Missing, null and
+  untrusted origins are rejected. Scripted session clients must send Origin too.
+  This guard runs on cookie-authenticated routes, not globally: extension routes
+  validate their revocable Bearer token even when a browser cookie is present.
+  Extension requests explicitly omit cookies; Bearer headers cannot bypass the
+  origin guard on web profile, pairing, or other cookie-authenticated endpoints.
+- Separate onrender.com hosts need the production SameSite=None default. Browser
+  third-party-cookie blocking can still prevent login. Prefer HTTPS app/api
+  subdomains of your own domain and set SESSION_SAME_SITE=lax for that setup.
+  Clear old cookies and sign in again after deploying cookie changes.
 - Rate-limit counters are currently process-local. Before deploying multiple
   replicas, configure a shared rate-limit store and the correct trusted proxy
   setting. Do not blindly trust forwarded client IPs.

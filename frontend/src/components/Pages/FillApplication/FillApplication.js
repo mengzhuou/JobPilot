@@ -6,13 +6,12 @@ import { faBriefcase, faBuilding, faCircleCheck, faCircleInfo, faClock, faListCh
 import "./FillApplication.scss";
 import Button from "../../Button/Button";
 import useExtensionApplication from "./useExtensionApplication";
+import useOptimisticSkills from './useOptimisticSkills';
 import ResumeEnhancementEntry from '../ResumeEnhancement/ResumeEnhancementEntry';
 import {
     reportJob,
     getJobReportStatus,
     getJobPosting,
-    getUserProfile,
-    updateUserProfileSection,
 } from "../../../connector.js";
 
 const REPORT_REASONS = [
@@ -119,11 +118,18 @@ const FillApplication = () => {
     const [otherReportReason, setOtherReportReason] = useState("");
     const [isReporting, setIsReporting] = useState(false);
     const [hasReported, setHasReported] = useState(false);
-    const [skillSaving, setSkillSaving] = useState("");
+    const skillSelection = useOptimisticSkills(async isCurrent => {
+        if (!jobId) return;
+        const refreshed = await getJobPosting(jobId);
+        if (!isCurrent()) return;
+        // Keep the visible job stable; refresh scoring separately from saving.
+        setJob(current => ({...current, profileMatch:refreshed.profileMatch}));
+    });
     const [skillNotice, setSkillNotice] = useState("");
     const [logoFailed, setLogoFailed] = useState(false);
     const { qualifications, responsibilities } = splitRequirements(job.requirements);
-    const matchedSkills = uniqueTags(job.profileMatch?.matchedSkills || []);
+    const matchedSkills = uniqueTags([...(job.profileMatch?.matchedSkills || []), ...Object.keys(skillSelection.choices).filter(skill => skillSelection.choices[skill])])
+        .filter(skill => skillSelection.choices[skill] !== false);
     const skillDetails=job.profileMatch?.skillDetails||[];
     const matchesJobSkill=(saved,label)=>[label,...(skillDetails.find(item=>item.label===label)?.aliases||[])].some(alias=>equivalentSkill(saved,alias));
     const isMatchedSkill = skill => matchedSkills.some(profileSkill => equivalentSkill(profileSkill, skill));
@@ -176,15 +182,16 @@ const FillApplication = () => {
         setHasReported(false);
     }, [jobUrl]);
 
-    useEffect(() => {
-        const persistedJobUrl = job.jobUrl;
-        if (!isAdmin || !persistedJobUrl) return;
-        let active = true;
-        getJobReportStatus(persistedJobUrl)
-            .then(reported => { if (active) setHasReported(reported); })
-            .catch(requestError => console.error("Failed to check report status:", requestError));
-        return () => { active = false; };
-    }, [isAdmin, job.jobUrl]);
+    const openReportDialog = async () => {
+        if (!isAdmin || !job.jobUrl) return;
+        try {
+            const reported = await getJobReportStatus(job.jobUrl);
+            setHasReported(reported);
+            if (!reported) setShowReportDialog(true);
+        } catch {
+            setReportStatus('Could not check report status. Please try again.');
+        }
+    };
 
     const applicationPayload = {
         jobUrl,
@@ -234,45 +241,9 @@ const FillApplication = () => {
         setShowReportDialog(false);
     };
 
-    const toggleQualificationSkill = async skill => {
-        if (skillSaving) return;
-        const wasMatched = isMatchedSkill(skill);
-        setSkillSaving(skill);
-        setSkillNotice("");
-        setError("");
-        try {
-            const profile = await getUserProfile();
-            const profileSkills = Array.isArray(profile.skills) ? profile.skills : [];
-            const nextSkills = wasMatched
-                ? profileSkills.filter(profileSkill => !matchesJobSkill(profileSkill, skill))
-                : uniqueTags([...profileSkills, skill]);
-            await updateUserProfileSection("skills", nextSkills);
-
-            if (jobId) {
-                const fetchedJob = await getJobPosting(jobId);
-                const normalizedJob = {
-                    ...fetchedJob,
-                    jobUrl: fetchedJob.url,
-                    jobTitle: fetchedJob.title,
-                    externalJobId: fetchedJob.id,
-                    jobPostedAt: fetchedJob.postedAt,
-                };
-                setJob(normalizedJob);
-                localStorage.setItem(`jobpilot.autofill.${jobId}`, JSON.stringify(normalizedJob));
-            } else {
-                setJob(current => ({ ...current, profileMatch: {
-                    ...current.profileMatch,
-                    matchedSkills: wasMatched
-                        ? (current.profileMatch?.matchedSkills || []).filter(profileSkill => !equivalentSkill(profileSkill, skill))
-                        : uniqueTags([...(current.profileMatch?.matchedSkills || []), skill]),
-                } }));
-            }
-            setSkillNotice(`“${skill}” ${wasMatched ? "unselected" : "selected"}. This choice will apply to future job matches.`);
-        } catch (requestError) {
-            setError(requestError.response?.data?.message || `Unable to update ${skill}.`);
-        } finally {
-            setSkillSaving("");
-        }
+    const toggleQualificationSkill = skill => {
+        const selected = skillSelection.toggle(skill, isMatchedSkill(skill), matchesJobSkill);
+        setSkillNotice(`“${skill}” ${selected ? 'selected' : 'unselected'}. Saving in the background.`);
     };
 
     return (
@@ -311,7 +282,7 @@ const FillApplication = () => {
 
                 {(summary || job.requirements?.length > 0) && <section className="job-description-panel">
                     {summary && <p className="job-summary">{summary}</p>}
-                    {(qualifications.length > 0 || qualificationSkills.length > 0) && <section className="qualification-panel"><div className="qualification-heading"><div><span>Key criteria</span><h3>Qualifications</h3><p>These skills are extracted from this job’s qualifications and responsibilities. <strong>Click a tag</strong> to add or remove it from your Profile, based on your actual expertise. Your choices are private and are used for future job matches and applications.</p></div>{matchedSkills.length > 0 && <em><FontAwesomeIcon icon={faThumbsUp}/> Represents the skills you have</em>}</div>{job.profileMatch?.skillExtraction === "local" && <p className="skill-extraction-note">Showing a local keyword estimate; semantic analysis is unavailable or still being prepared.</p>}{qualificationSkills.length > 0 && <div className="qualification-skill-tags" aria-label="Skills detected from this job">{qualificationSkills.map(skill => { const matched = isMatchedSkill(skill); return <button type="button" className={matched ? "matched" : ""} aria-pressed={matched} disabled={Boolean(skillSaving)} onClick={() => toggleQualificationSkill(skill)} key={skill} title={skillDetails.find(item=>item.label===skill)?.evidence || skill}>{matched && <FontAwesomeIcon icon={faThumbsUp}/>} {skill}{skillSaving === skill && <span className="skill-saving">…</span>}</button>; })}</div>}<ul>{qualifications.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
+                    {(qualifications.length > 0 || qualificationSkills.length > 0) && <section className="qualification-panel"><div className="qualification-heading"><div><span>Key criteria</span><h3>Qualifications</h3><p>These skills are extracted from this job’s qualifications and responsibilities. <strong>Click a tag</strong> to add or remove it from your Profile, based on your actual expertise. Your choices are private and are used for future job matches and applications.</p></div>{matchedSkills.length > 0 && <em><FontAwesomeIcon icon={faThumbsUp}/> Represents the skills you have</em>}</div>{job.profileMatch?.skillExtraction === "local" && <p className="skill-extraction-note">Showing a local keyword estimate; semantic analysis is unavailable or still being prepared.</p>}{qualificationSkills.length > 0 && <div className="qualification-skill-tags" aria-label="Skills detected from this job">{qualificationSkills.map(skill => { const matched = isMatchedSkill(skill); return <button type="button" className={matched ? "matched" : ""} aria-pressed={matched} onClick={() => toggleQualificationSkill(skill)} key={skill} title={skillDetails.find(item=>item.label===skill)?.evidence || skill}>{matched && <FontAwesomeIcon icon={faThumbsUp}/>} {skill}</button>; })}</div>}<ul>{qualifications.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                     {responsibilities.length > 0 && <section className="job-detail-section"><h3><FontAwesomeIcon icon={faListCheck}/> Responsibilities</h3><ul>{responsibilities.map((requirement, index) => <li key={`${requirement}-${index}`}>{requirement}</li>)}</ul></section>}
                 </section>}
 
@@ -321,13 +292,13 @@ const FillApplication = () => {
                     <div className={`job-url-section${isAdmin ? "" : " no-report"}`}>
                         <input type="url" maxLength={MAX_INPUT_LENGTH} value={jobUrl} onChange={event => setJobUrl(event.target.value)} disabled={isConfirming} />
                         <Button onClick={openWithExtension} disabled={hasReported || isConfirming}>{hasReported ? "Reported" : "Open with extension"}</Button>
-                        {isAdmin && <button className="report-job-button" type="button" disabled={hasReported} onClick={()=>setShowReportDialog(true)}>{hasReported ? "Reported" : "Report job"}</button>}
+                        {isAdmin && <button className="report-job-button" type="button" disabled={hasReported} onClick={openReportDialog}>{hasReported ? "Reported" : "Report job"}</button>}
                     </div>
                 </label>
 
                 {reportStatus && <div className="autofill-report-status" role="status">{reportStatus}</div>}
 
-                {(error || extensionError) && <div className="autofill-error" role="alert">{error || extensionError}</div>}
+                {(skillSelection.error || error || extensionError) && <div className="autofill-error" role="alert">{skillSelection.error || error || extensionError}</div>}
 
                 {["extension", "closed", "submitted"].includes(status) && <button className="finished-link" type="button" onClick={() => setShowConfirmation(true)}>I finished applying</button>}
             </section>

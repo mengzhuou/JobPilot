@@ -11,6 +11,8 @@ const studentReducer = (state = initialState, action) => {
         case 'SET_STUDENT_INFO':
             return {
                 ...state,
+                id: action.payload.id,
+                onboarding: action.payload.onboarding || null,
                 email: action.payload.email,
                 name: action.payload.name,
                 classCodes: action.payload.classCodes || [],

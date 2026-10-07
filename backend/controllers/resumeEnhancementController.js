@@ -4,7 +4,7 @@ const repository=require('../repositories/resumeEnhancementRepository');
 const resumes=require('../repositories/resumeRepository');
 const {extractResumeText}=require('../services/resumeTextService');
 const service=require('../services/resumeEnhancementService');
-const {enrichJobSkills}=require('../services/semanticJobSkills');
+const {enrichJobSkills,hydrateJobSkills}=require('../services/semanticJobSkills');
 const {createResumeDocument}=require('../services/resumeDocumentService');
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const owned=async req=>{
@@ -26,7 +26,10 @@ const assess=asyncHandler(async(req,res)=>{
     if(!text){try{text=await extractResumeText({fileData:resume.file_data,mimeType:resume.mime_type});}catch{return res.json({available:false,reason:'This resume cannot be read. Use a text-based PDF or DOCX for enhancement.'});}}
     if(!text||text.trim().length<80)return res.json({available:false,reason:'Not enough readable resume text. Upload a text-based PDF or DOCX.'});
     if(text.length>=30000)return res.json({available:false,reason:'This resume is too long to enhance safely without omitting content. Choose a shorter version; you can still Autofill with the original.'});
-    job=await enrichJobSkills(job);
+    // Never hold the Autofill dialog behind a model request. Reuse persisted
+    // semantic extraction, or assess locally and warm the cache in background.
+    [job]=await hydrateJobSkills([job]);
+    if(!job.skillExtraction)void enrichJobSkills(job).catch(()=>{});
     const analysis=service.assessResume(text,job);
     const draft=await repository.create(req.auth.userId,{sourceId:resume.id,sourceName:resume.display_name||resume.file_name,sourceText:text,job,analysis,
         fingerprint:service.digest(JSON.stringify({text,job,sourceId:resume.id}))});

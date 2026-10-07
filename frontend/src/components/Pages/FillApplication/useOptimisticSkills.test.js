@@ -1,0 +1,43 @@
+import {act,renderHook} from '@testing-library/react';
+import useOptimisticSkills from './useOptimisticSkills';
+import {getUserProfile,updateUserProfileSection} from '../../../connector';
+jest.mock('../../../connector',()=>({getUserProfile:jest.fn(),updateUserProfileSection:jest.fn()}));
+const matches=(a,b)=>a===b;
+beforeEach(()=>jest.resetAllMocks());
+test('updates immediately and serializes rapid toggles without losing unrelated skills',async()=>{
+    let skills=['Python'],release;
+    getUserProfile.mockImplementation(async()=>({skills:[...skills]}));
+    updateUserProfileSection.mockImplementationOnce((section,next)=>new Promise(resolve=>{release=()=>{skills=next;resolve();};}));
+    updateUserProfileSection.mockImplementation(async(section,next)=>{skills=next;});
+    const {result}=renderHook(()=>useOptimisticSkills());
+    act(()=>{result.current.toggle('SQL',false,matches);result.current.toggle('Docker',false,matches);result.current.toggle('SQL',true,matches);});
+    expect(result.current.choices).toEqual({SQL:false,Docker:true});
+    await act(async()=>{});
+    expect(updateUserProfileSection).toHaveBeenCalledTimes(1);
+    await act(async()=>release());
+    expect(skills).toEqual(['Python','Docker']);
+    expect(updateUserProfileSection).toHaveBeenCalledTimes(3);
+});
+test('failed save restores the previous value and allows retry',async()=>{
+    getUserProfile.mockResolvedValue({skills:['Python']});
+    updateUserProfileSection.mockRejectedValueOnce(new Error('Offline')).mockResolvedValue({});
+    const {result}=renderHook(()=>useOptimisticSkills());
+    act(()=>result.current.toggle('SQL',false,matches));
+    expect(result.current.choices.SQL).toBe(true);
+    await act(async()=>{});
+    expect(result.current.choices.SQL).toBe(false);
+    expect(result.current.error).toMatch(/restored/);
+    await act(async()=>result.current.toggle('SQL',false,matches));
+    expect(result.current.choices.SQL).toBe(true);
+    expect(result.current.error).toBe('');
+});
+test('score refresh is coalesced and cannot block or undo a saved tag',async()=>{
+    getUserProfile.mockResolvedValue({skills:[]});
+    updateUserProfileSection.mockResolvedValue({});
+    const refresh=jest.fn(()=>Promise.reject(new Error('Score unavailable')));
+    const {result}=renderHook(()=>useOptimisticSkills(refresh));
+    await act(async()=>{result.current.toggle('SQL',false,matches);result.current.toggle('Docker',false,matches);});
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(result.current.choices).toEqual({SQL:true,Docker:true});
+    expect(result.current.error).toBe('');
+});

@@ -15,7 +15,7 @@ const api = axios.create({
     withCredentials: true,
 });
 
-export const assessResumeForJob = async values => (await api.post('/api/resume-enhancements/assess', values)).data;
+export const assessResumeForJob = async values => (await api.post('/api/resume-enhancements/assess', values, {timeout: 12000})).data;
 export const getResumeEnhancement = async id => (await api.get(`/api/resume-enhancements/${id}`)).data.draft;
 export const updateEnhancementReview = async (id,text) => api.patch(`/api/resume-enhancements/${id}/review`,{text});
 export const getResumeEnhancements = async () => (await api.get('/api/resume-enhancements')).data;

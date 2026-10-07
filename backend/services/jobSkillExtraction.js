@@ -1,7 +1,7 @@
 const {createHash}=require('node:crypto');
 const {CATALOG,aliasesFor}=require('./skillAliases');
 const {cleanSkill}=require('./skillLabelQuality');
-const VERSION='open-vocabulary-v2-quality';
+const VERSION='open-vocabulary-v3-employers';
 const plain=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^a-z0-9+#.]+/g,' ').replace(/\.(?=\s|$)/g,'').trim();
 const hasPhrase=(text,phrase)=>Boolean(plain(phrase))&&(' '+plain(text)+' ').includes(' '+plain(phrase)+' ');
 const strings=value=>Array.isArray(value)?value.filter(x=>typeof x==='string'):typeof value==='string'?[value]:[];
@@ -37,7 +37,7 @@ const localSkills=job=>{
         const add=(label,aliases=[])=>{const skill=cleanSkill({label,aliases,category,evidence:line.slice(0,600)},job);if(skill)found.push(skill);};
         const known=CATALOG.filter(([label,aliases])=>aliases.some(alias=>hasPhrase(line,alias)) && !(label==='Go'&&!/\b(?:Golang|Go language|Go programming)\b/.test(line)));
         known.forEach(([label,aliases])=>{if(label==='Communication'&&/compute\s*[/ -]\s*communication|communication overlapping/i.test(line))return;add(label,aliases);});
-        const canonical=term=>known.some(([,aliases])=>aliases.some(alias=>plain(alias)===plain(term)));
+        const canonical=term=>known.some(([,aliases])=>aliases.some(alias=>plain(alias)===plain(term)||(alias.includes('/')&&alias.split('/').some(part=>plain(part)===plain(term)))));
         const terms=line.match(/\b(?:[A-Z]{2,}[0-9]*(?:s)?|[A-Z][a-z]+(?:[A-Z][A-Za-z0-9]*)+|[A-Za-z]+\.[A-Za-z]+)\b/g)||[];
         for(const term of terms)if(!ignored.test(term)&&! /^(?:e\.g|i\.e|etc|U\.S)$/i.test(term)&&!canonical(term))add(term,[term.replace(/s$/,'')]);
         const clause=/\b(?:experience|proficiency|proficient|familiarity|knowledge|expertise|understanding)\s+(?:with|in|of)\s+(.+)/i.exec(line)?.[1];

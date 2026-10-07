@@ -21,10 +21,9 @@ import Resumes from "./components/Pages/Resumes/Resumes";
 import { ResumeEnhancementPage } from './components/Pages/ResumeEnhancement/ResumeEnhancement';
 import ResumeParsingSnackbar from './components/Pages/Resumes/ResumeParsingSnackbar';
 import ProtectedRoute from "./ProtectedRoute";
-import { Provider, useDispatch } from "react-redux";
+import { Provider } from "react-redux";
 import store from "./components/redux/store";
-import { setStudentInfo } from "./components/redux/actions/studentActions";
-import { authCheckComplete, loginSuccess } from "./components/redux/reducers/authSlice";
+import SessionVerification from './SessionVerification';
 
 class App extends Component {
     state = {
@@ -60,7 +59,7 @@ const AppRoutes = () => {
 
     return (
         <>
-            <TokenVerification />
+            <SessionVerification />
             <GlobalInputLimit />
             {!isLoginPage && <TopNavBar />}
             {!isLoginPage && <ResumeParsingSnackbar />}
@@ -121,38 +120,5 @@ const GlobalInputLimit = () => {
     }, []);
     return null;
 };
-
-const TokenVerification = () => {
-    const dispatch = useDispatch();
-
-    useEffect(() => {
-        const restoreSession = async () => {
-            try {
-                const backendUrl = process.env.REACT_APP_BACKEND_URL || "http://localhost:3500";
-                const response = await fetch(`${backendUrl}/api/auth/me`, {
-                    credentials: "include",
-                });
-
-                if (!response.ok) {
-                    dispatch(authCheckComplete());
-                    return;
-                }
-
-                const { user } = await response.json();
-                dispatch(setStudentInfo(user));
-                dispatch(loginSuccess());
-            } catch (error) {
-                console.error("Session restoration failed:", error);
-                dispatch(authCheckComplete());
-            }
-        };
-
-        restoreSession();
-    }, [dispatch]);
-
-    return null;
-};
-
-
 
 export default App;

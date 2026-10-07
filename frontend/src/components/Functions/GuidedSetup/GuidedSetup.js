@@ -1,8 +1,8 @@
 import React,{useEffect,useState} from 'react';
 import {useSelector} from 'react-redux';
-import {useNavigate} from 'react-router-dom';
+import {useNavigate,useLocation} from 'react-router-dom';
 import Dialog from '@mui/material/Dialog';
-import {getSignedInUser,getUserProfile,getResumes,saveOnboarding} from '../../../connector';
+import {getUserProfile,getResumes,saveOnboarding} from '../../../connector';
 import {profileStrength} from '../../Pages/Profile/profileCompleteness';
 import './GuidedSetup.scss';
 
@@ -21,16 +21,17 @@ export const steps=[
 ];
 export default function GuidedSetup(){
     const authenticated=useSelector(state=>state.auth.isAuthenticated);
-    const account=useSelector(state=>state.studentData?.email);
+    const user=useSelector(state=>state.studentData);
+    const {pathname}=useLocation();
+    const applicationPage=['/autofill','/resume-enhancement'].includes(pathname.replace(/\/$/,''));
     const isAdmin=useSelector(state=>state.studentData?.role==='admin');
     const visibleSteps=steps.filter(step=>step.path!=='/loops'||isAdmin);
     const navigate=useNavigate();
     const [guide,setGuide]=useState(null),[expanded,setExpanded]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState('');
     useEffect(()=>{
         let active=true;setGuide(null);
-        if(!authenticated)return ()=>{active=false;};
+        if(!authenticated||applicationPage)return ()=>{active=false;};
         (async()=>{
-            const user=await getSignedInUser();
             if(!active || !user?.id || ['completed','skipped'].includes(user.onboarding?.status))return;
             if(user.onboarding?.status==='active'){setGuide(user.onboarding);setExpanded(true);return;}
             if(user.onboarding?.status!=='pending'){
@@ -42,7 +43,7 @@ export default function GuidedSetup(){
             if(active && saved.status==='active'){setGuide(saved);setExpanded(true);}
         })().catch(()=>{}); // Failed eligibility checks must not misclassify a profile as empty.
         return ()=>{active=false;};
-    },[authenticated,account]);
+    },[authenticated,user,applicationPage]);
     if(!authenticated || !guide || guide.status!=='active')return null;
     const index=Math.min(Math.max(guide.step,0),visibleSteps.length-1),step=visibleSteps[index];
     const advance=async status=>{

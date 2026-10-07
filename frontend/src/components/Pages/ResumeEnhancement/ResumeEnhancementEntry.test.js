@@ -14,13 +14,25 @@ afterEach(()=>{jest.useRealTimers();});
 test('only renders a low-score suggestion as a modal, without an inline promotional card',async()=>{
     assessResumeForJob.mockResolvedValue(low);
     const {container}=render(<ResumeEnhancementEntry job={job}/>);
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByRole('dialog')).toHaveTextContent('Checking your resume');
     await assess();
     expect(screen.getByRole('dialog')).toHaveTextContent('Improve your resume for this role');
     expect(screen.getByText('40% match')).toBeInTheDocument();
     expect(screen.getByText('Docker')).toBeInTheDocument();
     expect(screen.queryByText(/Check your resume’s alignment/)).not.toBeInTheDocument();
     expect(container.querySelector('.resume-enhancement-entry')).toBeNull();
+});
+test('opens immediately and continuing is not blocked by assessment or dismissal',async()=>{
+    let resolve;
+    assessResumeForJob.mockReturnValue(new Promise(done=>{resolve=done;}));
+    const onContinue=jest.fn();
+    render(<ResumeEnhancementEntry job={job} onContinue={onContinue}/>);
+    expect(screen.getByRole('dialog')).toHaveTextContent('Checking your resume');
+    expect(screen.queryByText(/keyword match is low/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Continue applying'}));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    await act(async()=>{resolve(low);jest.advanceTimersByTime(400);});
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 test.each([
     {available:true,shouldPrompt:false,draft:{...low.draft,analysis:{score:90,missing:[]}}},

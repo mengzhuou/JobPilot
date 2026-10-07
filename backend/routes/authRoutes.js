@@ -8,6 +8,7 @@ const {
 const requireAuth = require("../middleware/requireAuth");
 
 const router = express.Router();
+router.use(require('../middleware/sessionOrigin'));
 const { rateLimit } = require('express-rate-limit');
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false,
     message: { message: 'Too many sign-in attempts. Please try again in 15 minutes.' } });

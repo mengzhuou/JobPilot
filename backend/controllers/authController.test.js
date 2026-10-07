@@ -5,6 +5,7 @@ const setup=()=>{
     const context=vm.createContext({process:{env:{SESSION_SECRET:'test-secret'}},module:{exports:{}},require:name=>{
         if(name==='google-auth-library')return {OAuth2Client:class {}};
         if(name==='jsonwebtoken')return {sign:()=> 'session-token'};
+        if(name.includes('sessionCookie'))return ()=>require('../config/sessionCookie')({});
         if(name.includes('userRepository'))return repo;
         return {validPassword:p=>typeof p==='string'&&p.length>=15&&p.length<=128,hashPassword:async()=> 'salted-hash',verifyPassword:async(p,h)=>{verified=h;return h==='valid'&&p==='correct password';}};
     }});

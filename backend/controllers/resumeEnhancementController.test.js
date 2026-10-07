@@ -7,12 +7,17 @@ process.env.SESSION_SECRET='test-only-session-secret';
 const repository=require('../repositories/resumeEnhancementRepository');
 const resumes=require('../repositories/resumeRepository');
 const service=require('../services/resumeEnhancementService');
+const semantic=require('../services/semanticJobSkills');
+let warmCalls=0;
 const userId='11111111-1111-4111-8111-111111111111',id='22222222-2222-4222-8222-222222222222',resumeId='33333333-3333-4333-8333-333333333333';
 let server,base,draft,disabled,selected,saveCalls;
 const source='Alex Candidate\nalex@example.com\n\nEXPERIENCE\nBuilt Python services.\n\nEDUCATION\nBS Computer Science\n\nSKILLS\nPython';
 before(async()=>{
     const originals=new Map();
     const mock=(object,key,fn)=>{originals.set(fn,()=>object[key]=originals.get(fn).original);const restore=originals.get(fn);restore.original=object[key];object[key]=fn;};
+    mock(semantic,'hydrateJobSkills',async jobs=>jobs);
+    // Deliberately never completes: assessment must not await paid AI work.
+    mock(semantic,'enrichJobSkills',()=>{warmCalls++;return new Promise(()=>{});});
     mock(repository,'get',async(user,key)=>user===userId&&key===id?draft:undefined);
     mock(repository,'create',async(user,value)=>{assert.equal(user,userId);draft={...draft,source_text:value.sourceText,analysis:value.analysis,job:value.job};return draft;});
     mock(repository,'preferences',async()=>({reminders_disabled:disabled}));
@@ -26,14 +31,14 @@ before(async()=>{
     server.restore=()=>{for(const restore of originals.values())restore();};
 });
 after(async()=>{server.restore();await new Promise(resolve=>server.close(resolve));});
-const request=(path,body,user=userId,method='POST')=>fetch(base+path,{method,headers:{'Content-Type':'application/json',...(user?{Cookie:`jobpilot_session=${jwt.sign({userId:user},process.env.SESSION_SECRET,{issuer:'jobpilot',audience:'jobpilot-web'})}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+const request=(path,body,user=userId,method='POST')=>fetch(base+path,{method,headers:{'Content-Type':'application/json',Origin:'http://localhost:3000',...(user?{Cookie:`jobpilot_session=${jwt.sign({userId:user},process.env.SESSION_SECRET,{issuer:'jobpilot',audience:'jobpilot-web'})}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
 test('account isolation, optional assessment, prompt suppression, reviewed export and save',async()=>{
     draft={id,source_resume_id:resumeId,source_name:'Original',source_text:source,status:'assessed',changes:[],job:{},analysis:{}};disabled=false;selected=null;saveCalls=0;
     assert.equal((await request('/assess',{},null)).status,401);
     assert.equal((await request('/'+id,undefined,'44444444-4444-4444-8444-444444444444','GET')).status,404);
     assert.equal((await request('/not-a-uuid',undefined,userId,'GET')).status,404);
     const job={url:'https://example.com/job/1',title:'Software developer',summary:'This role involves Python, Docker, Kubernetes and Terraform. Develop reliable services for our customers and collaborate with the engineering organization.'};
-    const assessed=await (await request('/assess',{job})).json();assert.equal(assessed.available,true);assert.equal(assessed.shouldPrompt,true);
+    const assessed=await (await request('/assess',{job})).json();assert.equal(assessed.available,true);assert.equal(assessed.shouldPrompt,true);assert.ok(warmCalls>0);
     disabled=true;assert.equal((await (await request('/assess',{job})).json()).shouldPrompt,false);
     assert.equal((await (await request('/assess',{job,resumeId:'55555555-5555-4555-8555-555555555555'})).json()).available,false);
     draft.status='ready';draft.analysis=service.assessResume(source,job);

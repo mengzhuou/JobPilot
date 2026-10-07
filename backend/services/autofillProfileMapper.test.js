@@ -32,6 +32,23 @@ assert.equal(profile.eeoc.hispanic_latino.answer, "No");
 assert.equal(profile.application_answers.preferred_application_location, "Austin, Texas");
 assert.deepEqual(profile.Q_and_A, {}, 'Demo answers must not be attributed to a signed-in user');
 assert.equal(profile.application_answers.active_security_clearance, '');
+// Account isolation: empty or unrelated accounts must never inherit a seed's
+// test scores, degree, citizenship, demographic options, or written answers.
+const emptyAccount=mapProfileForAutofill({}).profile;
+assert.equal(emptyAccount.candidate.name,'');
+assert.equal(emptyAccount.candidate.email,'');
+assert.equal(emptyAccount.education.highest_level,'');
+assert.deepEqual(emptyAccount.education.highest_level_form_options,[]);
+for(const field of ['sat_score','act_score','gre_score','graduate_gpa','doctorate_gpa'])assert.equal(emptyAccount.education[field],undefined);
+assert.deepEqual(emptyAccount.work_authorization.authorized_to_work_form_options,[]);
+assert.deepEqual(emptyAccount.work_authorization.citizenship_status_form_options,[]);
+assert.ok(Object.values(emptyAccount.eeoc).every(value=>value.form_options.length===0));
+assert.deepEqual(emptyAccount.Q_and_A,{});
+const anotherAccount=mapProfileForAutofill({education:[{degree:'Doctor of Philosophy'}],equalEmployment:[['Authorized to work in the United States','No'],['Citizenship status','Other'],['Gender','Male']]}).profile;
+assert.deepEqual(anotherAccount.education.highest_level_form_options,['Doctor of Philosophy']);
+assert.deepEqual(anotherAccount.work_authorization.authorized_to_work_form_options,['No']);
+assert.deepEqual(anotherAccount.work_authorization.citizenship_status_form_options,['Other']);
+assert.deepEqual(anotherAccount.eeoc.gender.form_options,['Male','Man']);
 for (const answer of ['Yes','No']) {
     const mapped=mapProfileForAutofill({...editableProfile,equalEmployment:[['Do You Currently Hold an Active Security Clearance?',answer]]}).profile;
     assert.equal(mapped.application_answers.active_security_clearance,answer);

@@ -1,14 +1,20 @@
 import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { Link, Navigate, useLocation } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import { retrySessionCheck } from './components/redux/reducers/authSlice';
 
 const ProtectedRoute = ({ element, requiredRole }) => {
   const location = useLocation();
-  const { isAuthenticated, isInitialized } = useSelector(state => state.auth);
+  const dispatch = useDispatch();
+  const { isAuthenticated, isInitialized, sessionError } = useSelector(state => state.auth);
   const role = useSelector(state => state.studentData?.role);
 
   if (!isInitialized) {
-    return <div className="auth-loading">Checking your session…</div>;
+    return <main className="auth-loading"><section>
+      <h1>{sessionError ? 'Unable to open JobPilot yet' : 'Opening your application workspace'}</h1>
+      {sessionError ? <><p role="alert">{sessionError}</p><button type="button" onClick={()=>dispatch(retrySessionCheck())}>Try again</button><Link to="/login" state={{from:location.pathname+location.search}}>Go to sign in</Link></>
+        : <p role="status">Checking your session…</p>}
+    </section></main>;
   }
 
   if (!isAuthenticated) {
