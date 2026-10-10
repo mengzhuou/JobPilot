@@ -23,6 +23,8 @@ test('one successful session request shares identity and onboarding data',async(
     global.fetch.mockResolvedValue({ok:true,status:200,json:async()=>({user:{id:'user-1',onboarding:{status:'completed'}}})});
     const store=setup();
     expect(screen.getByRole('status')).toHaveTextContent('Checking your session');
+    expect(screen.getByRole('dialog',{name:'Opening your workspace…'})).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
     await act(async()=>{});
     expect(screen.getByText('Application details')).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledTimes(1);

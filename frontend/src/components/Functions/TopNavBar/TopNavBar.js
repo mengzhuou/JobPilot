@@ -4,18 +4,29 @@ import { useDispatch, useSelector } from "react-redux";
 import './TopNavBar.scss';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import ProfileModal from "../../Modal/ProfileModal/ProfileModal";
-import { faBars, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { faBars, faTimes, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
 import { logout } from "../../redux/reducers/authSlice";
 import jobPilotMascot from "../../../Image/jobPilot.png";
+import AuthLoadingOverlay from '../LoadingOverlay/AuthLoadingOverlay';
+
+export const LOGOUT_TIMEOUT=15000;
 
 const TopNavBar = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const [isLoggingOut,setIsLoggingOut]=useState(false);
+    const [logoutError,setLogoutError]=useState('');
+    const logoutRequest=useRef(null);
     const navigate = useNavigate();
     const dispatch = useDispatch();
     const studentData = useSelector((state) => state.studentData);
     const sidebarRef = useRef(null);
     const closeButtonRef = useRef(null);
+
+    useEffect(()=>()=>{
+        const request=logoutRequest.current;logoutRequest.current=null;
+        if(request){clearTimeout(request.timer);request.controller.abort();}
+    },[]);
 
 
     const toggleSidebar = () => {
@@ -27,18 +38,33 @@ const TopNavBar = () => {
     };
 
     const logoutNav = async () => {
+        if(logoutRequest.current)return;
+        const request={controller:new AbortController(),timer:null};
+        logoutRequest.current=request;
+        setIsLoggingOut(true);setLogoutError('');
+        request.timer=setTimeout(()=>request.controller.abort(),LOGOUT_TIMEOUT);
         try {
             const backendUrl = process.env.REACT_APP_BACKEND_URL || "http://localhost:3500";
-            await fetch(`${backendUrl}/api/auth/logout`, {
+            const response=await fetch(`${backendUrl}/api/auth/logout`, {
                 method: "POST",
                 credentials: "include",
+                signal:request.controller.signal,
             });
-        } catch (error) {
-            console.error("Logout request failed:", error);
-        } finally {
+            if(logoutRequest.current!==request)return;
+            if(!response.ok)throw new Error('Logout failed');
+            // Avoid immediately selecting the previous Google account again.
+            try {window.google?.accounts?.id?.disableAutoSelect?.();} catch { /* Cookie logout is authoritative. */ }
+            setIsSidebarOpen(false);setShowProfileModal(false);
             dispatch(logout());
-            navigate("/login");
-            setIsSidebarOpen(false);
+            navigate("/login",{replace:true});
+        } catch (error) {
+            if(logoutRequest.current===request){
+                setIsSidebarOpen(true);
+                setLogoutError('We couldn’t sign you out. Check your connection and try again.');
+            }
+        } finally {
+            clearTimeout(request.timer);
+            if(logoutRequest.current===request){logoutRequest.current=null;setIsLoggingOut(false);}
         }
     };
 
@@ -78,14 +104,14 @@ const TopNavBar = () => {
                 </NavLink>
             </div>
             <div className="navBar-right">
-                <div
+                <button type="button" aria-label={isSidebarOpen?'Close navigation':'Open navigation'} aria-expanded={isSidebarOpen} aria-controls="account-navigation"
                     className={`hamburgerIcon ${isSidebarOpen ? 'hamburgerIcon-shifted' : ''}`}
                     onClick={toggleSidebar}
                     ref={closeButtonRef}
                 >
                     <FontAwesomeIcon icon={isSidebarOpen ? faTimes : faBars} />
-                </div>
-                <div className={`sidebar ${isSidebarOpen ? 'open' : ''}`} ref={sidebarRef}>
+                </button>
+                <div id="account-navigation" className={`sidebar ${isSidebarOpen ? 'open' : ''}`} ref={sidebarRef} style={{visibility:isSidebarOpen?'visible':'hidden'}}>
                     <div className="profile-section">
                         <div className="profile-info">
                             <h3 className="student-name-bar">{studentData.name} {studentData.role === "admin" && <span className="admin-badge">(Admin)</span>}</h3>
@@ -121,7 +147,10 @@ const TopNavBar = () => {
                         {(studentData.role === 'Admin' || studentData.role === 'SA' || studentData.role === 'Professor') && (
                             <div className="nav-link" onClick={goToAdminSite}>Admin Site</div>
                         )}
-                        <div className="nav-link" onClick={logoutNav}>Logout</div>
+                    </div>
+                    <div className="nav-account-actions">
+                        {logoutError&&<p role="alert">{logoutError}</p>}
+                        <button type="button" className="nav-logout" disabled={isLoggingOut} onClick={logoutNav}><FontAwesomeIcon icon={faRightFromBracket}/>{isLoggingOut?'Signing out…':'Log out'}</button>
                     </div>
                 </div>
             </div>
@@ -130,6 +159,7 @@ const TopNavBar = () => {
                 onClose={closeProfileModal}
                 studentData={studentData}
             />
+            {isLoggingOut&&<AuthLoadingOverlay mode="logout"/>}
         </div>
     );
 };

@@ -23,6 +23,13 @@
   &-avatar { display: block; height: 16px; width: 16px; border-radius: 5px; background: #b8cdef; margin-bottom: 9px; }
   &-document i { display: block; height: 3px; border-radius: 3px; background: #d5e1f3; margin: 5px 0; }
   &-document i:last-of-type { width: 65%; }
+  &-account { position: relative; display: grid; place-items: center; width: 72px; height: 72px; border-radius: 23px; color: #3564ad; background: linear-gradient(145deg, #fff, #e4edfd); border: 1px solid #c7d8f1; box-shadow: 0 10px 24px #3564ad26; }
+  &-account svg { width: 36px; height: 36px; }
+  &-activity { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 22px 0 28px; color: #5073ab; font-size: 12px; font-weight: 600; }
+  &-activity-dot { width: 6px; height: 6px; border-radius: 50%; background: #5073ab; animation: auth-pulse 1.5s ease-in-out infinite; }
+  &-return { display: block; margin: -10px auto 24px; padding: 10px 18px; border: 1px solid #c7d8f1; border-radius: 12px; background: #fff; color: #3564ad; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  &-return:hover { background: #eaf1fc; }
+  &-return:focus-visible { outline: 2px solid #3564ad; outline-offset: 3px; }
   &-scan { position: absolute; left: 0; right: 0; height: 18px; top: 0; background: linear-gradient(transparent, #73a4e73d); border-bottom: 1px solid #74a3e2; animation: resume-scan 2.8s ease-in-out infinite; }
   &-spark { position: absolute; right: 13px; top: 13px; font-size: 23px; color: #5384cc; background: #eef4ff; padding: 2px; }
   &-eyebrow { color: #5073ab; font-size: 10px; letter-spacing: .17em; font-weight: 750; }
@@ -38,6 +45,7 @@
   &-footer { margin: 0 -36px; padding: 15px 18px; border-top: 1px solid #e2eaf6; color: #71829b; background: #f0f5fc; font-size: 11px; line-height: 1.6; }
   &-footer span { margin-right: 5px; color: #6484b5; }
 }
+@keyframes auth-pulse { 50% { opacity: .35; transform: scale(.75); } }
 @keyframes resume-scan { 0%, 100% { transform: translateY(-18px); opacity: 0; } 20%, 80% { opacity: 1; } 90% { transform: translateY(82px); opacity: 0; } }
 @media (max-width: 400px) {
   .resume-progress { padding: 24px 20px 0; border-radius: 22px; }

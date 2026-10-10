@@ -1,11 +1,13 @@
 import React from 'react';
-import {render,screen,fireEvent,waitFor} from '@testing-library/react';
+import {render,screen,fireEvent,waitFor,act} from '@testing-library/react';
 import {MemoryRouter} from 'react-router-dom';
-import Login from './Login';
+import Login,{SIGN_IN_TIMEOUT} from './Login';
+const originalFetch=global.fetch,originalGoogleClientId=process.env.REACT_APP_GOOGLE_CLIENT_ID;
 const mockDispatch=jest.fn(),mockNavigate=jest.fn();
 jest.mock('react-redux',()=>({useDispatch:()=>mockDispatch,useSelector:fn=>fn({auth:{isAuthenticated:false}})}));
 jest.mock('react-router-dom',()=>({...jest.requireActual('react-router-dom'),useNavigate:()=>mockNavigate}));
 beforeEach(()=>{jest.clearAllMocks();global.fetch=jest.fn();});
+afterEach(()=>{jest.useRealTimers();global.fetch=originalFetch;delete window.google;if(originalGoogleClientId===undefined)delete process.env.REACT_APP_GOOGLE_CLIENT_ID;else process.env.REACT_APP_GOOGLE_CLIENT_ID=originalGoogleClientId;});
 test('email registration submits credentials with cookies and preserves extension redirect',async()=>{
     global.fetch.mockResolvedValue({ok:true,json:async()=>({user:{id:'1',email:'test@example.com'}})});
     render(<MemoryRouter initialEntries={[{pathname:'/register',state:{from:'/profile?connectExtension=1'}}]}><Login/></MemoryRouter>);
@@ -14,9 +16,89 @@ test('email registration submits credentials with cookies and preserves extensio
     fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'test@example.com'}});
     fireEvent.change(screen.getByLabelText('Password'),{target:{value:'long unique passphrase'}});
     fireEvent.click(screen.getByRole('button',{name:'Create account'}));
+    expect(screen.getByRole('dialog',{name:'Creating your account…'})).toBeInTheDocument();
     await waitFor(()=>expect(mockNavigate).toHaveBeenCalledWith('/profile?connectExtension=1',{replace:true}));
     expect(global.fetch.mock.calls[0][0]).toMatch(/\/api\/auth\/register$/);
     expect(global.fetch.mock.calls[0][1].credentials).toBe('include');
+});
+function submitLogin(){
+    fireEvent.change(screen.getByLabelText('Email address'),{target:{value:'test@example.com'}});
+    fireEvent.change(screen.getByLabelText('Password'),{target:{value:'test passphrase'}});
+    fireEvent.click(screen.getByRole('button',{name:'Log in'}));
+}
+test('email login immediately shows shared branded loading until authentication resolves',async()=>{
+    let finish;global.fetch.mockReturnValue(new Promise(resolve=>{finish=resolve;}));
+    const {container}=render(<MemoryRouter><Login/></MemoryRouter>);
+    submitLogin();
+    expect(screen.getByRole('dialog',{name:'Signing you in…'})).toHaveAttribute('aria-busy','true');
+    expect(screen.getByRole('progressbar',{name:'Signing you in…'})).toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:'Please wait…'})).not.toBeInTheDocument();
+    expect(container.querySelector('fieldset')).toBeDisabled();
+    fireEvent.submit(container.querySelector('form'));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    await act(async()=>finish({ok:true,json:async()=>({user:{id:'1'}})}));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith('/active-job-postings',{replace:true});
+});
+test('Google callback uses the same animation, prevents duplicate requests, and releases on failure',async()=>{
+    process.env.REACT_APP_GOOGLE_CLIENT_ID='test-client';
+    window.google={accounts:{id:{initialize:jest.fn(),renderButton:jest.fn()}}};
+    let finish;global.fetch.mockReturnValue(new Promise(resolve=>{finish=resolve;}));
+    render(<MemoryRouter><Login/></MemoryRouter>);
+    const {callback}=window.google.accounts.id.initialize.mock.calls[0][0];
+    act(()=>{callback({credential:'test-token'});callback({credential:'test-token'});});
+    expect(screen.getByRole('dialog',{name:'Signing you in…'})).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][0]).toMatch(/\/auth\/google$/);
+    await act(async()=>finish({ok:false,json:async()=>({message:'Google sign-in failed'})}));
+    expect(screen.getByRole('alert')).toHaveTextContent('Google sign-in failed');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Log in'})).toBeEnabled();
+});
+test('Google click shows loading before credentials arrive and allows returning after closing the popup',async()=>{
+    process.env.REACT_APP_GOOGLE_CLIENT_ID='test-client';
+    window.google={accounts:{id:{initialize:jest.fn(),renderButton:jest.fn()}}};
+    let finish;global.fetch.mockReturnValue(new Promise(resolve=>{finish=resolve;}));
+    render(<MemoryRouter><Login/></MemoryRouter>);
+    const {click_listener:clickGoogle}=window.google.accounts.id.renderButton.mock.calls[0][1];
+    const {callback}=window.google.accounts.id.initialize.mock.calls[0][0];
+    act(()=>clickGoogle());
+    expect(screen.getByRole('dialog',{name:'Continue with Google…'})).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Back to sign in'}));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Log in'})).toBeEnabled();
+    act(()=>clickGoogle());
+    act(()=>callback({credential:'test-token'}));
+    expect(screen.getByRole('dialog',{name:'Signing you in…'})).toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:'Back to sign in'})).not.toBeInTheDocument();
+    await act(async()=>finish({ok:true,json:async()=>({user:{id:'1'}})}));
+    expect(mockNavigate).toHaveBeenCalledWith('/active-job-postings',{replace:true});
+});
+test('slow sign-in updates status then times out and allows retry without losing inputs',async()=>{
+    jest.useFakeTimers();
+    global.fetch.mockImplementationOnce((url,{signal})=>new Promise((resolve,reject)=>{
+        signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')));
+    }));
+    render(<MemoryRouter><Login/></MemoryRouter>);submitLogin();
+    await act(async()=>jest.advanceTimersByTime(8000));
+    expect(screen.getByRole('status')).toHaveTextContent('taking a little longer');
+    await act(async()=>jest.advanceTimersByTime(SIGN_IN_TIMEOUT-8000));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('taking too long');
+    expect(screen.getByLabelText('Email address')).toHaveValue('test@example.com');
+    expect(global.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+    global.fetch.mockResolvedValueOnce({ok:true,json:async()=>({user:{id:'1'}})});
+    await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Log in'})));
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+});
+test('leaving login cancels the request and ignores late authentication results',async()=>{
+    let finish;global.fetch.mockReturnValue(new Promise(resolve=>{finish=resolve;}));
+    const {unmount}=render(<MemoryRouter><Login/></MemoryRouter>);submitLogin();
+    unmount();
+    expect(global.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+    await act(async()=>finish({ok:true,json:async()=>({user:{id:'late'}})}));
+    expect(mockDispatch).not.toHaveBeenCalled();expect(mockNavigate).not.toHaveBeenCalled();
 });
 test('email login shows generic failure and allows password visibility toggle',async()=>{
     global.fetch.mockResolvedValue({ok:false,json:async()=>({message:'Invalid email or password.'})});

@@ -1,16 +1,20 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { setStudentInfo } from "../../redux/actions/studentActions";
 import { loginSuccess } from "../../redux/reducers/authSlice";
+import AuthLoadingOverlay from '../../Functions/LoadingOverlay/AuthLoadingOverlay';
 import "./Login.scss";
 
 const GOOGLE_SCRIPT_ID = "google-identity-services";
+export const SIGN_IN_TIMEOUT = 30000;
 
 const Login = () => {
     const googleButtonRef = useRef(null);
+    const authRequest = useRef(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [isSigningIn, setIsSigningIn] = useState(false);
+    const [waitingForGoogle, setWaitingForGoogle] = useState(false);
     const isAuthenticated = useSelector(state => state.auth.isAuthenticated);
     const navigate = useNavigate();
     const location = useLocation();
@@ -20,6 +24,42 @@ const Login = () => {
     const destination = requestedDestination === '/profile?connectExtension=1' || /^\/resume-enhancement\?id=[a-f0-9-]{36}$/i.test(requestedDestination)
         ? requestedDestination : '/active-job-postings';
     const dispatch = useDispatch();
+
+    useEffect(()=>()=>{
+        const request=authRequest.current;
+        authRequest.current=null;
+        if(request){clearTimeout(request.timer);request.controller.abort();}
+    },[]);
+
+    const authenticate=useCallback(async (method,values)=>{
+        if(authRequest.current)return;
+        const request={controller:new AbortController(),timer:null,timedOut:false};
+        authRequest.current=request;
+        setErrorMessage('');setWaitingForGoogle(false);setIsSigningIn(true);
+        request.timer=setTimeout(()=>{
+            request.timedOut=true;
+            request.controller.abort();
+        },SIGN_IN_TIMEOUT);
+        try {
+            const response=await fetch(`${process.env.REACT_APP_BACKEND_URL||'http://localhost:3500'}/api/auth/${method}`,{
+                method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',
+                body:JSON.stringify(values),signal:request.controller.signal,
+            });
+            const body=await response.json().catch(()=>({}));
+            if(authRequest.current!==request)return;
+            if(request.timedOut)throw new Error('Sign-in timed out');
+            if(!response.ok)throw new Error(body.message||'Unable to sign in. Please try again.');
+            dispatch(setStudentInfo(body.user));dispatch(loginSuccess());
+            navigate(destination,{replace:true});
+        } catch(error) {
+            if(authRequest.current===request)setErrorMessage(request.timedOut
+                ? 'The server is taking too long to respond. Please try signing in again in a moment.'
+                : error.message||'Unable to sign in. Please try again.');
+        } finally {
+            clearTimeout(request.timer);
+            if(authRequest.current===request){authRequest.current=null;setIsSigningIn(false);}
+        }
+    },[dispatch,navigate,destination]);
 
     useEffect(() => {
         if (isAuthenticated) {
@@ -34,31 +74,9 @@ const Login = () => {
             return undefined;
         }
 
-        const handleGoogleCredential = async googleResponse => {
-            setErrorMessage("");
-            setIsSigningIn(true);
-
-            try {
-                const backendUrl = process.env.REACT_APP_BACKEND_URL || "http://localhost:3500";
-                const response = await fetch(`${backendUrl}/api/auth/google`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({ credential: googleResponse.credential }),
-                });
-                const body = await response.json().catch(() => ({}));
-
-                if (!response.ok) {
-                    throw new Error(body.message || "Google sign-in failed");
-                }
-
-                dispatch(setStudentInfo(body.user));
-                dispatch(loginSuccess());
-                navigate(destination, { replace: true });
-            } catch (error) {
-                setErrorMessage(error.message || "Unable to sign in with Google.");
-                setIsSigningIn(false);
-            }
+        let active=true;
+        const handleGoogleCredential = googleResponse => {
+            if(active)void authenticate('google',{credential:googleResponse.credential});
         };
 
         const renderGoogleButton = () => {
@@ -79,12 +97,18 @@ const Login = () => {
                 shape: "rectangular",
                 logo_alignment: "left",
                 width: 330,
+                click_listener: () => {
+                    if(active && !authRequest.current){
+                        setErrorMessage('');
+                        setWaitingForGoogle(true);
+                    }
+                },
             });
         };
 
         if (window.google?.accounts?.id) {
             renderGoogleButton();
-            return undefined;
+            return ()=>{active=false;};
         }
 
         let script = document.getElementById(GOOGLE_SCRIPT_ID);
@@ -98,31 +122,24 @@ const Login = () => {
         }
 
         script.addEventListener("load", renderGoogleButton);
-        script.addEventListener("error", () => {
+        const handleScriptError=() => {
             setErrorMessage("Google sign-in could not be loaded.");
-        });
+        };
+        script.addEventListener("error", handleScriptError);
 
         return () => {
+            active=false;
             script.removeEventListener("load", renderGoogleButton);
+            script.removeEventListener("error", handleScriptError);
         };
-    }, [dispatch, navigate, destination]);
+    }, [authenticate]);
 
     const handleEmailSubmit = async event => {
         event.preventDefault();
         if (isSigningIn) return;
         const form = event.currentTarget;
         const values = Object.fromEntries(new FormData(form));
-        setErrorMessage('');setIsSigningIn(true);
-        try {
-            const response = await fetch(`${process.env.REACT_APP_BACKEND_URL || 'http://localhost:3500'}/api/auth/${registering ? 'register' : 'login'}`, {
-                method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body:JSON.stringify(values),
-            });
-            const body = await response.json().catch(()=>({}));
-            if (!response.ok) throw new Error(body.message || 'Unable to sign in. Please try again.');
-            form.reset();
-            dispatch(setStudentInfo(body.user));dispatch(loginSuccess());navigate(destination,{replace:true});
-        } catch(error) { setErrorMessage(error.message); }
-        finally { setIsSigningIn(false); }
+        await authenticate(registering?'register':'login',values);
     };
 
     return (
@@ -188,14 +205,16 @@ const Login = () => {
                     </form>
                     <p className="auth-switch">{registering ? 'Already have an account? ' : 'New to JobPilot? '}<Link to={registering ? '/login' : '/register'} state={location.state} onClick={()=>{setErrorMessage('');setShowPassword(false);}}>{registering ? 'Log in' : 'Create an account'}</Link></p>
 
-                    {isSigningIn && <p className="login-progress">Signing you in…</p>}
-
                     <p className="login-legal">
                         By continuing, you agree to JobPilot&apos;s <Link to="/terms">Terms</Link> and acknowledge
                         its <Link to="/privacy">Privacy Policy</Link>.
                     </p>
                 </div>
             </section>
+            {(isSigningIn || waitingForGoogle) && <AuthLoadingOverlay
+                mode={isSigningIn?(registering?'register':'login'):'google'}
+                onDismissGoogle={()=>setWaitingForGoogle(false)}
+            />}
         </main>
     );
 };
